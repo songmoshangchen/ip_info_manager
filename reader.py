@@ -1,18 +1,7 @@
 import json
 import os
 import argparse
-from pydantic_settings import BaseSettings
-from pydantic import Field
-
-
-class Settings(BaseSettings):
-    storage_dir: str = Field(default='data', description='存储目录')
-    storage_filename: str = Field(default='ip_data.json', description='存储文件名')
-    
-    class Config:
-        env_prefix = 'IP_'
-        env_file = '.env'
-        extra = 'ignore'
+from config import Settings
 
 
 class IPReader:

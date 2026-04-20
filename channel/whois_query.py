@@ -2,27 +2,13 @@ import socket
 from datetime import datetime
 import json
 import os
-from pydantic_settings import BaseSettings
-from pydantic import Field
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from config import WhoisSettings as Settings
 try:
     from whois import whois as whois_query
 except ImportError:
     whois_query = None
-
-
-class Settings(BaseSettings):
-    storage_dir: str = Field(default='data', description='存储目录')
-    storage_filename: str = Field(default='ip_data.json', description='存储文件名')
-    whois_query_timeout: float = Field(default=10.0, description='Whois 查询超时时间（秒）')
-    whois_query_delay: float = Field(default=1.0, description='Whois 批量查询间隔（秒）')
-    
-    class Config:
-        env_prefix = 'IP_'
-        env_file = [
-            '.env',
-            '../.env'
-        ]
-        extra = 'ignore'
 
 
 class IPWriter:

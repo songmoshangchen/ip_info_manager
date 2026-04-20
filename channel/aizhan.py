@@ -6,23 +6,9 @@ import os
 from datetime import datetime
 from bs4 import BeautifulSoup
 from typing import Dict, Optional, List, Any
-from pydantic_settings import BaseSettings
-from pydantic import Field
-
-
-class Settings(BaseSettings):
-    storage_dir: str = Field(default='data', description='存储目录')
-    storage_filename: str = Field(default='ip_data.json', description='存储文件名')
-    aizhan_cookie: str = Field(..., description='爱站网 Cookie（必填）')
-    aizhan_query_delay: float = Field(default=2.0, description='爱站查询间隔（秒）')
-
-    class Config:
-        env_prefix = 'IP_'
-        env_file = [
-            '.env',
-            '../.env'
-        ]
-        extra = 'ignore'
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from config import AizhanSettings as Settings
 
 
 class IPWriter:

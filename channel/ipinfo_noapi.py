@@ -2,21 +2,9 @@ import requests
 from datetime import datetime
 import json
 import os
-from pydantic_settings import BaseSettings
-from pydantic import Field
-
-
-class Settings(BaseSettings):
-    storage_dir: str = Field(default='data', description='存储目录')
-    storage_filename: str = Field(default='ip_data.json', description='存储文件名')
-    
-    class Config:
-        env_prefix = 'IP_'
-        env_file = [
-            '.env',
-            '../.env'
-        ]
-        extra = 'ignore'
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from config import Settings
 
 
 class IPWriter:
