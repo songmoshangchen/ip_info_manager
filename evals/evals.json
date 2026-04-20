@@ -1,0 +1,70 @@
+{
+  "skill_name": "ip-info-manager",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "帮我查一下 8.8.8.8 这个IP在我们数据库里有没有信息，如果有的话显示出来",
+      "expected_output": "使用 reader.py get 8.8.8.8 查询数据库中该IP的数据，返回查询结果（无论是否存在）",
+      "files": [],
+      "expectations": [
+        "使用了 reader.py get 命令查询 8.8.8.8",
+        "返回了查询结果（JSON 格式的 IP 数据或'未找到'提示）"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "我有一个IP列表文件 ips.txt 在 data 目录下，帮我批量查一下它们的 IPInfo 信息",
+      "expected_output": "使用 scripts/batch_ipinfo_api.py 批量查询 IPInfo 信息",
+      "files": [],
+      "expectations": [
+        "识别出需要使用 batch_ipinfo_api.py 脚本",
+        "使用正确的文件路径 data/ips.txt 或 ips.txt",
+        "展示了查询命令的用法"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "帮我把数据库里所有有 fofa 渠道数据的IP导出到 Excel 文件，文件名叫 fofa_report.xlsx",
+      "expected_output": "使用 reader.py list --include-channel fofa --export-excel fofa_report.xlsx 导出数据",
+      "files": [],
+      "expectations": [
+        "使用了 reader.py list 命令",
+        "包含 --include-channel fofa 参数",
+        "包含 --export-excel fofa_report.xlsx 参数"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "帮我通过爱站网查一下 8.8.8.8 这个IP绑定了哪些域名",
+      "expected_output": "使用 channel/aizhan.py 8.8.8.8 查询爱站网IP反查域名信息",
+      "files": [],
+      "expectations": [
+        "识别出需要使用爱站渠道查询 IP 反查域名",
+        "使用 channel/aizhan.py 或 scripts/batch_aizhan.py",
+        "正确传入 IP 地址 8.8.8.8"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "我有一个 IP 列表文件 ips.txt，帮我用站长之家批量查一下这些IP的域名绑定情况",
+      "expected_output": "使用 scripts/batch_chinaz.py ips.txt 批量查询站长之家IP反查域名",
+      "files": [],
+      "expectations": [
+        "识别出需要使用站长之家渠道批量查询",
+        "使用 scripts/batch_chinaz.py 脚本",
+        "正确传入 IP 文件路径"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "帮我把数据库里所有有爱站和站长之家渠道数据的IP导出到 Excel",
+      "expected_output": "使用 reader.py list --include-channel aizhan chinaz --export-excel 导出数据",
+      "files": [],
+      "expectations": [
+        "使用了 reader.py list 命令",
+        "包含 --include-channel aizhan chinaz 参数",
+        "包含 --export-excel 参数并指定输出文件名"
+      ]
+    }
+  ]
+}

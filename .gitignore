@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.pyc
+*.pyc
+*.progress
+*.xlsx
+data/
+channel/data/
+check_data.py
+debug_*.py
