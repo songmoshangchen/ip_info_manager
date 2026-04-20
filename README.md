@@ -43,7 +43,8 @@ ip_info_manager/
 │   └── batch_chinaz.py     # 批量站长之家查询
 ├── tools/                  # 辅助工具
 │   ├── compare_ip_files.py # IP 文件比较
-│   └── process_ip_list.py  # IP 列表处理（验证/去重）
+│   ├── process_ip_list.py  # IP 列表处理（验证/去重）
+│   └── verify_ip_domain.py # IP-域名映射验证
 └── data/                   # 数据存储目录
     ├── ip_data.json        # 主数据文件
     ├── *.progress          # 批量查询进度文件
@@ -318,7 +319,8 @@ python tools/compare_ip_files.py <文件A> <文件B>
 
 输出：
 - 同时在 A 和 B 中的 IP（重复）
-- 只在 B 中的 IP（新增）
+- 只在 A 中的 IP（A 独有）
+- 只在 B 中的 IP（B 独有）
 
 ### tools/process_ip_list.py — IP 列表处理
 
@@ -332,3 +334,42 @@ python tools/process_ip_list.py <文件路径> --show-all       # 显示全部
 ```
 
 支持 IPv4 和 IPv6 格式验证。
+
+### tools/verify_ip_domain.py — IP-域名映射验证
+
+验证 IP 反查到的域名是否仍然解析到原始 IP（检测域名是否已过期或重新映射）。
+
+```bash
+python tools/verify_ip_domain.py <JSON数据文件> [选项]
+```
+
+**参数：**
+
+| 参数 | 说明 |
+|------|------|
+| `data_file` | JSON 数据文件路径（必填） |
+| `--channel` | 验证渠道：`aizhan`、`chinaz`、`all`（默认 `all`） |
+| `--concurrency` | 并发线程数（默认 10） |
+| `--timeout` | DNS 解析超时秒数（默认 3） |
+| `--dry-run` | 仅输出验证结果，不写回 JSON 文件 |
+| `--show-all` | 显示所有域名验证结果（默认只显示变更/无法解析） |
+
+**示例：**
+
+```bash
+# 验证并写回结果
+python tools/verify_ip_domain.py data/ip_data.json
+
+# 仅查看结果，不写回
+python tools/verify_ip_domain.py data/ip_data.json --dry-run --show-all
+
+# 仅验证 aizhan 渠道，20 线程并发
+python tools/verify_ip_domain.py data/ip_data.json --channel aizhan --concurrency 20
+```
+
+**验证结果状态：**
+- `matched` — 域名仍解析到原始 IP ✅
+- `changed` — 域名已解析到其他 IP 🔄
+- `unresolved` — DNS 解析失败（域名可能已过期）❌
+
+验证结果会写入 JSON 文件中每个 IP 条目的 `domain_verify` 字段。

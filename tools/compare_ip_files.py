@@ -1,9 +1,8 @@
 import sys
-from pathlib import Path
+import argparse
 
 
 def read_ips(file_path):
-    """读取文件中的IP地址列表"""
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             ips = set(line.strip() for line in f if line.strip())
@@ -17,7 +16,6 @@ def read_ips(file_path):
 
 
 def compare_ip_files(file_a, file_b):
-    """比较两个IP文件"""
     print(f"正在读取文件 A: {file_a}")
     ips_a = read_ips(file_a)
     print(f"文件 A 中共有 {len(ips_a)} 个IP\n")
@@ -26,10 +24,8 @@ def compare_ip_files(file_a, file_b):
     ips_b = read_ips(file_b)
     print(f"文件 B 中共有 {len(ips_b)} 个IP\n")
 
-    # 找出重复的IP（同时在a和b中的IP）
     common_ips = ips_a & ips_b
-
-    # 找出在b但不在a的IP
+    only_in_a = ips_a - ips_b
     only_in_b = ips_b - ips_a
 
     print("=" * 50)
@@ -37,6 +33,15 @@ def compare_ip_files(file_a, file_b):
     print("=" * 50)
     if common_ips:
         for ip in sorted(common_ips):
+            print(ip)
+    else:
+        print("(无)")
+
+    print("\n" + "=" * 50)
+    print(f"只在A中的IP: {len(only_in_a)} 个")
+    print("=" * 50)
+    if only_in_a:
+        for ip in sorted(only_in_a):
             print(ip)
     else:
         print("(无)")
@@ -52,20 +57,13 @@ def compare_ip_files(file_a, file_b):
 
 
 def main():
-    if len(sys.argv) != 3:
-        print("使用方法: python compare_ip_files.py <文件A路径> <文件B路径>")
-        print("\n示例:")
-        print("  python compare_ip_files.py ips_a.txt ips_b.txt")
-        print("\n说明:")
-        print("  - 文件中每行一个IP地址")
-        print("  - 会显示两个文件中重复的IP")
-        print("  - 会显示只在文件B中但不在文件A中的IP")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description='比较两个IP文件，找出重复和差异IP')
+    parser.add_argument('file_a', help='文件A路径')
+    parser.add_argument('file_b', help='文件B路径')
 
-    file_a = sys.argv[1]
-    file_b = sys.argv[2]
+    args = parser.parse_args()
 
-    compare_ip_files(file_a, file_b)
+    compare_ip_files(args.file_a, args.file_b)
 
 
 if __name__ == "__main__":
