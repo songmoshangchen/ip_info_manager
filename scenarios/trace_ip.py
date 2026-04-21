@@ -31,17 +31,21 @@ class TraceIPPipeline:
         self.ip_file = os.path.abspath(ip_file)
         self.args = args
 
-        self.project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self.output_dir = self._resolve_output_dir()
-
         self.ip_writer = IPWriter()
         self.ip_reader = IPReader()
+
+        self.project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.output_dir = self._resolve_output_dir()
 
         self.prefix = self.ip_reader.settings.storage_name
         self.phase_markers = {
             1: f'{self.prefix}.trace_phase1_done',
             2: f'{self.prefix}.trace_phase2_done',
             3: f'{self.prefix}.trace_phase3_done',
+        }
+        self.progress_files = {
+            1: f'{self.prefix}.trace_phase1.progress',
+            3: f'{self.prefix}.trace_phase3.progress',
         }
 
         self.builtin_rules = self._load_rules_file(BUILTIN_RULES_FILE)
@@ -60,7 +64,10 @@ class TraceIPPipeline:
         }
 
     def _resolve_output_dir(self):
-        output_dir = self.args.output_dir
+        if self.args.output_dir_explicit:
+            output_dir = self.args.output_dir
+        else:
+            output_dir = self.ip_reader.settings.storage_dir
         if not os.path.isabs(output_dir):
             output_dir = os.path.join(self.project_dir, output_dir)
         os.makedirs(output_dir, exist_ok=True)
@@ -90,6 +97,33 @@ class TraceIPPipeline:
         marker = os.path.join(self.output_dir, self.phase_markers[phase])
         with open(marker, 'w', encoding='utf-8') as f:
             f.write(datetime.now().isoformat())
+
+    def _load_progress(self, phase):
+        if phase not in self.progress_files:
+            return set()
+        progress_file = os.path.join(self.output_dir, self.progress_files[phase])
+        processed = set()
+        if os.path.exists(progress_file):
+            with open(progress_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    ip = line.strip()
+                    if ip:
+                        processed.add(ip)
+        return processed
+
+    def _save_progress(self, phase, ip):
+        if phase not in self.progress_files:
+            return
+        progress_file = os.path.join(self.output_dir, self.progress_files[phase])
+        with open(progress_file, 'a', encoding='utf-8') as f:
+            f.write(ip + '\n')
+
+    def _clear_progress(self, phase):
+        if phase not in self.progress_files:
+            return
+        progress_file = os.path.join(self.output_dir, self.progress_files[phase])
+        if os.path.exists(progress_file):
+            os.remove(progress_file)
 
     def _clear_phase_markers(self):
         for marker_name in self.phase_markers.values():
@@ -138,6 +172,7 @@ class TraceIPPipeline:
             marker = os.path.join(self.output_dir, self.phase_markers[p])
             if os.path.exists(marker):
                 os.remove(marker)
+            self._clear_progress(p)
 
     def _phase_name(self, phase):
         names = {
@@ -155,19 +190,29 @@ class TraceIPPipeline:
             print("阶段1已完成，跳过")
             return
 
+        processed = self._load_progress(1)
+        if processed:
+            print(f"发现进度文件，已完成 {len(processed)} 个IP，从断点继续")
+
         ipinfo_settings = IpinfoSettings()
         rdns_settings = RdnsSettings()
 
         total = len(self.ips)
+        skipped = len(processed)
         success_count = 0
         fail_count = 0
 
         print(f"总IP数: {total}")
+        print(f"已完成: {skipped}")
+        print(f"剩余: {total - skipped}")
         print(f"IPInfo 查询间隔: {ipinfo_settings.ipinfo_query_delay}s")
         print(f"RDNS 查询超时: {rdns_settings.rdns_query_timeout}s")
         print("-" * 60)
 
         for i, ip in enumerate(self.ips, 1):
+            if ip in processed:
+                continue
+
             print(f"[{i}/{total}] 正在采集: {ip}", end=' ', flush=True)
 
             ipinfo_data = fetch_ipinfo(ip, ipinfo_settings.ipinfo_access_token)
@@ -191,6 +236,8 @@ class TraceIPPipeline:
 
             self.ip_writer.add_or_update_ip(ip, 'rdns_ptr', rdns_data)
 
+            self._save_progress(1, ip)
+
             time.sleep(ipinfo_settings.ipinfo_query_delay)
 
         self._mark_phase_done(1)
@@ -200,9 +247,10 @@ class TraceIPPipeline:
             'ips_processed': total,
             'success': success_count,
             'fail': fail_count,
+            'resumed_from': skipped,
         }
 
-        print(f"\n阶段1完成: 处理 {total} 个IP, 成功 {success_count}, 失败 {fail_count}")
+        print(f"\n阶段1完成: 处理 {total} 个IP (断点续跑 {skipped}), 新增成功 {success_count}, 新增失败 {fail_count}")
 
     # ── Phase 2: 自动分类过滤 ──
 
@@ -406,18 +454,30 @@ class TraceIPPipeline:
             self._mark_phase_done(3)
             return
 
+        processed = self._load_progress(3)
+        if processed:
+            print(f"发现进度文件，已完成 {len(processed)} 个IP，从断点继续")
+
         aizhan_settings = AizhanSettings()
         chinaz_settings = ChinazSettings()
         fofa_settings = FofaSettings()
 
         total = len(filtered_ips)
+        skipped = len([ip for ip in filtered_ips if ip in processed])
         print(f"需要深度查询的IP: {total}")
+        print(f"已完成: {skipped}")
+        print(f"剩余: {total - skipped}")
         print(f"爱站网查询间隔: {aizhan_settings.aizhan_query_delay}s")
         print(f"站长之家查询间隔: {chinaz_settings.chinaz_query_delay}s")
         print(f"Fofa查询间隔: {fofa_settings.fofa_query_delay}s")
         print("-" * 60)
 
+        new_count = 0
         for i, ip in enumerate(filtered_ips, 1):
+            if ip in processed:
+                continue
+
+            new_count += 1
             print(f"[{i}/{total}] 深度查询: {ip}")
 
             aizhan_data = fetch_aizhan(ip, aizhan_settings.aizhan_cookie, delay=0)
@@ -448,14 +508,18 @@ class TraceIPPipeline:
             self.ip_writer.add_or_update_ip(ip, 'fofa', fofa_data)
             time.sleep(fofa_settings.fofa_query_delay)
 
+            self._save_progress(3, ip)
+
         self._mark_phase_done(3)
 
         self.report['phases']['phase3'] = {
             'status': 'done',
             'ips_deep_queried': total,
+            'resumed_from': skipped,
+            'newly_queried': new_count,
         }
 
-        print(f"\n阶段3完成: 深度查询 {total} 个IP")
+        print(f"\n阶段3完成: 深度查询 {total} 个IP (断点续跑 {skipped}, 新增 {new_count})")
 
     # ── Phase 4: 汇总输出 ──
 
@@ -530,8 +594,8 @@ def main():
 
     output_group = parser.add_argument_group('输出控制')
     output_group.add_argument(
-        '--output-dir', type=str, default='data',
-        help='输出目录（默认: data/）'
+        '--output-dir', type=str, default=None,
+        help='输出目录（默认跟随 .env 中的 IP_STORAGE_DIR）'
     )
     output_group.add_argument(
         '--no-deep-query', action='store_true',
@@ -539,6 +603,9 @@ def main():
     )
 
     args = parser.parse_args()
+    args.output_dir_explicit = args.output_dir is not None
+    if args.output_dir is None:
+        args.output_dir = 'data'
 
     if not os.path.exists(args.ip_file):
         print(f"错误: 找不到文件 {args.ip_file}")
