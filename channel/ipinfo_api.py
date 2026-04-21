@@ -1,4 +1,3 @@
-import ipinfo
 import requests
 import time
 from datetime import datetime
@@ -59,15 +58,19 @@ def validate_channel_key():
 
     if token and token.strip():
         try:
-            handler = ipinfo.getHandlerLite(access_token=token)
-            handler.getDetails("8.8.8.8")
+            resp = requests.get(
+                "https://api.ipinfo.io/lite/8.8.8.8",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=30,
+            )
+            resp.raise_for_status()
             print("✅ IPInfo Access Token 验证通过（API 模式）")
         except Exception as e:
             print(f"错误: IPInfo Access Token 无效 - {e}")
             sys.exit(1)
     else:
         try:
-            resp = requests.get("https://ipinfo.io/8.8.8.8/json", timeout=10)
+            resp = requests.get("https://ipinfo.io/8.8.8.8/json", timeout=30)
             resp.raise_for_status()
             print("✅ IPInfo 免费 API 连通性验证通过（无 API 模式）")
         except Exception as e:
@@ -77,9 +80,14 @@ def validate_channel_key():
 
 def _request_channel_api(ip: str, key: str):
     try:
-        handler = ipinfo.getHandlerLite(access_token=key)
-        details = handler.getDetails(ip)
-        return details.all
+        url = f"https://api.ipinfo.io/lite/{ip}"
+        response = requests.get(
+            url,
+            headers={"Authorization": f"Bearer {key}"},
+            timeout=30,
+        )
+        response.raise_for_status()
+        return response.json()
     except Exception as e:
         return {
             "raw_error": True,
@@ -113,9 +121,9 @@ def fetch_channel(ip: str, key: str = '', delay: float = 2, use_api: bool = True
     result = request_channel(ip, key=key, use_api=use_api, **kwargs)
 
     if isinstance(result, dict) and result.get('raw_error'):
-        return format_output(result, use_api=use_api)
+        return format_output(result)
 
-    return format_output(result, use_api=use_api)
+    return format_output(result)
 
 
 def apply_delay(delay: float):
@@ -123,21 +131,9 @@ def apply_delay(delay: float):
         time.sleep(delay)
 
 
-def _format_output_api(data: dict) -> dict:
+def format_output(data: dict) -> dict:
     data.setdefault('query_time', datetime.now().isoformat())
     return data
-
-
-def _format_output_noapi(data: dict) -> dict:
-    data.setdefault('query_time', datetime.now().isoformat())
-    return data
-
-
-def format_output(data: dict, use_api: bool = True, **kwargs) -> dict:
-    if use_api:
-        return _format_output_api(data)
-    else:
-        return _format_output_noapi(data)
 
 
 def main(ip: str):
