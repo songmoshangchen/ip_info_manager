@@ -73,7 +73,7 @@ pip install -r requirements.txt
 
 ```bash
 IP_STORAGE_DIR=data
-IP_STORAGE_FILENAME=ip_data.json
+IP_STORAGE_NAME=ip_data
 IP_FOFA_API_KEY=your_fofa_api_key_here
 IP_IPINFO_ACCESS_TOKEN=your_ipinfo_access_token_here
 IP_FOFA_QUERY_DELAY=1.1
@@ -87,7 +87,7 @@ IP_CHINAZ_QUERY_DELAY=2
 | 变量 | 必填 | 默认值 | 说明 |
 |------|------|--------|------|
 | `IP_STORAGE_DIR` | 否 | `data` | 数据存储目录 |
-| `IP_STORAGE_FILENAME` | 否 | `ip_data.json` | 数据文件名 |
+| `IP_STORAGE_NAME` | 否 | `ip_data` | 存储名称（用于数据文件命名前缀，修改后所有输出文件名同步变更） |
 | `IP_FOFA_API_KEY` | 使用 Fofa 时必填 | — | Fofa API Key |
 | `IP_IPINFO_ACCESS_TOKEN` | 使用 IPInfo API 时必填 | — | IPInfo Access Token |
 | `IP_AIZHAN_COOKIE` | 使用爱站时必填 | — | 爱站网 Cookie（浏览器登录后获取） |
