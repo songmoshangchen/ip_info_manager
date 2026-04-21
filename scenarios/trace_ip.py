@@ -267,7 +267,8 @@ class TraceIPPipeline:
 
         classification = {}
         stats = {}
-        unclassified = []
+        unclassified_rdns = []
+        no_info_ips = []
 
         total = len(self.ips)
         print(f"总IP数: {total}")
@@ -305,7 +306,7 @@ class TraceIPPipeline:
             if cat == 'other' and ip_data:
                 rdns_data = ip_data.get('rdns_ptr', {})
                 if rdns_data.get('has_ptr'):
-                    unclassified.append({
+                    unclassified_rdns.append({
                         'ip': ip,
                         'hostname': rdns_data.get('hostname', ''),
                         'aliases': rdns_data.get('aliases', []),
@@ -314,7 +315,7 @@ class TraceIPPipeline:
                         'ipinfo_region': ip_data.get('ipinfo_api', {}).get('region', ''),
                     })
                 elif not ip_data.get('ipinfo_api', {}).get('as_name'):
-                    unclassified.append({
+                    no_info_ips.append({
                         'ip': ip,
                         'hostname': '',
                         'aliases': [],
@@ -323,7 +324,8 @@ class TraceIPPipeline:
                         'ipinfo_region': ip_data.get('ipinfo_api', {}).get('region', ''),
                     })
 
-        self._save_unclassified(unclassified)
+        self._save_unclassified(unclassified_rdns)
+        self._save_no_info(no_info_ips)
 
         filtered_ips = [
             ip for ip, cls in classification.items()
@@ -344,7 +346,8 @@ class TraceIPPipeline:
             'classification': stats,
             'deep_query_needed': deep_needed,
             'deep_query_skipped': deep_skipped,
-            'unclassified_rdns_count': len(unclassified),
+            'unclassified_rdns_count': len(unclassified_rdns),
+            'no_info_count': len(no_info_ips),
         }
 
         print(f"\n{'=' * 60}")
@@ -353,7 +356,8 @@ class TraceIPPipeline:
             print(f"  {cat}: {count}")
         print(f"\n需要深度查询: {deep_needed}")
         print(f"跳过深度查询: {deep_skipped}")
-        print(f"未识别RDNS: {len(unclassified)}")
+        print(f"未识别RDNS: {len(unclassified_rdns)}")
+        print(f"信息不足IP: {len(no_info_ips)}")
         print(f"过滤后IP列表: {filtered_file}")
         print(f"{'=' * 60}")
 
@@ -427,6 +431,13 @@ class TraceIPPipeline:
             json.dump(unclassified_list, f, ensure_ascii=False, indent=2)
         if unclassified_list:
             print(f"未识别RDNS已保存: {output_path} ({len(unclassified_list)} 条)")
+
+    def _save_no_info(self, no_info_list):
+        output_path = os.path.join(self.output_dir, f'{self.prefix}.unclassified_no_info')
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(no_info_list, f, ensure_ascii=False, indent=2)
+        if no_info_list:
+            print(f"信息不足IP已保存: {output_path} ({len(no_info_list)} 条)")
 
     # ── Phase 3: 深度查询 ──
 
@@ -542,20 +553,28 @@ class TraceIPPipeline:
         deep_needed = phase2_data.get('deep_query_needed', 0)
         deep_skipped = phase2_data.get('deep_query_skipped', 0)
         unclassified_count = phase2_data.get('unclassified_rdns_count', 0)
+        no_info_count = phase2_data.get('no_info_count', 0)
 
         print(f"\n深度查询: {deep_needed} 个IP")
         print(f"跳过: {deep_skipped} 个IP")
         print(f"未识别RDNS: {unclassified_count} 条")
+        print(f"信息不足IP: {no_info_count} 条")
 
         if unclassified_count > 0:
             print(f"\n未识别RDNS文件: {os.path.join(self.output_dir, f'{self.prefix}.unclassified_rdns')}")
             print("提示: 可将未识别的域名模式添加到 custom_rules.json，验证后合并到 builtin_rules.json")
+
+        if no_info_count > 0:
+            print(f"\n信息不足IP文件: {os.path.join(self.output_dir, f'{self.prefix}.unclassified_no_info')}")
+            print("提示: 这些IP无RDNS记录且无ipinfo org信息，需通过其他方式确认")
 
         print(f"\n{'=' * 60}")
 
         self.report['phases']['phase4'] = {'status': 'done'}
         self.report['unclassified_rdns_count'] = unclassified_count
         self.report['unclassified_rdns_file'] = os.path.join(self.output_dir, f'{self.prefix}.unclassified_rdns')
+        self.report['no_info_count'] = no_info_count
+        self.report['no_info_file'] = os.path.join(self.output_dir, f'{self.prefix}.unclassified_no_info')
 
     def _save_report(self):
         report_path = os.path.join(self.output_dir, f'{self.prefix}.trace_report')
