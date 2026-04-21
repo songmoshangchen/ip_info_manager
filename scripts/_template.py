@@ -102,8 +102,8 @@ class BatchXxxQuery:
 
         示例:
           fofa:    return fetch_fofa(ip, self.settings.fofa_api_key)
-          aizhan:  return fetch_aizhan(ip, self.settings.aizhan_cookie, delay=0)
-          rdns:    return fetch_rdns_ptr(ip, self.settings.rdns_query_timeout)
+          aizhan:  return fetch_aizhan(ip, self.settings.aizhan_cookie, delay=2)
+          rdns:    return fetch_channel(ip, timeout=self.settings.rdns_query_timeout)
         """
         pass
 

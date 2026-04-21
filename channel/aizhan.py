@@ -217,7 +217,7 @@ def parse_response(raw_content: str, ip: str) -> dict:
     return result
 
 
-def fetch_channel(ip: str, key: str = '', cookie: str = '', delay: float = 0, **kwargs) -> dict:
+def fetch_channel(ip: str, key: str = '', cookie: str = '', delay: float = 2, **kwargs) -> dict:
     apply_delay(delay)
 
     raw = request_channel(ip, cookie=cookie, **kwargs)
