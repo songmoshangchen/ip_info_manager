@@ -3,7 +3,7 @@ import time
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from channel.chinaz import IPWriter, Settings, fetch_chinaz
+from channel.chinaz import IPWriter, Settings, fetch_channel, validate_channel_key
 
 
 class BatchChinazQuery:
@@ -35,7 +35,7 @@ class BatchChinazQuery:
             f.write(ip + '\n')
 
     def _query_ip(self, ip: str):
-        return fetch_chinaz(ip, self.settings.chinaz_cookie, delay=0)
+        return fetch_channel(ip, cookie=self.settings.chinaz_cookie)
 
     def run(self):
         delay = self.settings.chinaz_query_delay
