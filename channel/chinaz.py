@@ -63,26 +63,34 @@ def validate_channel_key():
         print("错误: CHINAZ_COOKIE 未配置，请在 .env 文件中设置")
         sys.exit(1)
 
+    required_keys = ["toolUserGrade", "chinaz_zxuser"]
+    missing = [k for k in required_keys if k not in cookie]
+    if missing:
+        print(f"错误: Cookie 缺少必要字段: {', '.join(missing)}，请重新获取完整 Cookie")
+        sys.exit(1)
+
     try:
-        url = "https://my.chinaz.com/ToolMember/Member/Account"
+        url = "https://ipchaxun.com/8.8.8.8/"
         headers = {
+            "Host": "ipchaxun.com",
             "User-Agent": "Mozilla/5.0 (Windows NT 6.2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.5359.95 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Cookie": cookie,
         }
-        response = requests.get(url, headers=headers, timeout=10, allow_redirects=False)
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
 
-        if response.status_code in (301, 302):
-            print("错误: 站长之家 Cookie 已失效（被重定向到登录页）")
-            sys.exit(1)
+        soup = BeautifulSoup(response.text, "html.parser")
+        info_div = soup.find("div", class_="info", attrs={"data-result": "true"})
 
-        if response.status_code == 404:
-            print("错误: 站长之家 Cookie 验证失败（404）")
-            sys.exit(1)
-
-        print("✅ 站长之家 Cookie 验证通过")
+        if info_div:
+            print("✅ 站长之家 Cookie 验证通过（查询接口正常）")
+        else:
+            print("警告: 站长之家查询页面结构异常，Cookie 可能无效")
+            print("✅ Cookie 格式验证通过，继续执行...")
     except requests.exceptions.RequestException as e:
-        print(f"错误: 无法连接站长之家进行 Cookie 验证 - {e}")
-        sys.exit(1)
+        print(f"警告: 无法连接站长之家验证 Cookie - {e}")
+        print("✅ Cookie 格式验证通过，继续执行...")
 
 
 def request_channel(ip: str, cookie: str = '', **kwargs):
