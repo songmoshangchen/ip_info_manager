@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from channel.rdns_ptr import IPWriter, Settings, fetch_rdns_ptr
+from channel.rdns_ptr import IPWriter, Settings, fetch_channel, validate_channel_key
 
 
 class BatchRDNSQuery:
@@ -36,7 +36,7 @@ class BatchRDNSQuery:
             f.write(ip + '\n')
     
     def _query_ip(self, ip: str):
-        return fetch_rdns_ptr(ip, self.settings.rdns_query_timeout)
+        return fetch_channel(ip, timeout=self.settings.rdns_query_timeout)
     
     def run(self):
         delay = getattr(self.settings, 'rdns_query_delay', 0.5)

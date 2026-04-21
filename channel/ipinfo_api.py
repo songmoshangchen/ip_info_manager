@@ -107,7 +107,7 @@ def request_channel(ip: str, key: str = '', use_api: bool = True, **kwargs):
         return _request_channel_noapi(ip)
 
 
-def fetch_channel(ip: str, key: str = '', delay: float = 0, use_api: bool = True, **kwargs) -> dict:
+def fetch_channel(ip: str, key: str = '', delay: float = 2, use_api: bool = True, **kwargs) -> dict:
     apply_delay(delay)
 
     result = request_channel(ip, key=key, use_api=use_api, **kwargs)
