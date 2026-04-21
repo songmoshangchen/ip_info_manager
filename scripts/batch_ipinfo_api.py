@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from channel.ipinfo_api import IPWriter, Settings, fetch_ipinfo
+from channel.ipinfo_api import IPWriter, Settings, fetch_channel, validate_channel_key
 
 
 class BatchIPInfoQuery:
@@ -36,7 +36,7 @@ class BatchIPInfoQuery:
             f.write(ip + '\n')
     
     def _query_ip(self, ip: str):
-        return fetch_ipinfo(ip, self.settings.ipinfo_access_token)
+        return fetch_channel(ip, key=self.settings.ipinfo_access_token)
     
     def run(self):
         delay = self.settings.ipinfo_query_delay
