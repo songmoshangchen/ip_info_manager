@@ -5,8 +5,9 @@ import json
 import os
 from datetime import datetime
 from bs4 import BeautifulSoup
-from typing import Dict, Optional, List, Any
+from typing import Dict, Any
 import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from config import AizhanSettings as Settings
 
@@ -54,8 +55,75 @@ class IPWriter:
         return True
 
 
-def _parse_aizhan_html(html_content: str, ip: str) -> Dict[str, Any]:
-    soup = BeautifulSoup(html_content, "html.parser")
+def validate_channel_key():
+    settings = Settings()
+    cookie = settings.aizhan_cookie
+
+    if not cookie or not cookie.strip():
+        print("错误: AIZHAN_COOKIE 未配置，请在 .env 文件中设置")
+        sys.exit(1)
+
+    try:
+        url = "https://member.aizhan.com/user.php"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.87 Safari/537.36 SE 2.X MetaSr 1.0",
+            "Cookie": cookie,
+        }
+        response = requests.get(url, headers=headers, timeout=10, allow_redirects=False)
+
+        if response.status_code in (301, 302):
+            print("错误: 爱站网 Cookie 已失效（被重定向到登录页）")
+            sys.exit(1)
+
+        if response.status_code == 404:
+            print("错误: 爱站网 Cookie 验证失败（404）")
+            sys.exit(1)
+
+        print("✅ 爱站网 Cookie 验证通过")
+    except requests.exceptions.RequestException as e:
+        print(f"错误: 无法连接爱站网进行 Cookie 验证 - {e}")
+        sys.exit(1)
+
+
+def request_channel(ip: str, cookie: str = '', **kwargs):
+    try:
+        url = f"https://dns.aizhan.com/{ip}/"
+        headers = {
+            "Host": "dns.aizhan.com",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Encoding": "identity",
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.87 Safari/537.36 SE 2.X MetaSr 1.0",
+            "Cookie": cookie,
+        }
+
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
+
+        return response.text
+
+    except requests.exceptions.RequestException as e:
+        error_msg = str(e)
+        if "timeout" in error_msg.lower():
+            error_type = "网络超时"
+        elif "403" in error_msg or "429" in error_msg or "forbidden" in error_msg.lower():
+            error_type = "爱站网禁止请求"
+        elif "网络" in error_msg or "连接" in error_msg:
+            error_type = "网络中断"
+        else:
+            error_type = "查询失败"
+
+        return {
+            "raw_error": True,
+            "error_message": f"{error_type}: {error_msg}",
+        }
+
+
+def parse_response(raw_content: str, ip: str) -> dict:
+    if isinstance(raw_content, dict) and raw_content.get('raw_error'):
+        return raw_content
+
+    soup = BeautifulSoup(raw_content, "html.parser")
 
     dns_infos = soup.find("div", class_="dns-infos")
     dns_content = soup.find("div", class_="dns-content")
@@ -69,7 +137,6 @@ def _parse_aizhan_html(html_content: str, ip: str) -> Dict[str, Any]:
         return {
             "success": False,
             "error": f"页面缺少关键部分: {', '.join(missing)}",
-            "query_time": datetime.now().isoformat()
         }
 
     result = {
@@ -78,7 +145,6 @@ def _parse_aizhan_html(html_content: str, ip: str) -> Dict[str, Any]:
         "isp": None,
         "domain_count": 0,
         "domains": [],
-        "query_time": datetime.now().isoformat()
     }
 
     strong_tags = dns_infos.find_all("strong")
@@ -119,7 +185,6 @@ def _parse_aizhan_html(html_content: str, ip: str) -> Dict[str, Any]:
             return {
                 "success": False,
                 "error": "页面结构异常: 未找到表格数据",
-                "query_time": datetime.now().isoformat()
             }
 
         domain_list = []
@@ -152,41 +217,26 @@ def _parse_aizhan_html(html_content: str, ip: str) -> Dict[str, Any]:
     return result
 
 
-def fetch_aizhan(ip: str, cookie: str, delay: float = 2.0) -> dict:
-    time.sleep(delay)
+def fetch_channel(ip: str, key: str = '', cookie: str = '', delay: float = 0, **kwargs) -> dict:
+    apply_delay(delay)
 
-    try:
-        url = f"https://dns.aizhan.com/{ip}/"
-        headers = {
-            "Host": "dns.aizhan.com",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Encoding": "identity",
-            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.87 Safari/537.36 SE 2.X MetaSr 1.0",
-            "Cookie": cookie,
-        }
+    raw = request_channel(ip, cookie=cookie, **kwargs)
 
-        response = requests.get(url, headers=headers, timeout=15)
-        response.raise_for_status()
+    if isinstance(raw, dict) and raw.get('raw_error'):
+        return format_output(raw)
 
-        return _parse_aizhan_html(response.text, ip)
+    result = parse_response(raw, ip)
+    return format_output(result)
 
-    except requests.exceptions.RequestException as e:
-        error_msg = str(e)
-        if "timeout" in error_msg.lower():
-            error_type = "网络超时"
-        elif "403" in error_msg or "429" in error_msg or "forbidden" in error_msg.lower():
-            error_type = "爱站网禁止请求"
-        elif "网络" in error_msg or "连接" in error_msg:
-            error_type = "网络中断"
-        else:
-            error_type = "查询失败"
 
-        return {
-            "success": False,
-            "error": f"{error_type}: {error_msg}",
-            "query_time": datetime.now().isoformat()
-        }
+def apply_delay(delay: float):
+    if delay > 0:
+        time.sleep(delay)
+
+
+def format_output(data: dict) -> dict:
+    data.setdefault('query_time', datetime.now().isoformat())
+    return data
 
 
 def main(ip: str):
@@ -198,24 +248,22 @@ def main(ip: str):
     settings = Settings()
     ip_writer = IPWriter()
 
-    aizhan_data = fetch_aizhan(
+    data = fetch_channel(
         ip=ip,
         cookie=settings.aizhan_cookie,
-        delay=settings.aizhan_query_delay
+        delay=settings.aizhan_query_delay,
     )
-    ip_writer.add_or_update_ip(ip=ip, channel="aizhan", data=aizhan_data)
+    ip_writer.add_or_update_ip(ip=ip, channel="aizhan", data=data)
 
-    if aizhan_data.get("success"):
-        domain_count = aizhan_data.get("domain_count", 0)
-        location = aizhan_data.get("location", "N/A")
+    if data.get("success"):
+        domain_count = data.get("domain_count", 0)
+        location = data.get("location", "N/A")
         print(f"✅ {ip} - {location} - {domain_count} 个域名")
     else:
-        print(f"❌ {ip} - {aizhan_data.get('error', 'Unknown error')}")
+        print(f"❌ {ip} - {data.get('error', 'Unknown error')}")
 
 
 if __name__ == "__main__":
-    import sys
-
     if len(sys.argv) < 2:
         print("使用方法: python aizhan.py <IP地址>")
         sys.exit(1)

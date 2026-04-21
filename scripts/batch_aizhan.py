@@ -3,7 +3,7 @@ import time
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from channel.aizhan import IPWriter, Settings, fetch_aizhan
+from channel.aizhan import IPWriter, Settings, fetch_channel, validate_channel_key
 
 
 class BatchAizhanQuery:
@@ -35,7 +35,7 @@ class BatchAizhanQuery:
             f.write(ip + '\n')
 
     def _query_ip(self, ip: str):
-        return fetch_aizhan(ip, self.settings.aizhan_cookie, delay=0)
+        return fetch_channel(ip, cookie=self.settings.aizhan_cookie)
 
     def run(self):
         delay = self.settings.aizhan_query_delay
