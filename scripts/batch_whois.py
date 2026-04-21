@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from channel.whois_query import IPWriter, Settings, fetch_whois
+from channel.whois_query import IPWriter, Settings, fetch_channel, validate_channel_key
 
 
 class BatchWhoisQuery:
@@ -36,7 +36,7 @@ class BatchWhoisQuery:
             f.write(ip + '\n')
     
     def _query_ip(self, ip: str):
-        return fetch_whois(ip, self.settings.whois_query_timeout)
+        return fetch_channel(ip, timeout=self.settings.whois_query_timeout)
     
     def run(self):
         delay = getattr(self.settings, 'whois_query_delay', 1.0)
