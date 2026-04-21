@@ -9,7 +9,7 @@ ENV_FILE = os.path.join(CONFIG_DIR, '.env')
 
 class BaseIPSettings(BaseSettings):
     storage_dir: str = Field(default='data', description='存储目录')
-    storage_filename: str = Field(default='ip_data.json', description='存储文件名')
+    storage_name: str = Field(default='ip_data', description='存储名称（用于数据文件命名前缀）')
     
     class Config:
         env_prefix = 'IP_'

@@ -20,7 +20,7 @@ class IPWriter:
         if not os.path.isabs(storage_dir):
             storage_dir = os.path.join(script_dir, storage_dir)
 
-        self.storage_file = os.path.join(storage_dir, self.settings.storage_filename)
+        self.storage_file = os.path.join(storage_dir, self.settings.storage_name + '.json')
 
         if not os.path.exists(storage_dir):
             os.makedirs(storage_dir, exist_ok=True)

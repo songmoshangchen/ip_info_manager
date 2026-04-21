@@ -22,12 +22,6 @@ CLASSIFIERS_DIR = os.path.join(os.path.dirname(__file__), 'classifiers')
 BUILTIN_RULES_FILE = os.path.join(CLASSIFIERS_DIR, 'builtin_rules.json')
 CUSTOM_RULES_FILE = os.path.join(CLASSIFIERS_DIR, 'custom_rules.json')
 
-PHASE_MARKERS = {
-    1: '.trace_phase1_done',
-    2: '.trace_phase2_done',
-    3: '.trace_phase3_done',
-}
-
 DEEP_QUERY_CATEGORIES = {'cloud_provider', 'residential', 'other'}
 
 
@@ -42,6 +36,13 @@ class TraceIPPipeline:
 
         self.ip_writer = IPWriter()
         self.ip_reader = IPReader()
+
+        self.prefix = self.ip_reader.settings.storage_name
+        self.phase_markers = {
+            1: f'{self.prefix}.trace_phase1_done',
+            2: f'{self.prefix}.trace_phase2_done',
+            3: f'{self.prefix}.trace_phase3_done',
+        }
 
         self.builtin_rules = self._load_rules_file(BUILTIN_RULES_FILE)
         self.custom_rules = {}
@@ -82,16 +83,16 @@ class TraceIPPipeline:
             return json.loads(content)
 
     def _is_phase_done(self, phase):
-        marker = os.path.join(self.output_dir, PHASE_MARKERS[phase])
+        marker = os.path.join(self.output_dir, self.phase_markers[phase])
         return os.path.exists(marker)
 
     def _mark_phase_done(self, phase):
-        marker = os.path.join(self.output_dir, PHASE_MARKERS[phase])
+        marker = os.path.join(self.output_dir, self.phase_markers[phase])
         with open(marker, 'w', encoding='utf-8') as f:
             f.write(datetime.now().isoformat())
 
     def _clear_phase_markers(self):
-        for marker_name in PHASE_MARKERS.values():
+        for marker_name in self.phase_markers.values():
             path = os.path.join(self.output_dir, marker_name)
             if os.path.exists(path):
                 os.remove(path)
@@ -134,7 +135,7 @@ class TraceIPPipeline:
 
     def _clear_phase_markers_from(self, phase):
         for p in range(phase, 4):
-            marker = os.path.join(self.output_dir, PHASE_MARKERS[p])
+            marker = os.path.join(self.output_dir, self.phase_markers[p])
             if os.path.exists(marker):
                 os.remove(marker)
 
@@ -280,7 +281,7 @@ class TraceIPPipeline:
             ip for ip, cls in classification.items()
             if cls['category'] in DEEP_QUERY_CATEGORIES
         ]
-        filtered_file = os.path.join(self.output_dir, 'trace_filtered_ips.txt')
+        filtered_file = os.path.join(self.output_dir, f'{self.prefix}.trace_filtered_ips')
         with open(filtered_file, 'w', encoding='utf-8') as f:
             for ip in filtered_ips:
                 f.write(ip + '\n')
@@ -373,7 +374,7 @@ class TraceIPPipeline:
         return False
 
     def _save_unclassified(self, unclassified_list):
-        output_path = os.path.join(self.output_dir, 'unclassified_rdns.json')
+        output_path = os.path.join(self.output_dir, f'{self.prefix}.unclassified_rdns')
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(unclassified_list, f, ensure_ascii=False, indent=2)
         if unclassified_list:
@@ -391,7 +392,7 @@ class TraceIPPipeline:
             print("阶段3已完成，跳过")
             return
 
-        filtered_file = os.path.join(self.output_dir, 'trace_filtered_ips.txt')
+        filtered_file = os.path.join(self.output_dir, f'{self.prefix}.trace_filtered_ips')
         if not os.path.exists(filtered_file):
             print("未找到过滤后的IP文件，使用全量IP")
             filtered_ips = self.ips
@@ -483,17 +484,17 @@ class TraceIPPipeline:
         print(f"未识别RDNS: {unclassified_count} 条")
 
         if unclassified_count > 0:
-            print(f"\n未识别RDNS文件: {os.path.join(self.output_dir, 'unclassified_rdns.json')}")
+            print(f"\n未识别RDNS文件: {os.path.join(self.output_dir, f'{self.prefix}.unclassified_rdns')}")
             print("提示: 可将未识别的域名模式添加到 custom_rules.json，验证后合并到 builtin_rules.json")
 
         print(f"\n{'=' * 60}")
 
         self.report['phases']['phase4'] = {'status': 'done'}
         self.report['unclassified_rdns_count'] = unclassified_count
-        self.report['unclassified_rdns_file'] = os.path.join(self.output_dir, 'unclassified_rdns.json')
+        self.report['unclassified_rdns_file'] = os.path.join(self.output_dir, f'{self.prefix}.unclassified_rdns')
 
     def _save_report(self):
-        report_path = os.path.join(self.output_dir, 'trace_report.json')
+        report_path = os.path.join(self.output_dir, f'{self.prefix}.trace_report')
         with open(report_path, 'w', encoding='utf-8') as f:
             json.dump(self.report, f, ensure_ascii=False, indent=2)
         print(f"\n报告已保存: {report_path}")
