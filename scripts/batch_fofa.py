@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from channel.fofa import IPWriter, Settings, fetch_fofa_host_detail
+from channel.fofa import IPWriter, Settings, fetch_channel, validate_channel_key
 
 
 class BatchFofaQuery:
@@ -36,7 +36,7 @@ class BatchFofaQuery:
             f.write(ip + '\n')
     
     def _query_ip(self, ip: str):
-        return fetch_fofa_host_detail(ip, self.settings.fofa_api_key)
+        return fetch_channel(ip, key=self.settings.fofa_api_key)
     
     def run(self):
         delay = self.settings.fofa_query_delay
