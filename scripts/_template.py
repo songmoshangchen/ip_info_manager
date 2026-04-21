@@ -5,7 +5,6 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from channel.xxx import IPWriter, Settings, fetch_xxx, validate_channel_key
-from utils.ip_loader import load_pending_ips, save_progress
 
 
 class BatchXxxQuery:
@@ -16,11 +15,86 @@ class BatchXxxQuery:
         self.settings = Settings()
         self.ip_writer = IPWriter()
 
-        self.pending_ips, self.load_stats = load_pending_ips(ip_file, self.progress_file)
+        self.load_stats = {}
+        self.pending_ips = self._load_pending_ips()
 
     @property
     def progress_file(self):
         return f"{self.ip_file}.{self.channel_name}.progress"
+
+    def _load_ip_file(self):
+        """
+        【第3部分-a】加载 IP 文件并去重（保留首次出现顺序）
+
+        返回:
+            unique_ips: list[str] — 去重后的 IP 列表
+        同时填充 self.load_stats:
+            raw_count: 非空行数
+            unique_count: 去重后数量
+            duplicate_count: 重复数量
+        """
+        seen = set()
+        unique_ips = []
+        raw_count = 0
+
+        try:
+            with open(self.ip_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    ip = line.strip()
+                    if not ip:
+                        continue
+                    raw_count += 1
+                    if ip not in seen:
+                        seen.add(ip)
+                        unique_ips.append(ip)
+        except FileNotFoundError:
+            print(f"错误: 找不到文件 {self.ip_file}")
+            sys.exit(1)
+
+        self.load_stats['raw_count'] = raw_count
+        self.load_stats['unique_count'] = len(unique_ips)
+        self.load_stats['duplicate_count'] = raw_count - len(unique_ips)
+
+        return unique_ips
+
+    def _load_progress(self):
+        """
+        【第3部分-b】加载已处理的 IP 集合（从 .progress 文件）
+
+        返回:
+            set[str]: 已处理的 IP 集合
+        """
+        if not os.path.exists(self.progress_file):
+            return set()
+        with open(self.progress_file, 'r', encoding='utf-8') as f:
+            return set(line.strip() for line in f if line.strip())
+
+    def _save_progress(self, ip):
+        """
+        【第3部分-c】追加写入 .progress 文件
+
+        后续如需更换断点机制（如数据库），只需修改此函数。
+        """
+        with open(self.progress_file, 'a', encoding='utf-8') as f:
+            f.write(ip + '\n')
+
+    def _load_pending_ips(self):
+        """
+        【第3部分-d】组合加载：去重 + 排除已处理 = 待处理列表
+
+        同时补充 self.load_stats:
+            already_processed: 已处理数量
+            pending_count: 待处理数量
+        """
+        unique_ips = self._load_ip_file()
+        processed = self._load_progress()
+
+        pending = [ip for ip in unique_ips if ip not in processed]
+
+        self.load_stats['already_processed'] = len(processed)
+        self.load_stats['pending_count'] = len(pending)
+
+        return pending
 
     def _query_ip(self, ip):
         """
@@ -89,7 +163,7 @@ class BatchXxxQuery:
                     success_count += 1
 
                 self.ip_writer.add_or_update_ip(ip, self.channel_name, data)
-                save_progress(self.progress_file, ip)
+                self._save_progress(ip)
 
                 time.sleep(delay)
 
