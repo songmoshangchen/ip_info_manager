@@ -10,6 +10,9 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from config import AizhanSettings as Settings
+from scripts.logger_utils import get_channel_logger
+
+_logger = get_channel_logger('aizhan')
 
 
 class IPWriter:
@@ -86,6 +89,7 @@ def validate_channel_key():
 
 
 def request_channel(ip: str, cookie: str = '', **kwargs):
+    _logger.debug(f"请求爱站网: ip={ip}")
     try:
         url = f"https://dns.aizhan.com/{ip}/"
         headers = {
@@ -118,10 +122,11 @@ def request_channel(ip: str, cookie: str = '', **kwargs):
             "error_message": f"{error_type}: {error_msg}",
         }
 
-
 def parse_response(raw_content: str, ip: str) -> dict:
     if isinstance(raw_content, dict) and raw_content.get('raw_error'):
         return raw_content
+
+    _logger.debug(f"解析爱站网响应: ip={ip}")
 
     soup = BeautifulSoup(raw_content, "html.parser")
 
