@@ -7,6 +7,9 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from config import RdnsSettings as Settings
+from scripts.logger_utils import get_channel_logger
+
+_logger = get_channel_logger('rdns_ptr')
 
 
 class IPWriter:
@@ -65,6 +68,7 @@ def validate_channel_key():
 
 
 def request_channel(ip: str, timeout: float = 3.0, **kwargs):
+    _logger.debug(f"RDNS 查询: ip={ip}, timeout={timeout}")
     result = {
         "query_ip": ip,
         "query_time": datetime.now().isoformat()
