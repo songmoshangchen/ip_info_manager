@@ -22,7 +22,7 @@ class BatchChinazQuery:
 
     @property
     def progress_file(self):
-        return f"{self.ip_file}.{self.channel_name}.progress"
+        return f"{self.ip_writer.storage_file}.{self.channel_name}.progress"
 
     def _load_ip_file(self):
         seen = set()
