@@ -7,6 +7,9 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from config import FofaSettings as Settings
+from scripts.logger_utils import get_channel_logger
+
+_logger = get_channel_logger('fofa')
 
 
 class IPWriter:
@@ -82,11 +85,14 @@ def request_channel(ip: str, key: str = '', **kwargs):
     url = f"https://fofa.info/api/v1/host/{ip}"
     params = {"key": key, "detail": "true"}
 
+    _logger.debug(f"请求 Fofa API: ip={ip}")
+
     try:
         response = requests.get(url, params=params, timeout=30)
         response.raise_for_status()
         return response.json()
     except Exception as e:
+        _logger.debug(f"请求 Fofa API 失败: ip={ip}, error={e}")
         return {
             "raw_error": True,
             "error_message": str(e),
