@@ -10,6 +10,9 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from config import ChinazSettings as Settings
+from scripts.logger_utils import get_channel_logger
+
+_logger = get_channel_logger('chinaz')
 
 
 class IPWriter:
@@ -94,6 +97,7 @@ def validate_channel_key():
 
 
 def request_channel(ip: str, cookie: str = '', **kwargs):
+    _logger.debug(f"请求站长之家: ip={ip}")
     try:
         url = f"https://ipchaxun.com/{ip}/"
         headers = {
@@ -134,6 +138,8 @@ def request_channel(ip: str, cookie: str = '', **kwargs):
 def parse_response(raw_content: str, ip: str) -> dict:
     if isinstance(raw_content, dict) and raw_content.get('raw_error'):
         return raw_content
+
+    _logger.debug(f"解析站长之家响应: ip={ip}")
 
     soup = BeautifulSoup(raw_content, "html.parser")
 
