@@ -94,8 +94,7 @@ class EnvManager:
 
     def _validate_key(self, key):
         if not key.startswith(REQUIRED_PREFIX):
-            print(f"错误: Key 必须以 '{REQUIRED_PREFIX}' 开头，收到: {key}")
-            sys.exit(1)
+            raise ValueError(f"Key 必须以 '{REQUIRED_PREFIX}' 开头，收到: {key}")
 
 
 def main():
@@ -121,54 +120,60 @@ def main():
     bulk_parser.add_argument('items', nargs='+', help='键值对，格式: KEY=VALUE')
 
     args = parser.parse_args()
-    mgr = EnvManager()
 
-    if args.command == 'list':
-        items = mgr.list_all()
-        if not items:
-            print(f"配置文件为空或不存在: {mgr.env_path}")
-            return
-        max_key_len = max(len(k) for k in items)
-        print(f"配置文件: {mgr.env_path}")
-        print(f"{'Key'.ljust(max_key_len)}  Value")
-        print('-' * (max_key_len + 40))
-        for key in sorted(items):
-            value = items[key]
-            display_value = value[:50] + '...' if len(value) > 50 else value
-            print(f"{key.ljust(max_key_len)}  {display_value}")
-        print(f"\n共 {len(items)} 个配置项")
+    try:
+        mgr = EnvManager()
 
-    elif args.command == 'get':
-        value = mgr.get(args.key)
-        if value is None:
-            print(f"未找到: {args.key}")
-            sys.exit(1)
-        print(value)
+        if args.command == 'list':
+            items = mgr.list_all()
+            if not items:
+                print(f"配置文件为空或不存在: {mgr.env_path}")
+                return
+            max_key_len = max(len(k) for k in items)
+            print(f"配置文件: {mgr.env_path}")
+            print(f"{'Key'.ljust(max_key_len)}  Value")
+            print('-' * (max_key_len + 40))
+            for key in sorted(items):
+                value = items[key]
+                display_value = value[:50] + '...' if len(value) > 50 else value
+                print(f"{key.ljust(max_key_len)}  {display_value}")
+            print(f"\n共 {len(items)} 个配置项")
 
-    elif args.command == 'set':
-        mgr.set(args.key, args.value)
-        print(f"已设置: {args.key}={args.value[:30]}{'...' if len(args.value) > 30 else ''}")
-
-    elif args.command == 'delete':
-        if mgr.delete(args.key):
-            print(f"已删除: {args.key}")
-        else:
-            print(f"未找到: {args.key}")
-            sys.exit(1)
-
-    elif args.command == 'bulk-set':
-        items = {}
-        for item in args.items:
-            if '=' not in item:
-                print(f"错误: 格式无效 '{item}'，应为 KEY=VALUE")
+        elif args.command == 'get':
+            value = mgr.get(args.key)
+            if value is None:
+                print(f"未找到: {args.key}")
                 sys.exit(1)
-            key, _, value = item.partition('=')
-            items[key] = value
-        count = mgr.bulk_set(items)
-        print(f"已批量设置 {count} 个配置项")
+            print(value)
 
-    else:
-        parser.print_help()
+        elif args.command == 'set':
+            mgr.set(args.key, args.value)
+            print(f"已设置: {args.key}={args.value[:30]}{'...' if len(args.value) > 30 else ''}")
+
+        elif args.command == 'delete':
+            if mgr.delete(args.key):
+                print(f"已删除: {args.key}")
+            else:
+                print(f"未找到: {args.key}")
+                sys.exit(1)
+
+        elif args.command == 'bulk-set':
+            items = {}
+            for item in args.items:
+                if '=' not in item:
+                    print(f"错误: 格式无效 '{item}'，应为 KEY=VALUE")
+                    sys.exit(1)
+                key, _, value = item.partition('=')
+                items[key] = value
+            count = mgr.bulk_set(items)
+            print(f"已批量设置 {count} 个配置项")
+
+        else:
+            parser.print_help()
+
+    except ValueError as e:
+        print(f"错误: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

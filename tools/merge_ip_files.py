@@ -1,6 +1,22 @@
+import re
 import sys
 import argparse
-from process_ip_list import validate_ip
+
+
+def validate_ip(ip: str) -> bool:
+    ipv4_pattern = r"^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+    if re.match(ipv4_pattern, ip):
+        return True
+
+    ipv6_pattern = r"^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^::1$|^::$"
+    if re.match(ipv6_pattern, ip):
+        return True
+
+    compressed_ipv6_pattern = r"^([0-9a-fA-F]{1,4}:)*(:[0-9a-fA-F]{1,4}){1,7}$"
+    if re.match(compressed_ipv6_pattern, ip):
+        return True
+
+    return False
 
 
 def read_ips_from_file(file_path):
@@ -9,11 +25,9 @@ def read_ips_from_file(file_path):
             ips = [line.strip() for line in f if line.strip()]
         return ips
     except FileNotFoundError:
-        print(f"错误: 找不到文件 '{file_path}'")
-        sys.exit(1)
+        raise FileNotFoundError(f"找不到文件 '{file_path}'")
     except Exception as e:
-        print(f"错误: 读取文件 '{file_path}' 时出错: {e}")
-        sys.exit(1)
+        raise IOError(f"读取文件 '{file_path}' 时出错: {e}")
 
 
 def merge_and_dedup(file_paths):
@@ -99,8 +113,8 @@ def append_to_file(base_file, source_files):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='合并多个IP文件并去重，排除无效IP地址')
-    parser.add_argument('files', nargs='+', help='要合并的IP文件路径（支持多个文件）')
+    parser = argparse.ArgumentParser(description='合并/去重/验证 IP 文件，排除无效 IP 地址')
+    parser.add_argument('files', nargs='+', help='IP 文件路径（支持多个文件合并，单文件时仅去重验证）')
     parser.add_argument('-o', '--output', help='输出文件路径（默认输出到屏幕）')
     parser.add_argument('--show-invalid', action='store_true', help='显示被排除的无效IP')
     parser.add_argument('--include-invalid', action='store_true', help='输出结果中包含无效IP（默认仅输出有效IP）')
@@ -109,11 +123,9 @@ def main():
 
     args = parser.parse_args()
 
-    if len(args.files) < 2:
-        print("提示: 建议提供至少2个文件进行合并，仅1个文件时相当于去重和验证")
-        if len(args.files) == 0:
-            parser.print_help()
-            sys.exit(1)
+    if args.append and len(args.files) < 2:
+        print("错误: 追加模式需要至少2个文件（目标文件 + 来源文件）")
+        sys.exit(1)
 
     if args.append:
         base_file = args.files[0]
@@ -160,7 +172,10 @@ def main():
     result = merge_and_dedup(args.files)
 
     print("=" * 60)
-    print("IP 合并去重报告")
+    if len(args.files) == 1:
+        print("IP 去重验证报告")
+    else:
+        print("IP 合并去重报告")
     print("=" * 60)
 
     print(f"\n源文件:")
@@ -188,7 +203,7 @@ def main():
                 f.write(ip + '\n')
         print(f"\n结果已写入: {args.output}")
     else:
-        print(f"\n合并后的有效IP列表 ({len(output_ips)} 个):")
+        print(f"\n有效IP列表 ({len(output_ips)} 个):")
         print("-" * 40)
         for ip in output_ips:
             print(ip)

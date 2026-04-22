@@ -11,8 +11,7 @@ SUPPORTED_CHANNELS = ('aizhan', 'chinaz')
 
 def load_ip_data(data_file):
     if not os.path.exists(data_file):
-        print(f"错误: 找不到文件 {data_file}")
-        sys.exit(1)
+        raise FileNotFoundError(f"找不到文件 {data_file}")
     with open(data_file, 'r', encoding='utf-8') as f:
         content = f.read().strip()
         if not content:
@@ -90,7 +89,7 @@ def verify_one(mapping, timeout=3):
     }
 
 
-def batch_verify(mappings, concurrency=10, timeout=3):
+def batch_verify(mappings, concurrency=10, timeout=3, progress_callback=None):
     results = []
     total = len(mappings)
 
@@ -116,10 +115,9 @@ def batch_verify(mappings, concurrency=10, timeout=3):
                     'status': 'error',
                 }
             results.append((idx, result))
-            if done_count % 50 == 0 or done_count == total:
-                print(f"\r验证进度: {done_count}/{total}", end='', flush=True)
+            if progress_callback:
+                progress_callback(done_count, total)
 
-    print()
     results.sort(key=lambda x: x[0])
     return [r for _, r in results]
 
@@ -229,7 +227,12 @@ def main():
     print(f"开始验证（并发: {args.concurrency}, 超时: {args.timeout}s）")
     print("-" * 70)
 
-    results = batch_verify(mappings, args.concurrency, args.timeout)
+    def on_progress(done, total):
+        print(f"\r验证进度: {done}/{total}", end='', flush=True)
+        if done == total:
+            print()
+
+    results = batch_verify(mappings, args.concurrency, args.timeout, progress_callback=on_progress)
 
     print_report(results, args.show_all)
 
