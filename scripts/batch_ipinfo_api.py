@@ -5,6 +5,7 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from channel.ipinfo_api import IPWriter, Settings, fetch_channel, validate_channel_key
+from scripts.logger_utils import get_batch_logger
 
 
 class BatchIPInfoQuery:
@@ -15,6 +16,7 @@ class BatchIPInfoQuery:
         self.use_api = use_api
         self.settings = Settings()
         self.ip_writer = IPWriter()
+        self.logger = get_batch_logger(channel_name)
 
         self.load_stats = {}
         self.pending_ips = self._load_pending_ips()
@@ -39,7 +41,7 @@ class BatchIPInfoQuery:
                         seen.add(ip)
                         unique_ips.append(ip)
         except FileNotFoundError:
-            print(f"错误: 找不到文件 {self.ip_file}")
+            self.logger.error(f"找不到文件 {self.ip_file}")
             sys.exit(1)
 
         self.load_stats['raw_count'] = raw_count
@@ -75,7 +77,7 @@ class BatchIPInfoQuery:
     def _print_result(self, ip, data):
         country = data.get('country', 'N/A')
         org = data.get('as_name', 'N/A')
-        print(f"✅ {country} - {org}")
+        self.logger.info(f"✅ {country} - {org}")
 
     def _get_delay(self):
         return self.settings.ipinfo_query_delay
@@ -90,56 +92,66 @@ class BatchIPInfoQuery:
         processed_count = self.load_stats['already_processed']
         mode = "API" if self.use_api else "非API"
 
-        print(f"开始批量查询 IPInfo 信息 ({mode} 模式)")
-        print(f"IP 文件: {self.ip_file}")
+        self.logger.info(f"开始批量查询 IPInfo 信息 ({mode} 模式)")
+        self.logger.info(f"IP 文件: {self.ip_file}")
         if self.load_stats['duplicate_count'] > 0:
-            print(f"IP 去重: 原始 {self.load_stats['raw_count']}, 去重后 {total_count}, 重复 {self.load_stats['duplicate_count']}")
-        print(f"总 IP 数: {total_count}")
-        print(f"已处理: {processed_count}")
-        print(f"待处理: {pending_count}")
-        print(f"查询间隔: {delay} 秒")
-        print("-" * 60)
+            self.logger.info(f"IP 去重: 原始 {self.load_stats['raw_count']}, 去重后 {total_count}, 重复 {self.load_stats['duplicate_count']}")
+        self.logger.info(f"总 IP 数: {total_count}")
+        self.logger.info(f"已处理: {processed_count}")
+        self.logger.info(f"待处理: {pending_count}")
+        self.logger.info(f"查询间隔: {delay} 秒")
+        self.logger.info("-" * 60)
 
         current_count = processed_count
         success_count = 0
         fail_count = 0
+        start_time = time.time()
 
         try:
             for ip in self.pending_ips:
                 current_count += 1
+                query_start = time.time()
 
-                print(f"[{current_count}/{total_count}] 正在查询: {ip}", end=' ', flush=True)
+                self.logger.info(f"[{current_count}/{total_count}] 正在查询: {ip}")
 
                 data = self._query_ip(ip)
 
+                query_elapsed = time.time() - query_start
+                self.logger.debug(f"查询 {ip} 耗时: {query_elapsed:.3f}s")
+
                 if isinstance(data, dict) and (data.get('raw_error') or data.get('error')):
-                    print(f"❌ {data.get('error_message', data.get('error', 'Unknown'))}")
+                    self.logger.warning(f"[{current_count}/{total_count}] {ip} ❌ {data.get('error_message', data.get('error', 'Unknown'))}")
                     fail_count += 1
                 else:
                     self._print_result(ip, data)
                     success_count += 1
 
                 self.ip_writer.add_or_update_ip(ip, self.channel_name, data)
+                self.logger.debug(f"已写入 {ip} 的 {self.channel_name} 数据")
                 self._save_progress(ip)
 
                 time.sleep(delay)
 
         except KeyboardInterrupt:
-            print("\n\n" + "=" * 60)
-            print(f"查询已中断！")
-            print(f"已处理: {current_count} 个 IP")
-            print(f"成功: {success_count} 个")
-            print(f"失败: {fail_count} 个")
-            print(f"进度文件: {self.progress_file}")
-            print("=" * 60)
+            total_elapsed = time.time() - start_time
+            self.logger.info("=" * 60)
+            self.logger.info("查询已中断！")
+            self.logger.info(f"已处理: {current_count} 个 IP")
+            self.logger.info(f"成功: {success_count} 个")
+            self.logger.info(f"失败: {fail_count} 个")
+            self.logger.info(f"总耗时: {total_elapsed:.2f}s")
+            self.logger.info(f"进度文件: {self.progress_file}")
+            self.logger.info("=" * 60)
             sys.exit(0)
 
-        print("\n" + "=" * 60)
-        print(f"批量查询完成！")
-        print(f"总共处理: {current_count} 个 IP")
-        print(f"成功: {success_count} 个")
-        print(f"失败: {fail_count} 个")
-        print("=" * 60)
+        total_elapsed = time.time() - start_time
+        self.logger.info("=" * 60)
+        self.logger.info("批量查询完成！")
+        self.logger.info(f"总共处理: {current_count} 个 IP")
+        self.logger.info(f"成功: {success_count} 个")
+        self.logger.info(f"失败: {fail_count} 个")
+        self.logger.info(f"总耗时: {total_elapsed:.2f}s")
+        self.logger.info("=" * 60)
 
 
 def main():
@@ -151,7 +163,8 @@ def main():
     args = parser.parse_args()
 
     if not os.path.exists(args.ip_file):
-        print(f"错误: 找不到文件 {args.ip_file}")
+        logger = get_batch_logger('ipinfo_api')
+        logger.error(f"找不到文件 {args.ip_file}")
         sys.exit(1)
 
     batch = BatchIPInfoQuery(args.ip_file, no_validate=args.no_validate, use_api=not args.no_api)
