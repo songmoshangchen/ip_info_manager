@@ -13,29 +13,61 @@ class BatchIPInfoQuery:
         self.channel_name = channel_name
         self.no_validate = no_validate
         self.use_api = use_api
-        self.progress_file = f"{ip_file}.{channel_name}.progress"
         self.settings = Settings()
         self.ip_writer = IPWriter()
-        self.processed_ips = self._load_progress()
-        self.total_ips = self._count_total_ips()
 
-    def _count_total_ips(self):
+        self.load_stats = {}
+        self.pending_ips = self._load_pending_ips()
+
+    @property
+    def progress_file(self):
+        return f"{self.ip_file}.{self.channel_name}.progress"
+
+    def _load_ip_file(self):
+        seen = set()
+        unique_ips = []
+        raw_count = 0
+
         try:
             with open(self.ip_file, 'r', encoding='utf-8') as f:
-                return sum(1 for line in f if line.strip())
+                for line in f:
+                    ip = line.strip()
+                    if not ip:
+                        continue
+                    raw_count += 1
+                    if ip not in seen:
+                        seen.add(ip)
+                        unique_ips.append(ip)
         except FileNotFoundError:
             print(f"错误: 找不到文件 {self.ip_file}")
             sys.exit(1)
 
+        self.load_stats['raw_count'] = raw_count
+        self.load_stats['unique_count'] = len(unique_ips)
+        self.load_stats['duplicate_count'] = raw_count - len(unique_ips)
+
+        return unique_ips
+
     def _load_progress(self):
-        if os.path.exists(self.progress_file):
-            with open(self.progress_file, 'r', encoding='utf-8') as f:
-                return set(line.strip() for line in f if line.strip())
-        return set()
+        if not os.path.exists(self.progress_file):
+            return set()
+        with open(self.progress_file, 'r', encoding='utf-8') as f:
+            return set(line.strip() for line in f if line.strip())
 
     def _save_progress(self, ip):
         with open(self.progress_file, 'a', encoding='utf-8') as f:
             f.write(ip + '\n')
+
+    def _load_pending_ips(self):
+        unique_ips = self._load_ip_file()
+        processed = self._load_progress()
+
+        pending = [ip for ip in unique_ips if ip not in processed]
+
+        self.load_stats['already_processed'] = len(processed)
+        self.load_stats['pending_count'] = len(pending)
+
+        return pending
 
     def _query_ip(self, ip):
         return fetch_channel(ip, key=self.settings.ipinfo_access_token, use_api=self.use_api)
@@ -53,49 +85,44 @@ class BatchIPInfoQuery:
             validate_channel_key()
 
         delay = self._get_delay()
-        pending_count = self.total_ips - len(self.processed_ips)
+        pending_count = self.load_stats['pending_count']
+        total_count = self.load_stats['unique_count']
+        processed_count = self.load_stats['already_processed']
         mode = "API" if self.use_api else "非API"
 
         print(f"开始批量查询 IPInfo 信息 ({mode} 模式)")
         print(f"IP 文件: {self.ip_file}")
-        print(f"总 IP 数: {self.total_ips}")
-        print(f"已处理: {len(self.processed_ips)}")
+        if self.load_stats['duplicate_count'] > 0:
+            print(f"IP 去重: 原始 {self.load_stats['raw_count']}, 去重后 {total_count}, 重复 {self.load_stats['duplicate_count']}")
+        print(f"总 IP 数: {total_count}")
+        print(f"已处理: {processed_count}")
         print(f"待处理: {pending_count}")
         print(f"查询间隔: {delay} 秒")
         print("-" * 60)
 
-        current_count = len(self.processed_ips)
+        current_count = processed_count
         success_count = 0
         fail_count = 0
 
         try:
-            with open(self.ip_file, 'r', encoding='utf-8') as f:
-                for line in f:
-                    ip = line.strip()
-                    if not ip:
-                        continue
+            for ip in self.pending_ips:
+                current_count += 1
 
-                    if ip in self.processed_ips:
-                        continue
+                print(f"[{current_count}/{total_count}] 正在查询: {ip}", end=' ', flush=True)
 
-                    current_count += 1
+                data = self._query_ip(ip)
 
-                    print(f"[{current_count}/{self.total_ips}] 正在查询: {ip}", end=' ', flush=True)
+                if isinstance(data, dict) and (data.get('raw_error') or data.get('error')):
+                    print(f"❌ {data.get('error_message', data.get('error', 'Unknown'))}")
+                    fail_count += 1
+                else:
+                    self._print_result(ip, data)
+                    success_count += 1
 
-                    data = self._query_ip(ip)
+                self.ip_writer.add_or_update_ip(ip, self.channel_name, data)
+                self._save_progress(ip)
 
-                    if isinstance(data, dict) and (data.get('raw_error') or data.get('error')):
-                        print(f"❌ {data.get('error_message', data.get('error', 'Unknown'))}")
-                        fail_count += 1
-                    else:
-                        self._print_result(ip, data)
-                        success_count += 1
-
-                    self.ip_writer.add_or_update_ip(ip, self.channel_name, data)
-                    self._save_progress(ip)
-                    self.processed_ips.add(ip)
-
-                    time.sleep(delay)
+                time.sleep(delay)
 
         except KeyboardInterrupt:
             print("\n\n" + "=" * 60)

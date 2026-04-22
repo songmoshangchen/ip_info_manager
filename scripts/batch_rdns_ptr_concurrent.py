@@ -78,11 +78,11 @@ class ConcurrentBatchRDNSQuery:
         self.channel_name = channel_name
         self.no_validate = no_validate
         self.max_workers = max_workers
-        self.progress_file = f"{ip_file}.{channel_name}.progress"
         self.settings = Settings()
         self.ip_writer = ThreadSafeIPWriter()
-        self.processed_ips = self._load_progress()
-        self.total_ips = self._count_total_ips()
+
+        self.load_stats = {}
+        self.pending_ips = self._load_pending_ips()
 
         self.lock = threading.Lock()
         self.stats = {
@@ -93,24 +93,56 @@ class ConcurrentBatchRDNSQuery:
         }
         self.print_lock = threading.Lock()
 
-    def _count_total_ips(self):
+    @property
+    def progress_file(self):
+        return f"{self.ip_file}.{self.channel_name}.progress"
+
+    def _load_ip_file(self):
+        seen = set()
+        unique_ips = []
+        raw_count = 0
+
         try:
             with open(self.ip_file, 'r', encoding='utf-8') as f:
-                return sum(1 for line in f if line.strip())
+                for line in f:
+                    ip = line.strip()
+                    if not ip:
+                        continue
+                    raw_count += 1
+                    if ip not in seen:
+                        seen.add(ip)
+                        unique_ips.append(ip)
         except FileNotFoundError:
             print(f"错误: 找不到文件 {self.ip_file}")
             sys.exit(1)
 
+        self.load_stats['raw_count'] = raw_count
+        self.load_stats['unique_count'] = len(unique_ips)
+        self.load_stats['duplicate_count'] = raw_count - len(unique_ips)
+
+        return unique_ips
+
     def _load_progress(self):
-        if os.path.exists(self.progress_file):
-            with open(self.progress_file, 'r', encoding='utf-8') as f:
-                return set(line.strip() for line in f if line.strip())
-        return set()
+        if not os.path.exists(self.progress_file):
+            return set()
+        with open(self.progress_file, 'r', encoding='utf-8') as f:
+            return set(line.strip() for line in f if line.strip())
 
     def _save_progress(self, ip):
         with self.lock:
             with open(self.progress_file, 'a', encoding='utf-8') as f:
                 f.write(ip + '\n')
+
+    def _load_pending_ips(self):
+        unique_ips = self._load_ip_file()
+        processed = self._load_progress()
+
+        pending = [ip for ip in unique_ips if ip not in processed]
+
+        self.load_stats['already_processed'] = len(processed)
+        self.load_stats['pending_count'] = len(pending)
+
+        return pending
 
     def _query_ip(self, ip):
         return fetch_channel(ip, timeout=self.settings.rdns_query_timeout)
@@ -120,22 +152,19 @@ class ConcurrentBatchRDNSQuery:
             hostname = data.get('hostname', 'N/A')
             aliases = data.get('aliases', [])
             alias_str = f" ({len(aliases)} 个别名)" if aliases else ""
-            print(f"[{thread_name}] [{index}/{self.total_ips}] {ip} ✅ {hostname}{alias_str}")
+            print(f"[{thread_name}] [{index}/{self.load_stats['unique_count']}] {ip} ✅ {hostname}{alias_str}")
         else:
             error_msg = data.get('error_message', '无 PTR 记录')
-            print(f"[{thread_name}] [{index}/{self.total_ips}] {ip} ⚠️  {error_msg}")
+            print(f"[{thread_name}] [{index}/{self.load_stats['unique_count']}] {ip} ⚠️  {error_msg}")
 
     def _get_delay(self):
         return getattr(self.settings, 'rdns_query_delay', 0.1)
 
     def _process_ip(self, ip, index):
-        if ip in self.processed_ips:
-            return None
-
         try:
             thread_name = threading.current_thread().name
             with self.print_lock:
-                print(f"[{thread_name}] [{index}/{self.total_ips}] 正在查询: {ip}", flush=True)
+                print(f"[{thread_name}] [{index}/{self.load_stats['unique_count']}] 正在查询: {ip}", flush=True)
 
             rdns_data = self._query_ip(ip)
 
@@ -148,7 +177,7 @@ class ConcurrentBatchRDNSQuery:
             if isinstance(rdns_data, dict) and rdns_data.get('raw_error'):
                 result['status'] = 'error'
                 with self.print_lock:
-                    print(f"[{thread_name}] [{index}/{self.total_ips}] {ip} ❌ {rdns_data.get('error_message', 'Unknown')}")
+                    print(f"[{thread_name}] [{index}/{self.load_stats['unique_count']}] {ip} ❌ {rdns_data.get('error_message', 'Unknown')}")
             else:
                 if rdns_data.get('has_ptr', False):
                     result['status'] = 'success'
@@ -165,7 +194,7 @@ class ConcurrentBatchRDNSQuery:
         except Exception as e:
             thread_name = threading.current_thread().name
             with self.print_lock:
-                print(f"[{thread_name}] [{index}/{self.total_ips}] {ip} ❌ 异常: {str(e)}")
+                print(f"[{thread_name}] [{index}/{self.load_stats['unique_count']}] {ip} ❌ 异常: {str(e)}")
             return {
                 'ip': ip,
                 'index': index,
@@ -178,27 +207,26 @@ class ConcurrentBatchRDNSQuery:
             validate_channel_key()
 
         delay = self._get_delay()
-        pending_count = self.total_ips - len(self.processed_ips)
+        pending_count = self.load_stats['pending_count']
+        total_count = self.load_stats['unique_count']
+        processed_count = self.load_stats['already_processed']
 
         print(f"开始批量查询 RDNS PTR 信息（并发版本）")
         print(f"IP 文件: {self.ip_file}")
-        print(f"总 IP 数: {self.total_ips}")
-        print(f"已处理: {len(self.processed_ips)}")
+        if self.load_stats['duplicate_count'] > 0:
+            print(f"IP 去重: 原始 {self.load_stats['raw_count']}, 去重后 {total_count}, 重复 {self.load_stats['duplicate_count']}")
+        print(f"总 IP 数: {total_count}")
+        print(f"已处理: {processed_count}")
         print(f"待处理: {pending_count}")
         print(f"并发线程数: {self.max_workers}")
         print(f"查询超时: {self.settings.rdns_query_timeout} 秒")
         print("-" * 60)
 
-        ips_to_query = []
-        with open(self.ip_file, 'r', encoding='utf-8') as f:
-            for idx, line in enumerate(f, 1):
-                ip = line.strip()
-                if ip and ip not in self.processed_ips:
-                    ips_to_query.append((ip, idx))
-
-        if not ips_to_query:
+        if not self.pending_ips:
             print("所有 IP 已处理完毕！")
             return
+
+        ips_to_query = [(ip, idx + processed_count + 1) for idx, ip in enumerate(self.pending_ips)]
 
         try:
             start_time = time.time()
