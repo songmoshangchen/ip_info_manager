@@ -7,6 +7,9 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from config import IpinfoSettings as Settings
+from scripts.logger_utils import get_channel_logger
+
+_logger = get_channel_logger('ipinfo_api')
 
 
 class IPWriter:
@@ -109,6 +112,7 @@ def _request_channel_noapi(ip: str):
 
 
 def request_channel(ip: str, key: str = '', use_api: bool = True, **kwargs):
+    _logger.debug(f"请求 IPInfo: ip={ip}, use_api={use_api}")
     if use_api:
         return _request_channel_api(ip, key)
     else:
