@@ -9,6 +9,7 @@ from queue import Queue
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from channel.rdns_ptr import Settings, fetch_channel, validate_channel_key
+from scripts.logger_utils import get_batch_logger
 
 
 class ThreadSafeIPWriter:
@@ -80,6 +81,7 @@ class ConcurrentBatchRDNSQuery:
         self.max_workers = max_workers
         self.settings = Settings()
         self.ip_writer = ThreadSafeIPWriter()
+        self.logger = get_batch_logger(channel_name)
 
         self.load_stats = {}
         self.pending_ips = self._load_pending_ips()
@@ -91,7 +93,6 @@ class ConcurrentBatchRDNSQuery:
             'no_ptr': 0,
             'errors': 0
         }
-        self.print_lock = threading.Lock()
 
     @property
     def progress_file(self):
@@ -113,7 +114,7 @@ class ConcurrentBatchRDNSQuery:
                         seen.add(ip)
                         unique_ips.append(ip)
         except FileNotFoundError:
-            print(f"错误: 找不到文件 {self.ip_file}")
+            self.logger.error(f"找不到文件 {self.ip_file}")
             sys.exit(1)
 
         self.load_stats['raw_count'] = raw_count
@@ -152,10 +153,10 @@ class ConcurrentBatchRDNSQuery:
             hostname = data.get('hostname', 'N/A')
             aliases = data.get('aliases', [])
             alias_str = f" ({len(aliases)} 个别名)" if aliases else ""
-            print(f"[{thread_name}] [{index}/{self.load_stats['unique_count']}] {ip} ✅ {hostname}{alias_str}")
+            self.logger.info(f"[{thread_name}] [{index}/{self.load_stats['unique_count']}] {ip} ✅ {hostname}{alias_str}")
         else:
             error_msg = data.get('error_message', '无 PTR 记录')
-            print(f"[{thread_name}] [{index}/{self.load_stats['unique_count']}] {ip} ⚠️  {error_msg}")
+            self.logger.info(f"[{thread_name}] [{index}/{self.load_stats['unique_count']}] {ip} ⚠️  {error_msg}")
 
     def _get_delay(self):
         return getattr(self.settings, 'rdns_query_delay', 0.1)
@@ -163,10 +164,14 @@ class ConcurrentBatchRDNSQuery:
     def _process_ip(self, ip, index):
         try:
             thread_name = threading.current_thread().name
-            with self.print_lock:
-                print(f"[{thread_name}] [{index}/{self.load_stats['unique_count']}] 正在查询: {ip}", flush=True)
+            query_start = time.time()
+
+            self.logger.info(f"[{thread_name}] [{index}/{self.load_stats['unique_count']}] 正在查询: {ip}")
 
             rdns_data = self._query_ip(ip)
+
+            query_elapsed = time.time() - query_start
+            self.logger.debug(f"查询 {ip} 耗时: {query_elapsed:.3f}s")
 
             result = {
                 'ip': ip,
@@ -176,25 +181,23 @@ class ConcurrentBatchRDNSQuery:
 
             if isinstance(rdns_data, dict) and rdns_data.get('raw_error'):
                 result['status'] = 'error'
-                with self.print_lock:
-                    print(f"[{thread_name}] [{index}/{self.load_stats['unique_count']}] {ip} ❌ {rdns_data.get('error_message', 'Unknown')}")
+                self.logger.warning(f"[{thread_name}] [{index}/{self.load_stats['unique_count']}] {ip} ❌ {rdns_data.get('error_message', 'Unknown')}")
             else:
                 if rdns_data.get('has_ptr', False):
                     result['status'] = 'success'
                 else:
                     result['status'] = 'no_ptr'
-                with self.print_lock:
-                    self._print_result(ip, rdns_data, thread_name, index)
+                self._print_result(ip, rdns_data, thread_name, index)
 
             self.ip_writer.add_update(ip, self.channel_name, rdns_data)
+            self.logger.debug(f"已写入 {ip} 的 {self.channel_name} 数据")
             self._save_progress(ip)
 
             return result
 
         except Exception as e:
             thread_name = threading.current_thread().name
-            with self.print_lock:
-                print(f"[{thread_name}] [{index}/{self.load_stats['unique_count']}] {ip} ❌ 异常: {str(e)}")
+            self.logger.error(f"[{thread_name}] [{index}/{self.load_stats['unique_count']}] {ip} ❌ 异常: {str(e)}")
             return {
                 'ip': ip,
                 'index': index,
@@ -211,19 +214,19 @@ class ConcurrentBatchRDNSQuery:
         total_count = self.load_stats['unique_count']
         processed_count = self.load_stats['already_processed']
 
-        print(f"开始批量查询 RDNS PTR 信息（并发版本）")
-        print(f"IP 文件: {self.ip_file}")
+        self.logger.info("开始批量查询 RDNS PTR 信息（并发版本）")
+        self.logger.info(f"IP 文件: {self.ip_file}")
         if self.load_stats['duplicate_count'] > 0:
-            print(f"IP 去重: 原始 {self.load_stats['raw_count']}, 去重后 {total_count}, 重复 {self.load_stats['duplicate_count']}")
-        print(f"总 IP 数: {total_count}")
-        print(f"已处理: {processed_count}")
-        print(f"待处理: {pending_count}")
-        print(f"并发线程数: {self.max_workers}")
-        print(f"查询超时: {self.settings.rdns_query_timeout} 秒")
-        print("-" * 60)
+            self.logger.info(f"IP 去重: 原始 {self.load_stats['raw_count']}, 去重后 {total_count}, 重复 {self.load_stats['duplicate_count']}")
+        self.logger.info(f"总 IP 数: {total_count}")
+        self.logger.info(f"已处理: {processed_count}")
+        self.logger.info(f"待处理: {pending_count}")
+        self.logger.info(f"并发线程数: {self.max_workers}")
+        self.logger.info(f"查询超时: {self.settings.rdns_query_timeout} 秒")
+        self.logger.info("-" * 60)
 
         if not self.pending_ips:
-            print("所有 IP 已处理完毕！")
+            self.logger.info("所有 IP 已处理完毕！")
             return
 
         ips_to_query = [(ip, idx + processed_count + 1) for idx, ip in enumerate(self.pending_ips)]
@@ -257,8 +260,7 @@ class ConcurrentBatchRDNSQuery:
                                 self.ip_writer.flush_updates()
 
                     except Exception as e:
-                        with self.print_lock:
-                            print(f"处理 {ip} 时发生异常: {str(e)}")
+                        self.logger.error(f"处理 {ip} 时发生异常: {str(e)}")
                         with self.lock:
                             self.stats['total'] += 1
                             self.stats['errors'] += 1
@@ -268,25 +270,25 @@ class ConcurrentBatchRDNSQuery:
 
         except KeyboardInterrupt:
             self.ip_writer.flush_updates()
-            print("\n\n" + "=" * 60)
-            print(f"查询已中断！")
-            print(f"已处理: {self.stats['total']} 个 IP")
-            print(f"有 PTR: {self.stats['has_ptr']} 个")
-            print(f"无 PTR: {self.stats['no_ptr']} 个")
-            print(f"错误: {self.stats['errors']} 个")
-            print(f"进度文件: {self.progress_file}")
-            print("=" * 60)
+            self.logger.info("=" * 60)
+            self.logger.info("查询已中断！")
+            self.logger.info(f"已处理: {self.stats['total']} 个 IP")
+            self.logger.info(f"有 PTR: {self.stats['has_ptr']} 个")
+            self.logger.info(f"无 PTR: {self.stats['no_ptr']} 个")
+            self.logger.info(f"错误: {self.stats['errors']} 个")
+            self.logger.info(f"进度文件: {self.progress_file}")
+            self.logger.info("=" * 60)
             sys.exit(0)
 
-        print("\n" + "=" * 60)
-        print(f"批量查询完成！")
-        print(f"总共处理: {self.stats['total']} 个 IP")
-        print(f"有 PTR 记录: {self.stats['has_ptr']} 个")
-        print(f"无 PTR 记录: {self.stats['no_ptr']} 个")
-        print(f"查询错误: {self.stats['errors']} 个")
-        print(f"总耗时: {elapsed_time:.2f} 秒")
-        print(f"平均速度: {self.stats['total'] / elapsed_time:.2f} IP/秒")
-        print("=" * 60)
+        self.logger.info("=" * 60)
+        self.logger.info("批量查询完成！")
+        self.logger.info(f"总共处理: {self.stats['total']} 个 IP")
+        self.logger.info(f"有 PTR 记录: {self.stats['has_ptr']} 个")
+        self.logger.info(f"无 PTR 记录: {self.stats['no_ptr']} 个")
+        self.logger.info(f"查询错误: {self.stats['errors']} 个")
+        self.logger.info(f"总耗时: {elapsed_time:.2f} 秒")
+        self.logger.info(f"平均速度: {self.stats['total'] / elapsed_time:.2f} IP/秒")
+        self.logger.info("=" * 60)
 
 
 def main():
@@ -298,7 +300,8 @@ def main():
     args = parser.parse_args()
 
     if not os.path.exists(args.ip_file):
-        print(f"错误: 找不到文件 {args.ip_file}")
+        logger = get_batch_logger('rdns_ptr')
+        logger.error(f"找不到文件 {args.ip_file}")
         sys.exit(1)
 
     batch = ConcurrentBatchRDNSQuery(args.ip_file, no_validate=args.no_validate, max_workers=args.workers)
