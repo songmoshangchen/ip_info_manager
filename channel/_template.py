@@ -5,6 +5,9 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from config import Settings
+from scripts.logger_utils import get_channel_logger
+
+_logger = get_channel_logger('xxx')
 
 
 class IPWriter:
@@ -127,12 +130,16 @@ def fetch_channel(ip: str, key: str = '', cookie: str = '', delay: float = 0, **
     """
     apply_delay(delay)
 
+    _logger.debug(f"fetch_channel 开始: ip={ip}")
+
     raw = request_channel(ip, key=key, cookie=cookie, **kwargs)
 
     if isinstance(raw, dict) and raw.get('raw_error'):
+        _logger.debug(f"fetch_channel 请求失败: {raw.get('error_message', 'Unknown')}")
         return raw
 
     result = parse_response(raw, ip)
+    _logger.debug(f"fetch_channel 完成: ip={ip}")
     return format_output(result)
 
 
