@@ -7,6 +7,9 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from config import WhoisSettings as Settings
+from scripts.logger_utils import get_channel_logger
+
+_logger = get_channel_logger('whois')
 
 try:
     from whois import whois as whois_query
@@ -79,6 +82,7 @@ def request_channel(ip: str, timeout: float = 10.0, **kwargs):
             "error_message": "whois 库未安装，请运行: pip install python-whois",
         }
 
+    _logger.debug(f"Whois 查询: ip={ip}, timeout={timeout}")
     try:
         socket.setdefaulttimeout(timeout)
         w = whois_query(ip)
