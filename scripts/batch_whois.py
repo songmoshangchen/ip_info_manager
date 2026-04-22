@@ -5,6 +5,7 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from channel.whois_query import IPWriter, Settings, fetch_channel, validate_channel_key
+from scripts.logger_utils import get_batch_logger
 
 
 class BatchWhoisQuery:
@@ -14,6 +15,7 @@ class BatchWhoisQuery:
         self.no_validate = no_validate
         self.settings = Settings()
         self.ip_writer = IPWriter()
+        self.logger = get_batch_logger(channel_name)
 
         self.load_stats = {}
         self.pending_ips = self._load_pending_ips()
@@ -38,7 +40,7 @@ class BatchWhoisQuery:
                         seen.add(ip)
                         unique_ips.append(ip)
         except FileNotFoundError:
-            print(f"错误: 找不到文件 {self.ip_file}")
+            self.logger.error(f"找不到文件 {self.ip_file}")
             sys.exit(1)
 
         self.load_stats['raw_count'] = raw_count
@@ -77,10 +79,10 @@ class BatchWhoisQuery:
             registrar = whois_info.get('registrar', 'N/A')
             org = whois_info.get('organization', 'N/A')
             country = whois_info.get('country', 'N/A')
-            print(f"✅ {registrar} | {org} | {country}")
+            self.logger.info(f"✅ {registrar} | {org} | {country}")
         else:
             error_msg = data.get('error_message', '无 Whois 信息')
-            print(f"⚠️  {error_msg}")
+            self.logger.info(f"⚠️  {error_msg}")
 
     def _get_delay(self):
         return getattr(self.settings, 'whois_query_delay', 1.0)
@@ -94,33 +96,38 @@ class BatchWhoisQuery:
         total_count = self.load_stats['unique_count']
         processed_count = self.load_stats['already_processed']
 
-        print(f"开始批量查询 Whois 信息")
-        print(f"IP 文件: {self.ip_file}")
+        self.logger.info("开始批量查询 Whois 信息")
+        self.logger.info(f"IP 文件: {self.ip_file}")
         if self.load_stats['duplicate_count'] > 0:
-            print(f"IP 去重: 原始 {self.load_stats['raw_count']}, 去重后 {total_count}, 重复 {self.load_stats['duplicate_count']}")
-        print(f"总 IP 数: {total_count}")
-        print(f"已处理: {processed_count}")
-        print(f"待处理: {pending_count}")
-        print(f"查询间隔: {delay} 秒")
-        print(f"超时时间: {self.settings.whois_query_timeout} 秒")
-        print("-" * 60)
+            self.logger.info(f"IP 去重: 原始 {self.load_stats['raw_count']}, 去重后 {total_count}, 重复 {self.load_stats['duplicate_count']}")
+        self.logger.info(f"总 IP 数: {total_count}")
+        self.logger.info(f"已处理: {processed_count}")
+        self.logger.info(f"待处理: {pending_count}")
+        self.logger.info(f"查询间隔: {delay} 秒")
+        self.logger.info(f"超时时间: {self.settings.whois_query_timeout} 秒")
+        self.logger.info("-" * 60)
 
         current_count = processed_count
         success_count = 0
         fail_count = 0
         has_whois_count = 0
         no_whois_count = 0
+        start_time = time.time()
 
         try:
             for ip in self.pending_ips:
                 current_count += 1
+                query_start = time.time()
 
-                print(f"[{current_count}/{total_count}] 正在查询: {ip}", end=' ', flush=True)
+                self.logger.info(f"[{current_count}/{total_count}] 正在查询: {ip}")
 
                 data = self._query_ip(ip)
 
+                query_elapsed = time.time() - query_start
+                self.logger.debug(f"查询 {ip} 耗时: {query_elapsed:.3f}s")
+
                 if isinstance(data, dict) and data.get('raw_error'):
-                    print(f"❌ {data.get('error_message', 'Unknown')}")
+                    self.logger.warning(f"[{current_count}/{total_count}] {ip} ❌ {data.get('error_message', 'Unknown')}")
                     fail_count += 1
                 else:
                     if data.get('has_whois', False):
@@ -132,30 +139,35 @@ class BatchWhoisQuery:
                     self._print_result(ip, data)
 
                 self.ip_writer.add_or_update_ip(ip, self.channel_name, data)
+                self.logger.debug(f"已写入 {ip} 的 {self.channel_name} 数据")
                 self._save_progress(ip)
 
                 time.sleep(delay)
 
         except KeyboardInterrupt:
-            print("\n\n" + "=" * 60)
-            print(f"查询已中断！")
-            print(f"已处理: {current_count} 个 IP")
-            print(f"成功: {success_count} 个")
-            print(f"失败: {fail_count} 个")
-            print(f"有 Whois: {has_whois_count} 个")
-            print(f"无 Whois: {no_whois_count} 个")
-            print(f"进度文件: {self.progress_file}")
-            print("=" * 60)
+            total_elapsed = time.time() - start_time
+            self.logger.info("=" * 60)
+            self.logger.info("查询已中断！")
+            self.logger.info(f"已处理: {current_count} 个 IP")
+            self.logger.info(f"成功: {success_count} 个")
+            self.logger.info(f"失败: {fail_count} 个")
+            self.logger.info(f"有 Whois: {has_whois_count} 个")
+            self.logger.info(f"无 Whois: {no_whois_count} 个")
+            self.logger.info(f"总耗时: {total_elapsed:.2f}s")
+            self.logger.info(f"进度文件: {self.progress_file}")
+            self.logger.info("=" * 60)
             sys.exit(0)
 
-        print("\n" + "=" * 60)
-        print(f"批量查询完成！")
-        print(f"总共处理: {current_count} 个 IP")
-        print(f"成功: {success_count} 个")
-        print(f"失败: {fail_count} 个")
-        print(f"有 Whois 信息: {has_whois_count} 个")
-        print(f"无 Whois 信息: {no_whois_count} 个")
-        print("=" * 60)
+        total_elapsed = time.time() - start_time
+        self.logger.info("=" * 60)
+        self.logger.info("批量查询完成！")
+        self.logger.info(f"总共处理: {current_count} 个 IP")
+        self.logger.info(f"成功: {success_count} 个")
+        self.logger.info(f"失败: {fail_count} 个")
+        self.logger.info(f"有 Whois 信息: {has_whois_count} 个")
+        self.logger.info(f"无 Whois 信息: {no_whois_count} 个")
+        self.logger.info(f"总耗时: {total_elapsed:.2f}s")
+        self.logger.info("=" * 60)
 
 
 def main():
@@ -166,7 +178,8 @@ def main():
     args = parser.parse_args()
 
     if not os.path.exists(args.ip_file):
-        print(f"错误: 找不到文件 {args.ip_file}")
+        logger = get_batch_logger('whois')
+        logger.error(f"找不到文件 {args.ip_file}")
         sys.exit(1)
 
     batch = BatchWhoisQuery(args.ip_file, no_validate=args.no_validate)
