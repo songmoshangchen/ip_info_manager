@@ -14,7 +14,7 @@ class BatchRDNSQuery:
         self.channel_name = channel_name
         self.no_validate = no_validate
         self.settings = Settings()
-        self.ip_writer = IPWriter()
+        self.ip_writer = IPWriter(settings=self.settings)
         self.logger = get_batch_logger(channel_name)
 
         self.load_stats = {}

@@ -4,7 +4,8 @@ import sys
 import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from channel.xxx import IPWriter, Settings, fetch_xxx, validate_channel_key
+from writer import IPWriter
+from channel.xxx import Settings, fetch_xxx, validate_channel_key
 from scripts.logger_utils import get_batch_logger
 
 
@@ -14,7 +15,7 @@ class BatchXxxQuery:
         self.channel_name = channel_name
         self.no_validate = no_validate
         self.settings = Settings()
-        self.ip_writer = IPWriter()
+        self.ip_writer = IPWriter(settings=self.settings)
         self.logger = get_batch_logger(channel_name)
 
         self.load_stats = {}

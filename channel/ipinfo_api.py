@@ -1,58 +1,15 @@
 import requests
 import time
 from datetime import datetime
-import json
 import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from config import IpinfoSettings as Settings
+from writer import IPWriter
 from scripts.logger_utils import get_channel_logger
 
 _logger = get_channel_logger('ipinfo_api')
-
-
-class IPWriter:
-    def __init__(self):
-        self.settings = Settings()
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-
-        storage_dir = self.settings.storage_dir
-        if not os.path.isabs(storage_dir):
-            storage_dir = os.path.join(script_dir, storage_dir)
-
-        self.storage_file = os.path.join(storage_dir, self.settings.storage_name + '.json')
-
-        if not os.path.exists(storage_dir):
-            os.makedirs(storage_dir, exist_ok=True)
-
-        self._init_storage()
-
-    def _init_storage(self):
-        if not os.path.exists(self.storage_file):
-            with open(self.storage_file, 'w', encoding='utf-8') as f:
-                json.dump({}, f, ensure_ascii=False, indent=2)
-
-    def _load_data(self):
-        with open(self.storage_file, 'r', encoding='utf-8') as f:
-            content = f.read().strip()
-            if not content:
-                return {}
-            return json.loads(content)
-
-    def _save_data(self, data):
-        with open(self.storage_file, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-
-    def add_or_update_ip(self, ip, channel, data):
-        all_data = self._load_data()
-
-        if ip not in all_data:
-            all_data[ip] = {"ip": ip}
-
-        all_data[ip][channel] = data
-        self._save_data(all_data)
-        return True
 
 
 def validate_channel_key():
@@ -142,7 +99,7 @@ def format_output(data: dict) -> dict:
 
 def main(ip: str):
     settings = Settings()
-    ip_writer = IPWriter()
+    ip_writer = IPWriter(settings=settings)
 
     token = getattr(settings, 'ipinfo_access_token', '')
     use_api = bool(token and token.strip())

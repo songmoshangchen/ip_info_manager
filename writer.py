@@ -5,8 +5,8 @@ from config import Settings
 
 
 class IPWriter:
-    def __init__(self):
-        self.settings = Settings()
+    def __init__(self, settings=None):
+        self.settings = settings or Settings()
         script_dir = os.path.dirname(os.path.abspath(__file__))
         
         storage_dir = self.settings.storage_dir

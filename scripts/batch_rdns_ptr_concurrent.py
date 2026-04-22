@@ -80,7 +80,7 @@ class ConcurrentBatchRDNSQuery:
         self.no_validate = no_validate
         self.max_workers = max_workers
         self.settings = Settings()
-        self.ip_writer = ThreadSafeIPWriter()
+        self.ip_writer = ThreadSafeIPWriter(settings=self.settings)
         self.logger = get_batch_logger(channel_name)
 
         self.load_stats = {}
