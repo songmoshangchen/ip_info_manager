@@ -14,7 +14,8 @@ from channel.aizhan import fetch_channel as fetch_aizhan
 from channel.chinaz import fetch_channel as fetch_chinaz
 from channel.zoomeye import fetch_channel as fetch_zoomeye
 from channel.fofa_search import fetch_channel as fetch_fofa_search
-from config import RdnsSettings, AizhanSettings, ChinazSettings, ZoomeyeSettings, FofaSettings
+from channel.ssl_cert import fetch_channel as fetch_ssl_cert
+from config import RdnsSettings, AizhanSettings, ChinazSettings, ZoomeyeSettings, FofaSettings, SslCertSettings
 from reader import IPReader
 from writer import IPWriter
 
@@ -127,6 +128,7 @@ class IPDomainLookupPipeline:
         chinaz_settings = ChinazSettings()
         zoomeye_settings = ZoomeyeSettings()
         fofa_settings = FofaSettings()
+        ssl_cert_settings = SslCertSettings()
         channel_timeout = self._config.get('channel_timeout', 0)
 
         total = len(self._ips)
@@ -144,6 +146,7 @@ class IPDomainLookupPipeline:
             chinaz_settings.chinaz_query_delay,
             zoomeye_settings.zoomeye_query_delay,
             fofa_settings.fofa_query_delay,
+            ssl_cert_settings.ssl_cert_query_delay,
         )
 
         channel_stats = defaultdict(int)
@@ -175,6 +178,11 @@ class IPDomainLookupPipeline:
                     ('fofa_search', fetch_fofa_search, {
                         'key': fofa_settings.fofa_api_key, 'delay': 0,
                         'query_suffix': ' && is_domain=true'}))
+
+                channel_specs.append(
+                    ('ssl_cert', fetch_ssl_cert, {
+                        'port': ssl_cert_settings.ssl_cert_port,
+                        'timeout': ssl_cert_settings.ssl_cert_timeout, 'delay': 0}))
 
                 results = self._query_channels_parallel(ip, channel_specs, channel_timeout)
 
@@ -395,6 +403,12 @@ class IPDomainLookupPipeline:
                             hostname = parsed.hostname or parsed.path.split(':')[0]
                             if hostname and not hostname.replace('.', '').isdigit() and not hostname.startswith('*'):
                                 domain_sources[hostname].append('fofa_search')
+
+        ssl_cert_data = results.get('ssl_cert', {})
+        if not ssl_cert_data.get('error'):
+            for domain in ssl_cert_data.get('domains', []):
+                if domain and isinstance(domain, str) and not domain.startswith('*'):
+                    domain_sources[domain].append('ssl_cert')
 
         candidates = []
         for domain, sources in domain_sources.items():
