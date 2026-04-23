@@ -11,7 +11,7 @@ from channel.ipinfo_api import fetch_channel as fetch_ipinfo
 from channel.rdns_ptr import fetch_channel as fetch_rdns_ptr
 from channel.aizhan import fetch_channel as fetch_aizhan
 from channel.chinaz import fetch_channel as fetch_chinaz
-from channel.fofa import fetch_channel as fetch_fofa
+from channel.fofa_host import fetch_channel as fetch_fofa_host
 from config import (
     IpinfoSettings, RdnsSettings, AizhanSettings,
     ChinazSettings, FofaSettings, Settings,
@@ -356,7 +356,7 @@ class TraceIPPipeline:
         logger.info("剩余: %d", total - skipped)
         logger.info("爱站网查询间隔: %ss", aizhan_settings.aizhan_query_delay)
         logger.info("站长之家查询间隔: %ss", chinaz_settings.chinaz_query_delay)
-        logger.info("Fofa查询间隔: %ss", fofa_settings.fofa_query_delay)
+        logger.info("Fofa Host 查询间隔: %ss", fofa_settings.fofa_query_delay)
         logger.info("-" * 60)
 
         max_delay = max(
@@ -379,13 +379,13 @@ class TraceIPPipeline:
                      {'cookie': aizhan_settings.aizhan_cookie, 'delay': 0}),
                     ('chinaz', fetch_chinaz,
                      {'cookie': chinaz_settings.chinaz_cookie, 'delay': 0}),
-                    ('fofa', fetch_fofa,
+                    ('fofa_host', fetch_fofa_host,
                      {'key': fofa_settings.fofa_api_key, 'delay': 0}),
                 ], channel_timeout)
 
                 aizhan_data = results.get('aizhan', {'raw_error': 'no result'})
                 chinaz_data = results.get('chinaz', {'raw_error': 'no result'})
-                fofa_data = results.get('fofa', {'raw_error': 'no result'})
+                fofa_data = results.get('fofa_host', {'raw_error': 'no result'})
 
                 if aizhan_data.get('success'):
                     dc = aizhan_data.get('domain_count', 0)
@@ -404,14 +404,14 @@ class TraceIPPipeline:
                                 chinaz_data.get('error', 'N/A'))
 
                 if 'raw_error' in fofa_data:
-                    logger.info("  Fofa: ❌ %s",
+                    logger.info("  Fofa Host: ❌ %s",
                                 fofa_data.get('error_message', 'N/A'))
                 else:
-                    logger.info("  Fofa: ✅")
+                    logger.info("  Fofa Host: ✅")
 
                 self._batch_writer.add(ip, 'aizhan', aizhan_data)
                 self._batch_writer.add(ip, 'chinaz', chinaz_data)
-                self._batch_writer.add(ip, 'fofa', fofa_data)
+                self._batch_writer.add(ip, 'fofa_host', fofa_data)
                 self._batch_writer.flush_batch()
 
                 self._progress.record(ip, 3)

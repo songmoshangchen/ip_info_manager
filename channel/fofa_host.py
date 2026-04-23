@@ -9,7 +9,7 @@ from config import FofaSettings as Settings
 from writer import IPWriter
 from scripts.logger_utils import get_channel_logger
 
-_logger = get_channel_logger('fofa')
+_logger = get_channel_logger('fofa_host')
 
 
 def validate_channel_key():
@@ -32,7 +32,7 @@ def validate_channel_key():
             sys.exit(1)
 
         username = data.get("data", {}).get("user_name", "N/A") if isinstance(data.get("data"), dict) else "N/A"
-        print(f"✅ Fofa API Key 验证通过，用户: {username}")
+        print(f"✅ Fofa API Key 验证通过（Host 聚合渠道），用户: {username}")
     except requests.exceptions.RequestException as e:
         print(f"错误: 无法连接 Fofa API 进行 Key 验证 - {e}")
         sys.exit(1)
@@ -42,14 +42,14 @@ def request_channel(ip: str, key: str = '', **kwargs):
     url = f"https://fofa.info/api/v1/host/{ip}"
     params = {"key": key, "detail": "true"}
 
-    _logger.debug(f"请求 Fofa API: ip={ip}")
+    _logger.debug(f"请求 Fofa Host 聚合 API: ip={ip}")
 
     try:
         response = requests.get(url, params=params, timeout=30)
         response.raise_for_status()
         return response.json()
     except Exception as e:
-        _logger.debug(f"请求 Fofa API 失败: ip={ip}, error={e}")
+        _logger.debug(f"请求 Fofa Host 聚合 API 失败: ip={ip}, error={e}")
         return {
             "raw_error": True,
             "error_message": str(e),
@@ -86,12 +86,12 @@ def main(ip: str):
         key=settings.fofa_api_key,
         delay=settings.fofa_query_delay,
     )
-    ip_writer.add_or_update_ip(ip=ip, channel="fofa", data=data)
+    ip_writer.add_or_update_ip(ip=ip, channel="fofa_host", data=data)
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("使用方法: python fofa.py <IP地址>")
+        print("使用方法: python fofa_host.py <IP地址>")
         sys.exit(1)
 
     target_ip = sys.argv[1]

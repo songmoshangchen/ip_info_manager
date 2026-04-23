@@ -5,12 +5,12 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from writer import IPWriter
-from channel.fofa import Settings, fetch_channel, validate_channel_key
+from channel.fofa_host import Settings, fetch_channel, validate_channel_key
 from scripts.logger_utils import get_batch_logger
 
 
-class BatchFofaQuery:
-    def __init__(self, ip_file, channel_name='fofa', no_validate=False):
+class BatchFofaHostQuery:
+    def __init__(self, ip_file, channel_name='fofa_host', no_validate=False):
         self.ip_file = ip_file
         self.channel_name = channel_name
         self.no_validate = no_validate
@@ -91,7 +91,7 @@ class BatchFofaQuery:
         total_count = self.load_stats['unique_count']
         processed_count = self.load_stats['already_processed']
 
-        self.logger.info("开始批量查询 Fofa 信息")
+        self.logger.info("开始批量查询 Fofa Host 聚合信息")
         self.logger.info(f"IP 文件: {self.ip_file}")
         if self.load_stats['duplicate_count'] > 0:
             self.logger.info(f"IP 去重: 原始 {self.load_stats['raw_count']}, 去重后 {total_count}, 重复 {self.load_stats['duplicate_count']}")
@@ -154,18 +154,18 @@ class BatchFofaQuery:
 
 
 def main():
-    parser = argparse.ArgumentParser(description='批量查询 Fofa 信息')
+    parser = argparse.ArgumentParser(description='批量查询 Fofa Host 聚合信息')
     parser.add_argument('ip_file', help='IP 文件路径')
     parser.add_argument('--no-validate', action='store_true', help='跳过 Key 有效性校验')
 
     args = parser.parse_args()
 
     if not os.path.exists(args.ip_file):
-        logger = get_batch_logger('fofa')
+        logger = get_batch_logger('fofa_host')
         logger.error(f"找不到文件 {args.ip_file}")
         sys.exit(1)
 
-    batch = BatchFofaQuery(args.ip_file, no_validate=args.no_validate)
+    batch = BatchFofaHostQuery(args.ip_file, no_validate=args.no_validate)
     batch.run()
 
 
