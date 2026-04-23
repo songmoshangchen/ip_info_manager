@@ -168,7 +168,8 @@ class IPDomainLookupPipeline:
                 if zoomeye_enabled:
                     channel_specs.append(
                         ('zoomeye', fetch_zoomeye, {
-                            'key': zoomeye_settings.zoomeye_api_key, 'delay': 0}))
+                            'key': zoomeye_settings.zoomeye_api_key, 'delay': 0,
+                            'sub_type': 'web'}))
 
                 channel_specs.append(
                     ('fofa_search', fetch_fofa_search, {

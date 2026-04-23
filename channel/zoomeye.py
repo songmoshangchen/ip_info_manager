@@ -24,7 +24,7 @@ def validate_channel_key():
     print(f"✅ ZoomEye API Key 已配置（不进行在线校验，避免消耗额度）")
 
 
-def request_channel(ip: str, key: str = '', **kwargs):
+def request_channel(ip: str, key: str = '', sub_type: str = '', **kwargs):
     query_str = f"ip:{ip}"
     qbase64 = base64.b64encode(query_str.encode()).decode()
 
@@ -36,6 +36,8 @@ def request_channel(ip: str, key: str = '', **kwargs):
         "pagesize": 20,
         "fields": "ip,port,domain",
     }
+    if sub_type:
+        data["sub_type"] = sub_type
 
     _logger.debug(f"请求 ZoomEye API: ip={ip}, query={query_str}")
 
