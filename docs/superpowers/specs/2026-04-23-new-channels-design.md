@@ -2,61 +2,72 @@
 
 > 本文档为 Plan 2，记录三个新渠道的设计方案。
 > 各渠道独立实现后，逐一集成到 `ip_domain_lookup` 场景的 Phase 1 域名收集阶段。
-> 当前状态：**ZoomEye 已完成，Fofa IP / SSL 证书待实现**
+> 当前状态：**ZoomEye 已完成，Fofa Search 实现中，SSL 证书待实现**
 
 ## 渠道总览
 
 | 渠道 | 文件 | 配置项 | 域名提取方式 | 优先级 |
 |------|------|--------|------------|--------|
-| Fofa IP 查询 | `channel/fofa_ip.py` | `IP_FOFA_API_KEY`（复用） | 查询 `ip="x.x.x.x"` 提取 host 字段 | 高（已有 Key） |
+| Fofa 查询 | `channel/fofa_search.py` | `IP_FOFA_API_KEY`（复用） | 查询 `ip="x.x.x.x"` 保存原始 API 数据 | 高（已有 Key） |
 | ZoomEye | `channel/zoomeye.py` | `IP_ZOOMEYE_API_KEY` | 查询 `ip:x.x.x.x` 提取域名/证书 | 中（有额度限制） |
 | SSL 证书 | `channel/ssl_cert.py` | 无 | 连接 443 端口提取证书 SAN 域名 | 中 |
 
 ---
 
-## 1. Fofa IP 查询渠道
+## 1. Fofa 查询渠道（fofa_search）
 
 ### 背景
 
-现有 `channel/fofa.py` 仅实现 Host 聚合查询（返回某个 host 的关联 IP 列表），缺少按 IP 查询关联域名/服务的接口。
+现有 `channel/fofa_host.py` 实现 Host 聚合查询（`GET /api/v1/host/{ip}`），返回某个 IP 的聚合信息。
+需要新增 FOFA 的通用查询接口（`GET /api/v1/search/all`），返回完整的搜索结果数据。
 
 ### 实现方案
 
-新建 `channel/fofa_ip.py`，遵循 `channel/_template.py` 的统一接口规范。
+新建 `channel/fofa_search.py`，遵循 `channel/_template.py` 的统一接口规范。
+
+**架构原则**：渠道保存完整原始 API 响应，域名提取在 `pipeline.py` 的 `_extract_domains` 中统一处理。
 
 **查询语句**：`ip="x.x.x.x"`
 
 **API 调用**：
 ```
 GET https://fofa.info/api/v1/search/all
-    ?email={email}&key={key}&qbase64={base64(query)}&fields=host,protocol,port,title&size=100
+    ?key={key}&qbase64={base64(query)}&fields={fields}&page=1&size=20
 ```
 
-**响应解析**：
-- `results` 数组中每条记录的 `host` 字段提取域名（去除协议和端口）
-- 去重后返回域名列表
+**fields 参数**：全部可用字段（host, ip, port, domain, protocol, title, server, header, banner, cert, os, country, country_name, region, city, longitude, latitude, asn, org, icp, jarm, link, base_protocol, lastupdatetime, product, product_category, product.version, icon_hash, cname, cname_domain, fid）
 
-**输出格式**（写入 JSON 的 `fofa_ip` 字段）：
+**响应结构**：
 ```json
 {
-  "fofa_ip": {
-    "success": true,
-    "ip": "1.2.3.4",
-    "query": "ip=\"1.2.3.4\"",
-    "total_results": 15,
-    "domains": [
-      {"domain": "example.com", "port": 443, "protocol": "https"},
-      {"domain": "api.example.com", "port": 8080, "protocol": "http"}
-    ],
-    "domain_count": 2,
-    "query_time": "2026-04-23T10:00:00"
-  }
+  "error": false,
+  "consumed_fpoint": 0,
+  "size": 15,
+  "page": 1,
+  "query": "ip=\"1.2.3.4\"",
+  "results": [
+    ["host值", "ip值", "port值", ...]
+  ]
 }
 ```
 
+`results` 是二维数组，每条记录的字段顺序与 `fields` 参数对应。
+
+**成功判断**：`"error" == false`
+
+**数据保存**：完整保存原始 API 响应（包括 results、size、page、query 等全部字段），写入 JSON 的 `fofa_search` 键。
+
+**Key 校验**：在线校验（调用 `/api/v1/info/my`），不消耗查询额度。
+
 **配置**：复用 `FofaSettings`（`IP_FOFA_API_KEY`、`IP_FOFA_QUERY_DELAY`），无需新增配置项。
 
-**批量脚本**：新建 `scripts/batch_fofa_ip.py`，遵循 `scripts/_template.py` 规范。
+**分页策略**：默认 1 页 / 20 条记录，不自动翻页。
+
+**批量脚本**：新建 `scripts/batch_fofa_search.py`，遵循 `scripts/_template.py` 规范。
+
+**Pipeline 域名提取**：
+- 从 `results` 二维数组中根据 `domain` 字段索引提取域名
+- 过滤通配符域名（`*.example.com`）和空值
 
 ---
 
@@ -208,7 +219,7 @@ channel_specs = [
     ('aizhan', fetch_aizhan, {...}),
     ('chinaz', fetch_chinaz, {...}),
     # 以下渠道实现后取消注释
-    # ('fofa_ip', fetch_fofa_ip, {...}),
+    # ('fofa_search', fetch_fofa_search, {...}),
     # ('zoomeye', fetch_zoomeye, {...}),
     # ('ssl_cert', fetch_ssl_cert, {...}),
 ]

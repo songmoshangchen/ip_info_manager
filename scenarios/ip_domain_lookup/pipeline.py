@@ -5,6 +5,7 @@ import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime
+from urllib.parse import urlparse
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
@@ -12,7 +13,8 @@ from channel.rdns_ptr import fetch_channel as fetch_rdns_ptr
 from channel.aizhan import fetch_channel as fetch_aizhan
 from channel.chinaz import fetch_channel as fetch_chinaz
 from channel.zoomeye import fetch_channel as fetch_zoomeye
-from config import RdnsSettings, AizhanSettings, ChinazSettings, ZoomeyeSettings
+from channel.fofa_search import fetch_channel as fetch_fofa_search
+from config import RdnsSettings, AizhanSettings, ChinazSettings, ZoomeyeSettings, FofaSettings
 from reader import IPReader
 from writer import IPWriter
 
@@ -124,6 +126,7 @@ class IPDomainLookupPipeline:
         aizhan_settings = AizhanSettings()
         chinaz_settings = ChinazSettings()
         zoomeye_settings = ZoomeyeSettings()
+        fofa_settings = FofaSettings()
         channel_timeout = self._config.get('channel_timeout', 0)
 
         total = len(self._ips)
@@ -140,6 +143,7 @@ class IPDomainLookupPipeline:
             aizhan_settings.aizhan_query_delay,
             chinaz_settings.chinaz_query_delay,
             zoomeye_settings.zoomeye_query_delay,
+            fofa_settings.fofa_query_delay,
         )
 
         channel_stats = defaultdict(int)
@@ -165,6 +169,11 @@ class IPDomainLookupPipeline:
                     channel_specs.append(
                         ('zoomeye', fetch_zoomeye, {
                             'key': zoomeye_settings.zoomeye_api_key, 'delay': 0}))
+
+                channel_specs.append(
+                    ('fofa_search', fetch_fofa_search, {
+                        'key': fofa_settings.fofa_api_key, 'delay': 0,
+                        'query_suffix': ' && is_domain=true'}))
 
                 results = self._query_channels_parallel(ip, channel_specs, channel_timeout)
 
@@ -357,6 +366,34 @@ class IPDomainLookupPipeline:
                         d = d.strip()
                         if d and not d.startswith('*'):
                             domain_sources[d].append('zoomeye')
+
+        fofa_data = results.get('fofa_search', {})
+        if not fofa_data.get('error') and not fofa_data.get('raw_error'):
+            fofa_fields = fofa_data.get('fields', '')
+            fofa_results = fofa_data.get('results', [])
+            if fofa_fields and fofa_results:
+                fields_list = [f.strip() for f in fofa_fields.split(',')]
+                domain_idx = -1
+                host_idx = -1
+                for idx, f in enumerate(fields_list):
+                    if f == 'domain':
+                        domain_idx = idx
+                    elif f == 'host':
+                        host_idx = idx
+                for row in fofa_results:
+                    if not isinstance(row, list):
+                        continue
+                    if domain_idx >= 0 and domain_idx < len(row):
+                        domain_val = row[domain_idx]
+                        if domain_val and isinstance(domain_val, str):
+                            domain_sources[domain_val].append('fofa_search')
+                    if host_idx >= 0 and host_idx < len(row):
+                        host_val = row[host_idx]
+                        if host_val and isinstance(host_val, str) and host_val not in domain_sources:
+                            parsed = urlparse(host_val if '://' in host_val else f'//{host_val}')
+                            hostname = parsed.hostname or parsed.path.split(':')[0]
+                            if hostname and not hostname.replace('.', '').isdigit() and not hostname.startswith('*'):
+                                domain_sources[hostname].append('fofa_search')
 
         candidates = []
         for domain, sources in domain_sources.items():
