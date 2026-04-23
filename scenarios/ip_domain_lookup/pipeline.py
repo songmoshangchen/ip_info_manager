@@ -11,7 +11,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from channel.rdns_ptr import fetch_channel as fetch_rdns_ptr
 from channel.aizhan import fetch_channel as fetch_aizhan
 from channel.chinaz import fetch_channel as fetch_chinaz
-from config import RdnsSettings, AizhanSettings, ChinazSettings
+from channel.zoomeye import fetch_channel as fetch_zoomeye
+from config import RdnsSettings, AizhanSettings, ChinazSettings, ZoomeyeSettings
 from reader import IPReader
 from writer import IPWriter
 
@@ -122,6 +123,7 @@ class IPDomainLookupPipeline:
         rdns_settings = RdnsSettings()
         aizhan_settings = AizhanSettings()
         chinaz_settings = ChinazSettings()
+        zoomeye_settings = ZoomeyeSettings()
         channel_timeout = self._config.get('channel_timeout', 0)
 
         total = len(self._ips)
@@ -137,23 +139,34 @@ class IPDomainLookupPipeline:
             rdns_settings.rdns_query_delay,
             aizhan_settings.aizhan_query_delay,
             chinaz_settings.chinaz_query_delay,
+            zoomeye_settings.zoomeye_query_delay,
         )
 
         channel_stats = defaultdict(int)
+
+        zoomeye_enabled = bool(zoomeye_settings.zoomeye_api_key and zoomeye_settings.zoomeye_api_key.strip())
+        if not zoomeye_enabled:
+            logger.info("ZoomEye API Key 未配置，跳过该渠道")
 
         with self._batch_writer:
             for i, ip in enumerate(self._ips, 1):
                 if ip in processed:
                     continue
 
-                results = self._query_channels_parallel(ip, [
+                channel_specs = [
                     ('rdns_ptr', fetch_rdns_ptr, {
                         'timeout': rdns_settings.rdns_query_timeout, 'delay': 0}),
                     ('aizhan', fetch_aizhan, {
                         'cookie': aizhan_settings.aizhan_cookie, 'delay': 0}),
                     ('chinaz', fetch_chinaz, {
                         'cookie': chinaz_settings.chinaz_cookie, 'delay': 0}),
-                ], channel_timeout)
+                ]
+                if zoomeye_enabled:
+                    channel_specs.append(
+                        ('zoomeye', fetch_zoomeye, {
+                            'key': zoomeye_settings.zoomeye_api_key, 'delay': 0}))
+
+                results = self._query_channels_parallel(ip, channel_specs, channel_timeout)
 
                 candidates = self._extract_domains(ip, results)
 
@@ -332,6 +345,18 @@ class IPDomainLookupPipeline:
                     domain = d.get('domain', '') if isinstance(d, dict) else d
                     if domain:
                         domain_sources[domain].append(ch_name)
+
+        zoomeye_data = results.get('zoomeye', {})
+        if zoomeye_data.get('message') == 'success':
+            for item in zoomeye_data.get('data', []):
+                if not isinstance(item, dict):
+                    continue
+                domain_val = item.get('domain', '')
+                if domain_val and isinstance(domain_val, str):
+                    for d in domain_val.split(','):
+                        d = d.strip()
+                        if d and not d.startswith('*'):
+                            domain_sources[d].append('zoomeye')
 
         candidates = []
         for domain, sources in domain_sources.items():

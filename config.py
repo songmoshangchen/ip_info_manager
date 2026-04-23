@@ -49,3 +49,8 @@ class WhoisSettings(BaseIPSettings):
 class RdnsSettings(BaseIPSettings):
     rdns_query_timeout: float = Field(default=1.5, description='RDNS 查询超时时间（秒）')
     rdns_query_delay: float = Field(default=0.1, description='RDNS 批量查询间隔（秒）')
+
+
+class ZoomeyeSettings(BaseIPSettings):
+    zoomeye_api_key: str = Field(default='', description='ZoomEye API Key')
+    zoomeye_query_delay: float = Field(default=1.0, description='ZoomEye 查询间隔（秒）')
