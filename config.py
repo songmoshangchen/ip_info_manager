@@ -1,15 +1,29 @@
 import os
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
-from pydantic import Field
 
 
 CONFIG_DIR = os.path.dirname(os.path.abspath(__file__))
 ENV_FILE = os.path.join(CONFIG_DIR, '.env')
 
+FORBIDDEN_STORAGE_DIRS = {'ip_domain_lookup', 'trace_ip'}
+
 
 class BaseIPSettings(BaseSettings):
-    storage_dir: str = Field(default='data', description='存储目录')
+    storage_dir: str = Field(default='', description='channel数据存储子目录（相对于data/，可为空）')
     storage_name: str = Field(default='ip_data', description='存储名称（用于数据文件命名前缀）')
+    ip_domain_lookup_project_name: str = Field(default='temp', description='ip_domain_lookup场景项目名称')
+    trace_ip_project_name: str = Field(default='temp', description='trace_ip场景项目名称')
+
+    @field_validator('storage_dir')
+    @classmethod
+    def validate_storage_dir(cls, v: str) -> str:
+        v = v.strip()
+        if os.path.isabs(v):
+            raise ValueError(f'storage_dir 不允许使用绝对路径: {v}')
+        if v in FORBIDDEN_STORAGE_DIRS:
+            raise ValueError(f'storage_dir 不允许使用场景保留名称: {v}')
+        return v
     
     class Config:
         env_prefix = 'IP_'

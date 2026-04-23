@@ -15,7 +15,7 @@ from channel.chinaz import fetch_channel as fetch_chinaz
 from channel.zoomeye import fetch_channel as fetch_zoomeye
 from channel.fofa_search import fetch_channel as fetch_fofa_search
 from channel.ssl_cert import fetch_channel as fetch_ssl_cert
-from config import RdnsSettings, AizhanSettings, ChinazSettings, ZoomeyeSettings, FofaSettings, SslCertSettings
+from config import Settings, RdnsSettings, AizhanSettings, ChinazSettings, ZoomeyeSettings, FofaSettings, SslCertSettings
 from reader import IPReader
 from writer import IPWriter
 
@@ -44,16 +44,20 @@ def _load_ips(ip_file: str) -> list:
 
 class IPDomainLookupPipeline:
 
+    SCENARIO_NAME = 'ip_domain_lookup'
+
     def __init__(self, ip_file: str, config: dict,
                  reporter: BaseDomainLookupReporter = None):
         self._config = config
         self._ips = _load_ips(ip_file)
-        self._ip_reader = IPReader()
 
-        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self._output_dir = self._resolve_output_dir(project_dir)
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))))
+        self._output_dir = self._resolve_output_dir(project_root)
 
-        prefix = self._ip_reader.settings.storage_name
+        prefix = Settings().ip_domain_lookup_project_name
+
+        self._ip_reader = IPReader(storage_dir=self._output_dir)
 
         self._progress = ProgressManager(self._output_dir, prefix)
         self._progress._PHASE_CONFIG = {
@@ -65,7 +69,7 @@ class IPDomainLookupPipeline:
             2: 'domain_lookup_phase2_done',
         }
 
-        self._batch_writer = BatchIPWriter(IPWriter())
+        self._batch_writer = BatchIPWriter(IPWriter(storage_dir=self._output_dir))
 
         if reporter:
             self._reporter = reporter
@@ -105,10 +109,10 @@ class IPDomainLookupPipeline:
 
         self._reporter.save_report()
 
-    def _resolve_output_dir(self, project_dir: str) -> str:
-        output_dir = self._ip_reader.settings.storage_dir
-        if not os.path.isabs(output_dir):
-            output_dir = os.path.join(project_dir, output_dir)
+    def _resolve_output_dir(self, project_root: str) -> str:
+        project_name = Settings().ip_domain_lookup_project_name
+        output_dir = os.path.join(
+            project_root, 'data', self.SCENARIO_NAME, project_name)
         os.makedirs(output_dir, exist_ok=True)
         return output_dir
 

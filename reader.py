@@ -5,15 +5,20 @@ from config import Settings
 
 
 class IPReader:
-    def __init__(self):
+    def __init__(self, storage_dir: str = None):
         self.settings = Settings()
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        
-        storage_dir = self.settings.storage_dir
-        if not os.path.isabs(storage_dir):
-            storage_dir = os.path.join(script_dir, storage_dir)
-        
-        self.storage_file = os.path.join(storage_dir, self.settings.storage_name + '.json')
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+        if storage_dir:
+            s_dir = storage_dir
+        else:
+            base = os.path.join(project_root, 'data')
+            if self.settings.storage_dir:
+                s_dir = os.path.join(base, self.settings.storage_dir)
+            else:
+                s_dir = base
+
+        self.storage_file = os.path.join(s_dir, self.settings.storage_name + '.json')
     
     def _load_data(self):
         if not os.path.exists(self.storage_file):

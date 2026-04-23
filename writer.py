@@ -5,19 +5,24 @@ from config import Settings
 
 
 class IPWriter:
-    def __init__(self, settings=None):
+    def __init__(self, settings=None, storage_dir: str = None):
         self.settings = settings or Settings()
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        
-        storage_dir = self.settings.storage_dir
-        if not os.path.isabs(storage_dir):
-            storage_dir = os.path.join(script_dir, storage_dir)
-        
-        self.storage_file = os.path.join(storage_dir, self.settings.storage_name + '.json')
-        
-        if not os.path.exists(storage_dir):
-            os.makedirs(storage_dir, exist_ok=True)
-        
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+        if storage_dir:
+            s_dir = storage_dir
+        else:
+            base = os.path.join(project_root, 'data')
+            if self.settings.storage_dir:
+                s_dir = os.path.join(base, self.settings.storage_dir)
+            else:
+                s_dir = base
+
+        self.storage_file = os.path.join(s_dir, self.settings.storage_name + '.json')
+
+        if not os.path.exists(s_dir):
+            os.makedirs(s_dir, exist_ok=True)
+
         self._init_storage()
     
     def _init_storage(self):

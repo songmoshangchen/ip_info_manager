@@ -47,16 +47,20 @@ def _load_ips(ip_file: str) -> list:
 
 class TraceIPPipeline:
 
+    SCENARIO_NAME = 'trace_ip'
+
     def __init__(self, ip_file: str, config: dict,
                  reporter: BaseTraceReporter = None):
         self._config = config
         self._ips = _load_ips(ip_file)
-        self._ip_reader = IPReader()
 
-        project_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        self._output_dir = self._resolve_output_dir(project_dir)
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))))
+        self._output_dir = self._resolve_output_dir(project_root)
 
-        prefix = self._ip_reader.settings.storage_name
+        prefix = Settings().trace_ip_project_name
+
+        self._ip_reader = IPReader(storage_dir=self._output_dir)
 
         classifiers_dir = os.path.join(os.path.dirname(__file__), 'classifiers')
         builtin_path = os.path.join(classifiers_dir, 'builtin_rules.json')
@@ -70,7 +74,7 @@ class TraceIPPipeline:
 
         self._classifier = IPClassifier(builtin_path, custom_path)
         self._progress = ProgressManager(self._output_dir, prefix)
-        self._batch_writer = BatchIPWriter(IPWriter())
+        self._batch_writer = BatchIPWriter(IPWriter(storage_dir=self._output_dir))
 
         if reporter:
             self._reporter = reporter
@@ -111,10 +115,10 @@ class TraceIPPipeline:
 
         self._reporter.save_report()
 
-    def _resolve_output_dir(self, project_dir: str) -> str:
-        output_dir = self._ip_reader.settings.storage_dir
-        if not os.path.isabs(output_dir):
-            output_dir = os.path.join(project_dir, output_dir)
+    def _resolve_output_dir(self, project_root: str) -> str:
+        project_name = Settings().trace_ip_project_name
+        output_dir = os.path.join(
+            project_root, 'data', self.SCENARIO_NAME, project_name)
         os.makedirs(output_dir, exist_ok=True)
         return output_dir
 
@@ -276,7 +280,7 @@ class TraceIPPipeline:
             ip for ip, cls in classification.items()
             if cls['category'] in DEEP_QUERY_CATEGORIES
         ]
-        prefix = self._ip_reader.settings.storage_name
+        prefix = Settings().trace_ip_project_name
         filtered_file = os.path.join(
             self._output_dir, f'{prefix}.trace_filtered_ips')
         with open(filtered_file, 'w', encoding='utf-8') as f:
@@ -321,7 +325,7 @@ class TraceIPPipeline:
             logger.info("阶段3已完成，跳过")
             return
 
-        prefix = self._ip_reader.settings.storage_name
+        prefix = Settings().trace_ip_project_name
         filtered_file = os.path.join(
             self._output_dir, f'{prefix}.trace_filtered_ips')
         if not os.path.exists(filtered_file):
