@@ -2,7 +2,7 @@
 
 > 本文档为 Plan 2，记录三个新渠道的设计方案。
 > 各渠道独立实现后，逐一集成到 `ip_domain_lookup` 场景的 Phase 1 域名收集阶段。
-> 当前状态：**ZoomEye 已完成，Fofa Search 实现中，SSL 证书待实现**
+> 当前状态：**全部完成 ✅（ZoomEye + Fofa Search + SSL 证书）**
 
 ## 渠道总览
 
