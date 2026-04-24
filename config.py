@@ -9,6 +9,32 @@ ENV_FILE = os.path.join(CONFIG_DIR, '.env')
 FORBIDDEN_STORAGE_DIRS = {'ip_domain_lookup', 'trace_ip'}
 
 
+def _validate_path_no_traversal(v: str, field_name: str) -> str:
+    v = v.strip()
+    if not v:
+        return v
+    if os.path.isabs(v):
+        raise ValueError(f'{field_name} 不允许使用绝对路径: {v}')
+    normalized = os.path.normpath(v)
+    parts = normalized.replace('\\', '/').split('/')
+    if '..' in parts:
+        raise ValueError(f'{field_name} 不允许包含 ".." 路径遍历: {v}')
+    return v
+
+
+def _validate_simple_name(v: str, field_name: str) -> str:
+    v = v.strip()
+    if not v:
+        raise ValueError(f'{field_name} 不能为空')
+    if os.path.isabs(v):
+        raise ValueError(f'{field_name} 不允许使用绝对路径: {v}')
+    if '\\' in v or '/' in v:
+        raise ValueError(f'{field_name} 不允许包含路径分隔符: {v}')
+    if '..' in v:
+        raise ValueError(f'{field_name} 不允许包含 "..": {v}')
+    return v
+
+
 class BaseIPSettings(BaseSettings):
     storage_dir: str = Field(default='', description='channel数据存储子目录（相对于data/，可为空）')
     storage_name: str = Field(default='ip_data', description='存储名称（用于数据文件命名前缀）')
@@ -18,13 +44,21 @@ class BaseIPSettings(BaseSettings):
     @field_validator('storage_dir')
     @classmethod
     def validate_storage_dir(cls, v: str) -> str:
-        v = v.strip()
-        if os.path.isabs(v):
-            raise ValueError(f'storage_dir 不允许使用绝对路径: {v}')
-        if v in FORBIDDEN_STORAGE_DIRS:
+        v = _validate_path_no_traversal(v, 'storage_dir')
+        if v and v in FORBIDDEN_STORAGE_DIRS:
             raise ValueError(f'storage_dir 不允许使用场景保留名称: {v}')
         return v
-    
+
+    @field_validator('storage_name')
+    @classmethod
+    def validate_storage_name(cls, v: str) -> str:
+        return _validate_simple_name(v, 'storage_name')
+
+    @field_validator('ip_domain_lookup_project_name', 'trace_ip_project_name')
+    @classmethod
+    def validate_project_name(cls, v: str) -> str:
+        return _validate_simple_name(v, '项目名称')
+
     class Config:
         env_prefix = 'IP_'
         env_file = ENV_FILE

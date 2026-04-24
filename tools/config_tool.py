@@ -9,6 +9,29 @@ from config import ENV_FILE
 
 REQUIRED_PREFIX = 'IP_'
 
+PATH_SAFE_KEYS = {
+    'IP_STORAGE_DIR',
+    'IP_STORAGE_NAME',
+    'IP_IP_DOMAIN_LOOKUP_PROJECT_NAME',
+    'IP_TRACE_IP_PROJECT_NAME',
+}
+
+
+def _validate_path_safety(key, value):
+    if key not in PATH_SAFE_KEYS:
+        return
+    v = value.strip()
+    if not v:
+        return
+    if os.path.isabs(v):
+        raise ValueError(f"不允许使用绝对路径: {v}")
+    normalized = os.path.normpath(v)
+    parts = normalized.replace('\\', '/').split('/')
+    if '..' in parts:
+        raise ValueError(f"不允许包含 \"..\" 路径遍历: {v}")
+    if key != 'IP_STORAGE_DIR' and ('\\' in v or '/' in v):
+        raise ValueError(f"名称不允许包含路径分隔符: {v}")
+
 
 CONFIG_GROUPS = [
     {
@@ -722,6 +745,7 @@ def main():
             print(value)
 
         elif args.command == 'set':
+            _validate_path_safety(args.key, args.value)
             mgr.set(args.key, args.value)
             display_val = args.value[:30] + '...' if len(args.value) > 30 else args.value
             print(f"已设置: {args.key}={display_val}")
@@ -748,6 +772,7 @@ def main():
                     print(f"错误: 格式无效 '{item}'，应为 KEY=VALUE")
                     sys.exit(1)
                 key, _, value = item.partition('=')
+                _validate_path_safety(key, value)
                 items[key] = value
             count = mgr.bulk_set(items)
             print(f"已批量设置 {count} 个配置项")
