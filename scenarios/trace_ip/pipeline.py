@@ -32,6 +32,7 @@ PHASE_NAMES = {
     2: '自动分类过滤',
     3: '深度查询',
     4: '汇总输出',
+    5: '生成 Word 报告',
 }
 
 
@@ -91,13 +92,14 @@ class TraceIPPipeline:
             self._progress.clear_from(from_phase)
             logger.info("从阶段 %d 开始，已清除后续阶段的标记文件", from_phase)
 
-        phases_to_run = [only_phase] if only_phase else [1, 2, 3, 4]
+        phases_to_run = [only_phase] if only_phase else [1, 2, 3, 4, 5]
 
         phase_methods = {
             1: self._phase1_collect_basic,
             2: self._phase2_classify,
             3: self._phase3_deep_query,
             4: self._phase4_summary,
+            5: self._reporter.generate_docx_report,
         }
 
         for phase_num in phases_to_run:
@@ -113,7 +115,8 @@ class TraceIPPipeline:
 
             phase_methods[phase_num]()
 
-        self._reporter.save_report()
+        if 5 not in phases_to_run:
+            self._reporter.save_report()
 
     def _resolve_output_dir(self, project_root: str) -> str:
         project_name = Settings().trace_ip_project_name

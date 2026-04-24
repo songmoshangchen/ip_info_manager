@@ -29,6 +29,7 @@ PHASE_NAMES = {
     1: '域名收集',
     2: 'DNS正向验证',
     3: '汇总报告',
+    4: '生成 Word 报告',
 }
 
 
@@ -86,12 +87,13 @@ class IPDomainLookupPipeline:
             self._progress.clear_from(from_phase)
             logger.info("从阶段 %d 开始，已清除后续阶段的标记文件", from_phase)
 
-        phases_to_run = [only_phase] if only_phase else [1, 2, 3]
+        phases_to_run = [only_phase] if only_phase else [1, 2, 3, 4]
 
         phase_methods = {
             1: self._phase1_collect_domains,
             2: self._phase2_dns_verify,
             3: self._phase3_summary,
+            4: self._reporter.generate_docx_report,
         }
 
         for phase_num in phases_to_run:
@@ -107,7 +109,8 @@ class IPDomainLookupPipeline:
 
             phase_methods[phase_num]()
 
-        self._reporter.save_report()
+        if 4 not in phases_to_run:
+            self._reporter.save_report()
 
     def _resolve_output_dir(self, project_root: str) -> str:
         project_name = Settings().ip_domain_lookup_project_name
