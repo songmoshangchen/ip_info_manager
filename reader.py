@@ -5,8 +5,8 @@ from config import Settings
 
 
 class IPReader:
-    def __init__(self, storage_dir: str = None):
-        self.settings = Settings()
+    def __init__(self, settings=None, storage_dir: str = None):
+        self.settings = settings or Settings()
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
         if storage_dir:

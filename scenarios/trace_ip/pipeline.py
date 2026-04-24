@@ -60,8 +60,10 @@ class TraceIPPipeline:
         self._output_dir = self._resolve_output_dir(project_root)
 
         prefix = Settings().trace_ip_project_name
+        
+        scenario_settings = Settings().model_copy(update={'storage_name': prefix})
 
-        self._ip_reader = IPReader(storage_dir=self._output_dir)
+        self._ip_reader = IPReader(settings=scenario_settings, storage_dir=self._output_dir)
 
         classifiers_dir = os.path.join(os.path.dirname(__file__), 'classifiers')
         builtin_path = os.path.join(classifiers_dir, 'builtin_rules.json')
@@ -75,7 +77,7 @@ class TraceIPPipeline:
 
         self._classifier = IPClassifier(builtin_path, custom_path)
         self._progress = ProgressManager(self._output_dir, prefix)
-        self._batch_writer = BatchIPWriter(IPWriter(storage_dir=self._output_dir))
+        self._batch_writer = BatchIPWriter(IPWriter(settings=scenario_settings, storage_dir=self._output_dir))
 
         if reporter:
             self._reporter = reporter

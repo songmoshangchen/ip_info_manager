@@ -57,8 +57,10 @@ class IPDomainLookupPipeline:
         self._output_dir = self._resolve_output_dir(project_root)
 
         prefix = Settings().ip_domain_lookup_project_name
+        
+        scenario_settings = Settings().model_copy(update={'storage_name': prefix})
 
-        self._ip_reader = IPReader(storage_dir=self._output_dir)
+        self._ip_reader = IPReader(settings=scenario_settings, storage_dir=self._output_dir)
 
         self._progress = ProgressManager(self._output_dir, prefix)
         self._progress._PHASE_CONFIG = {
@@ -70,7 +72,7 @@ class IPDomainLookupPipeline:
             2: 'domain_lookup_phase2_done',
         }
 
-        self._batch_writer = BatchIPWriter(IPWriter(storage_dir=self._output_dir))
+        self._batch_writer = BatchIPWriter(IPWriter(settings=scenario_settings, storage_dir=self._output_dir))
 
         if reporter:
             self._reporter = reporter
