@@ -13,8 +13,8 @@ from scripts.logger_utils import get_batch_logger
 
 
 class ThreadSafeIPWriter:
-    def __init__(self):
-        self.settings = Settings()
+    def __init__(self, settings=None):
+        self.settings = settings or Settings()
         self.lock = threading.Lock()
         self.pending_updates = {}
         self.pending_lock = threading.Lock()
