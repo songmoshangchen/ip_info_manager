@@ -54,6 +54,8 @@ class TextDomainLookupReporter(BaseDomainLookupReporter):
         phase1 = self._report['phases'].get('phase1', {})
         phase2 = self._report['phases'].get('phase2', {})
 
+        self._report['total_ips'] = len(ips)
+
         logger.info("=" * 60)
         logger.info("IP域名反查报告")
         logger.info("=" * 60)
@@ -128,7 +130,7 @@ class TextDomainLookupReporter(BaseDomainLookupReporter):
         if 'T' in report_time:
             report_time = report_time.split('T')[0]
 
-        total_ips = report_data.get('total_ips', len(ip_data))
+        total_ips = report_data.get('total_ips') or len(ip_data)
         phase1 = report_data.get('phases', {}).get('phase1', {})
         phase2 = report_data.get('phases', {}).get('phase2', {})
         channel_stats = phase1.get('channel_stats', {})
@@ -201,6 +203,27 @@ class TextDomainLookupReporter(BaseDomainLookupReporter):
                 builder.table_caption(f'{ip} 验证通过域名')
                 rows = [[ip, d] for d in sorted(by_ip[ip])]
                 builder.add_table(['IP', '域名'], rows)
+
+        unmatched_by_ip = {}
+        for ip in sorted(ip_data.keys()):
+            lookup = ip_data[ip].get('ip_domain_lookup', {})
+            for d in lookup.get('verified_domains', []):
+                if d.get('status') in ('changed', 'unresolved', 'timeout', 'error'):
+                    unmatched_by_ip.setdefault(ip, []).append(d)
+        if unmatched_by_ip:
+            builder.new_chapter()
+            builder.add_heading(f'{cn_chars[chapter_num - 1]}、未通过验证域名', 1)
+            chapter_num += 1
+            builder.add_body('以下域名经DNS正向验证未确认指向目标IP，可能已变更指向或无法解析：')
+            builder.table_caption(f'未通过验证域名（共 {sum(len(v) for v in unmatched_by_ip.values())} 个）')
+            rows = []
+            for ip in sorted(unmatched_by_ip.keys()):
+                for d in sorted(unmatched_by_ip[ip], key=lambda x: x.get('domain', '')):
+                    st = d.get('status', '')
+                    resolved = d.get('resolved_ips', [])
+                    resolved_str = ', '.join(resolved) if resolved else '-'
+                    rows.append([ip, d['domain'], status_map.get(st, st), resolved_str])
+            builder.add_table(['原IP', '域名', '验证状态', '解析IP'], rows)
 
         builder.new_chapter()
         builder.add_heading(f'{cn_chars[chapter_num - 1]}、IP域名收集详情', 1)

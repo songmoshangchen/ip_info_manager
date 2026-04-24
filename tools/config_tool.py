@@ -574,11 +574,11 @@ def _cmd_status(mgr):
                         issues.append(f"无效数值: {item['key']}={value}")
 
     if issues:
-        print(f"\n  ⚠ 发现 {len(issues)} 个问题:")
+        print(f"\n  ? 发现 {len(issues)} 个问题:")
         for issue in issues:
             print(f"    - {issue}")
     else:
-        print(f"  ✓ 配置检查通过，无异常")
+        print(f"  ? 配置检查通过，无异常")
 
 
 def _cmd_info(mgr, key):
@@ -651,16 +651,16 @@ def _cmd_check(mgr):
     print("=" * 60)
 
     if not issues and not warnings:
-        print("✓ 所有配置检查通过，无异常")
+        print("? 所有配置检查通过，无异常")
     else:
         if issues:
-            print(f"\n⚠ 错误 ({len(issues)} 项):")
+            print(f"\n? 错误 ({len(issues)} 项):")
             for key, desc, reason in issues:
                 print(f"  [错误] {key}")
                 print(f"         说明: {desc}")
                 print(f"         问题: {reason}")
         if warnings:
-            print(f"\n⚠ 警告 ({len(warnings)} 项):")
+            print(f"\n? 警告 ({len(warnings)} 项):")
             for key, desc, reason in warnings:
                 print(f"  [警告] {key}")
                 print(f"         说明: {desc}")
