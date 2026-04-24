@@ -68,6 +68,7 @@ ip_info_manager/
 │       └── reporter.py     # 报告生成
 ├── tools/                  # 辅助工具
 │   ├── docx_builder.py   # Word 报告生成公共引擎（python-docx）
+│   ├── ai_analysis.py    # AI 研判辅助工具（筛选待研判IP、统计）
 │   ├── merge_ip_files.py   # IP 文件合并/去重/验证
 │   ├── config_tool.py      # .env 配置管理工具
 │   ├── progress_tool.py    # .progress 进度文件管理工具
@@ -758,6 +759,25 @@ python tools/verify_ip_domain.py data/ip_data.json --channel aizhan --concurrenc
 - `unresolved` — DNS 解析失败（域名可能已过期）❌
 
 验证结果会写入 JSON 文件中每个 IP 条目的 `domain_verify` 字段。
+
+### tools/ai\_analysis.py — AI 研判辅助工具
+
+从溯源IP数据中筛选待 AI 研判的 IP（按分类过滤：other/cloud_provider/residential），批量输出供人工或 AI 分析。研判结果通过 `writer.py add <IP> ai_analysis key=value ...` 写入，Word 报告中会自动展示 AI 研判结果章节。
+
+```bash
+python tools/ai_analysis.py batch                                       # 批量读取待研判IP数据
+python tools/ai_analysis.py batch --size 20 --offset 10                 # 指定批量大小和偏移量
+python tools/ai_analysis.py batch --categories other,cloud_provider     # 按分类筛选
+python tools/ai_analysis.py count                                       # 统计待研判IP数量
+```
+
+**参数说明：**
+
+| 参数 | 说明 |
+| --- | --- |
+| `--size` | 每批读取数量（默认 10） |
+| `--offset` | 偏移量（默认 0） |
+| `--categories` | 筛选分类，逗号分隔（默认 other,cloud_provider,residential） |
 
 ## 配置管理
 
