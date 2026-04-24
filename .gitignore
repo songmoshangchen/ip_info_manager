@@ -8,3 +8,9 @@ data/
 channel/data/
 debug_*.py
 .superpowers/
+*.bak
+*.backup
+*.tmp
+*.old
+*~
+*.swp
