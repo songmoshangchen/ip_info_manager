@@ -74,3 +74,20 @@ class SslCertSettings(BaseIPSettings):
     ssl_cert_port: int = Field(default=443, description='SSL 证书获取端口')
     ssl_cert_timeout: float = Field(default=5.0, description='SSL 连接超时时间（秒）')
     ssl_cert_query_delay: float = Field(default=0.5, description='SSL 证书查询间隔（秒）')
+
+
+class IPDomainLookupSettings(BaseIPSettings):
+    rdns_ptr_enabled: bool = Field(default=True, description='启用 RDNS PTR 反向解析')
+    aizhan_enabled: bool = Field(default=True, description='启用爱站网 IP 反查域名')
+    chinaz_enabled: bool = Field(default=True, description='启用站长之家 IP 反查域名')
+    zoomeye_enabled: bool = Field(default=True, description='启用 ZoomEye 网络空间测绘')
+    fofa_search_enabled: bool = Field(default=True, description='启用 Fofa 搜索查询')
+    ssl_cert_enabled: bool = Field(default=True, description='启用 SSL 证书域名提取')
+
+
+class TraceIPSettings(BaseIPSettings):
+    phase1_ipinfo_enabled: bool = Field(default=True, description='溯源IP流水线阶段1：启用 IPInfo 查询')
+    phase1_rdns_ptr_enabled: bool = Field(default=True, description='溯源IP流水线阶段1：启用 RDNS PTR 反向解析')
+    phase3_aizhan_enabled: bool = Field(default=True, description='溯源IP流水线阶段3：启用爱站网 IP 反查域名')
+    phase3_chinaz_enabled: bool = Field(default=True, description='溯源IP流水线阶段3：启用站长之家 IP 反查域名')
+    phase3_fofa_host_enabled: bool = Field(default=True, description='溯源IP流水线阶段3：启用 Fofa Host 聚合查询')

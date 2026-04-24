@@ -15,7 +15,7 @@ from channel.chinaz import fetch_channel as fetch_chinaz
 from channel.zoomeye import fetch_channel as fetch_zoomeye
 from channel.fofa_search import fetch_channel as fetch_fofa_search
 from channel.ssl_cert import fetch_channel as fetch_ssl_cert
-from config import Settings, RdnsSettings, AizhanSettings, ChinazSettings, ZoomeyeSettings, FofaSettings, SslCertSettings
+from config import Settings, RdnsSettings, AizhanSettings, ChinazSettings, ZoomeyeSettings, FofaSettings, SslCertSettings, IPDomainLookupSettings
 from reader import IPReader
 from writer import IPWriter
 
@@ -136,6 +136,7 @@ class IPDomainLookupPipeline:
         zoomeye_settings = ZoomeyeSettings()
         fofa_settings = FofaSettings()
         ssl_cert_settings = SslCertSettings()
+        lookup_settings = IPDomainLookupSettings()
         channel_timeout = self._config.get('channel_timeout', 0)
 
         total = len(self._ips)
@@ -147,49 +148,105 @@ class IPDomainLookupPipeline:
         logger.info("剩余: %d", total - skipped)
         logger.info("-" * 60)
 
-        max_delay = max(
-            rdns_settings.rdns_query_delay,
-            aizhan_settings.aizhan_query_delay,
-            chinaz_settings.chinaz_query_delay,
-            zoomeye_settings.zoomeye_query_delay,
-            fofa_settings.fofa_query_delay,
-            ssl_cert_settings.ssl_cert_query_delay,
-        )
-
+        delays = []
         channel_stats = defaultdict(int)
+        enabled_channels = []
 
-        zoomeye_enabled = bool(zoomeye_settings.zoomeye_api_key and zoomeye_settings.zoomeye_api_key.strip())
-        if not zoomeye_enabled:
-            logger.info("ZoomEye API Key 未配置，跳过该渠道")
+        if lookup_settings.rdns_ptr_enabled:
+            delays.append(rdns_settings.rdns_query_delay)
+            enabled_channels.append('rdns_ptr')
+            logger.info("✓ RDNS PTR 反向解析: 已启用")
+        else:
+            logger.info("✗ RDNS PTR 反向解析: 已禁用")
+
+        if lookup_settings.aizhan_enabled:
+            delays.append(aizhan_settings.aizhan_query_delay)
+            enabled_channels.append('aizhan')
+            logger.info("✓ 爱站网 IP 反查域名: 已启用")
+        else:
+            logger.info("✗ 爱站网 IP 反查域名: 已禁用")
+
+        if lookup_settings.chinaz_enabled:
+            delays.append(chinaz_settings.chinaz_query_delay)
+            enabled_channels.append('chinaz')
+            logger.info("✓ 站长之家 IP 反查域名: 已启用")
+        else:
+            logger.info("✗ 站长之家 IP 反查域名: 已禁用")
+
+        if lookup_settings.zoomeye_enabled:
+            if zoomeye_settings.zoomeye_api_key and zoomeye_settings.zoomeye_api_key.strip():
+                delays.append(zoomeye_settings.zoomeye_query_delay)
+                enabled_channels.append('zoomeye')
+                logger.info("✓ ZoomEye 网络空间测绘: 已启用")
+            else:
+                logger.info("✗ ZoomEye 网络空间测绘: API Key 未配置，已禁用")
+        else:
+            logger.info("✗ ZoomEye 网络空间测绘: 已禁用")
+
+        if lookup_settings.fofa_search_enabled:
+            delays.append(fofa_settings.fofa_query_delay)
+            enabled_channels.append('fofa_search')
+            logger.info("✓ Fofa 搜索查询: 已启用")
+        else:
+            logger.info("✗ Fofa 搜索查询: 已禁用")
+
+        if lookup_settings.ssl_cert_enabled:
+            delays.append(ssl_cert_settings.ssl_cert_query_delay)
+            enabled_channels.append('ssl_cert')
+            logger.info("✓ SSL 证书域名提取: 已启用")
+        else:
+            logger.info("✗ SSL 证书域名提取: 已禁用")
+
+        if not enabled_channels:
+            logger.error("没有启用的采集渠道，请检查配置文件中的 IP_*_ENABLED 选项")
+            return
+
+        logger.info("-" * 60)
+        logger.info("已启用渠道: %s", ', '.join(enabled_channels))
+        logger.info("-" * 60)
+
+        max_delay = max(delays) if delays else 0
 
         with self._batch_writer:
             for i, ip in enumerate(self._ips, 1):
                 if ip in processed:
                     continue
 
-                channel_specs = [
-                    ('rdns_ptr', fetch_rdns_ptr, {
-                        'timeout': rdns_settings.rdns_query_timeout, 'delay': 0}),
-                    ('aizhan', fetch_aizhan, {
-                        'cookie': aizhan_settings.aizhan_cookie, 'delay': 0}),
-                    ('chinaz', fetch_chinaz, {
-                        'cookie': chinaz_settings.chinaz_cookie, 'delay': 0}),
-                ]
-                if zoomeye_enabled:
+                channel_specs = []
+
+                if lookup_settings.rdns_ptr_enabled:
                     channel_specs.append(
-                        ('zoomeye', fetch_zoomeye, {
-                            'key': zoomeye_settings.zoomeye_api_key, 'delay': 0,
-                            'sub_type': 'web'}))
+                        ('rdns_ptr', fetch_rdns_ptr, {
+                            'timeout': rdns_settings.rdns_query_timeout, 'delay': 0}))
 
-                channel_specs.append(
-                    ('fofa_search', fetch_fofa_search, {
-                        'key': fofa_settings.fofa_api_key, 'delay': 0,
-                        'query_suffix': ' && is_domain=true'}))
+                if lookup_settings.aizhan_enabled:
+                    channel_specs.append(
+                        ('aizhan', fetch_aizhan, {
+                            'cookie': aizhan_settings.aizhan_cookie, 'delay': 0}))
 
-                channel_specs.append(
-                    ('ssl_cert', fetch_ssl_cert, {
-                        'port': ssl_cert_settings.ssl_cert_port,
-                        'timeout': ssl_cert_settings.ssl_cert_timeout, 'delay': 0}))
+                if lookup_settings.chinaz_enabled:
+                    channel_specs.append(
+                        ('chinaz', fetch_chinaz, {
+                            'cookie': chinaz_settings.chinaz_cookie, 'delay': 0}))
+
+                if lookup_settings.zoomeye_enabled:
+                    if zoomeye_settings.zoomeye_api_key and zoomeye_settings.zoomeye_api_key.strip():
+                        channel_specs.append(
+                            ('zoomeye', fetch_zoomeye, {
+                                'key': zoomeye_settings.zoomeye_api_key, 'delay': 0,
+                                'sub_type': 'web'}))
+
+                if lookup_settings.fofa_search_enabled:
+                    channel_specs.append(
+                        ('fofa_search', fetch_fofa_search, {
+                            'key': fofa_settings.fofa_api_key, 'delay': 0,
+                            'query_suffix': ' && is_domain=true'}))
+
+                if lookup_settings.ssl_cert_enabled:
+                    channel_specs.append(
+                        ('ssl_cert', fetch_ssl_cert, {
+                            'port': ssl_cert_settings.ssl_cert_port,
+                            'timeout': ssl_cert_settings.ssl_cert_timeout, 'delay': 0}))
 
                 results = self._query_channels_parallel(ip, channel_specs, channel_timeout)
 

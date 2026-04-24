@@ -14,7 +14,7 @@ from channel.chinaz import fetch_channel as fetch_chinaz
 from channel.fofa_host import fetch_channel as fetch_fofa_host
 from config import (
     IpinfoSettings, RdnsSettings, AizhanSettings,
-    ChinazSettings, FofaSettings, Settings,
+    ChinazSettings, FofaSettings, Settings, TraceIPSettings,
 )
 from reader import IPReader
 from writer import IPWriter
@@ -138,6 +138,7 @@ class TraceIPPipeline:
 
         ipinfo_settings = IpinfoSettings()
         rdns_settings = RdnsSettings()
+        trace_settings = TraceIPSettings()
         channel_timeout = self._config.get('channel_timeout', 0)
 
         total = len(self._ips)
@@ -145,53 +146,90 @@ class TraceIPPipeline:
         success_count = 0
         fail_count = 0
 
+        delays = []
+        enabled_channels = []
+
         logger.info("总IP数: %d", total)
         logger.info("已完成: %d", skipped)
         logger.info("剩余: %d", total - skipped)
-        logger.info("IPInfo 查询间隔: %ss", ipinfo_settings.ipinfo_query_delay)
-        logger.info("RDNS 查询超时: %ss", rdns_settings.rdns_query_timeout)
         logger.info("-" * 60)
+
+        if trace_settings.phase1_ipinfo_enabled:
+            delays.append(ipinfo_settings.ipinfo_query_delay)
+            enabled_channels.append('ipinfo_api')
+            logger.info("✓ IPInfo 查询: 已启用")
+        else:
+            logger.info("✗ IPInfo 查询: 已禁用")
+
+        if trace_settings.phase1_rdns_ptr_enabled:
+            delays.append(rdns_settings.rdns_query_delay)
+            enabled_channels.append('rdns_ptr')
+            logger.info("✓ RDNS PTR 反向解析: 已启用")
+        else:
+            logger.info("✗ RDNS PTR 反向解析: 已禁用")
+
+        if not enabled_channels:
+            logger.error("没有启用的采集渠道，请检查配置文件中的 IP_TRACE_IP_PHASE1_*_ENABLED 选项")
+            return
+
+        logger.info("-" * 60)
+        logger.info("已启用渠道: %s", ', '.join(enabled_channels))
+        logger.info("-" * 60)
+
+        max_delay = max(delays) if delays else 0
 
         with self._batch_writer:
             for i, ip in enumerate(self._ips, 1):
                 if ip in processed:
                     continue
 
-                results = self._query_channels_parallel(ip, [
-                    ('ipinfo_api', fetch_ipinfo,
-                     {'key': ipinfo_settings.ipinfo_access_token, 'delay': 0}),
-                    ('rdns_ptr', fetch_rdns_ptr,
-                     {'timeout': rdns_settings.rdns_query_timeout, 'delay': 0}),
-                ], channel_timeout)
+                channel_specs = []
 
-                ipinfo_data = results.get('ipinfo_api', {'raw_error': 'no result'})
-                rdns_data = results.get('rdns_ptr', {'raw_error': 'no result'})
+                if trace_settings.phase1_ipinfo_enabled:
+                    channel_specs.append(
+                        ('ipinfo_api', fetch_ipinfo,
+                         {'key': ipinfo_settings.ipinfo_access_token, 'delay': 0}))
 
-                if 'raw_error' in ipinfo_data:
-                    logger.info("[%d/%d] %s [ipinfo ❌] [rdns ...]",
-                                i, total, ip)
-                    fail_count += 1
-                else:
-                    country = ipinfo_data.get('country', 'N/A')
-                    org = ipinfo_data.get('as_name', 'N/A')
-                    logger.info("[%d/%d] %s [ipinfo ✅ %s/%s]",
-                                i, total, ip, country, org)
-                    success_count += 1
+                if trace_settings.phase1_rdns_ptr_enabled:
+                    channel_specs.append(
+                        ('rdns_ptr', fetch_rdns_ptr,
+                         {'timeout': rdns_settings.rdns_query_timeout, 'delay': 0}))
 
-                if rdns_data.get('has_ptr'):
-                    hostname = rdns_data.get('hostname', 'N/A')
-                    logger.info("  [rdns ✅ %s]", hostname)
-                else:
-                    logger.info("  [rdns ❌]")
+                results = self._query_channels_parallel(ip, channel_specs, channel_timeout)
 
-                self._batch_writer.add(ip, 'ipinfo_api', ipinfo_data)
-                self._batch_writer.add(ip, 'rdns_ptr', rdns_data)
+                ipinfo_data = results.get('ipinfo_api', {'raw_error': 'no result'}) if trace_settings.phase1_ipinfo_enabled else None
+                rdns_data = results.get('rdns_ptr', {'raw_error': 'no result'}) if trace_settings.phase1_rdns_ptr_enabled else None
+
+                if ipinfo_data:
+                    if 'raw_error' in ipinfo_data:
+                        logger.info("[%d/%d] %s [ipinfo ❌]", i, total, ip)
+                        fail_count += 1
+                    else:
+                        country = ipinfo_data.get('country', 'N/A')
+                        org = ipinfo_data.get('as_name', 'N/A')
+                        logger.info("[%d/%d] %s [ipinfo ✅ %s/%s]",
+                                    i, total, ip, country, org)
+                        success_count += 1
+
+                if rdns_data:
+                    if rdns_data.get('has_ptr'):
+                        hostname = rdns_data.get('hostname', 'N/A')
+                        logger.info("  [rdns ✅ %s]", hostname)
+                    else:
+                        logger.info("  [rdns ❌]")
+
+                if trace_settings.phase1_ipinfo_enabled:
+                    self._batch_writer.add(ip, 'ipinfo_api', ipinfo_data)
+
+                if trace_settings.phase1_rdns_ptr_enabled:
+                    self._batch_writer.add(ip, 'rdns_ptr', rdns_data)
+
                 self._batch_writer.flush_batch()
 
                 self._progress.record(ip, 1)
                 self._progress.flush()
 
-                time.sleep(ipinfo_settings.ipinfo_query_delay)
+                time.sleep(max_delay)
 
         self._progress.mark_phase_done(1)
 
@@ -353,24 +391,49 @@ class TraceIPPipeline:
         aizhan_settings = AizhanSettings()
         chinaz_settings = ChinazSettings()
         fofa_settings = FofaSettings()
+        trace_settings = TraceIPSettings()
         channel_timeout = self._config.get('channel_timeout', 0)
 
         total = len(filtered_ips)
         skipped = len([ip for ip in filtered_ips if ip in processed])
 
+        delays = []
+        enabled_channels = []
+
         logger.info("需要深度查询的IP: %d", total)
         logger.info("已完成: %d", skipped)
         logger.info("剩余: %d", total - skipped)
-        logger.info("爱站网查询间隔: %ss", aizhan_settings.aizhan_query_delay)
-        logger.info("站长之家查询间隔: %ss", chinaz_settings.chinaz_query_delay)
-        logger.info("Fofa Host 查询间隔: %ss", fofa_settings.fofa_query_delay)
         logger.info("-" * 60)
 
-        max_delay = max(
-            aizhan_settings.aizhan_query_delay,
-            chinaz_settings.chinaz_query_delay,
-            fofa_settings.fofa_query_delay,
-        )
+        if trace_settings.phase3_aizhan_enabled:
+            delays.append(aizhan_settings.aizhan_query_delay)
+            enabled_channels.append('aizhan')
+            logger.info("✓ 爱站网 IP 反查域名: 已启用")
+        else:
+            logger.info("✗ 爱站网 IP 反查域名: 已禁用")
+
+        if trace_settings.phase3_chinaz_enabled:
+            delays.append(chinaz_settings.chinaz_query_delay)
+            enabled_channels.append('chinaz')
+            logger.info("✓ 站长之家 IP 反查域名: 已启用")
+        else:
+            logger.info("✗ 站长之家 IP 反查域名: 已禁用")
+
+        if trace_settings.phase3_fofa_host_enabled:
+            delays.append(fofa_settings.fofa_query_delay)
+            enabled_channels.append('fofa_host')
+            logger.info("✓ Fofa Host 聚合查询: 已启用")
+        else:
+            logger.info("✗ Fofa Host 聚合查询: 已禁用")
+
+        if not enabled_channels:
+            logger.warning("深度查询没有启用的采集渠道，请检查配置文件中的 IP_TRACE_IP_PHASE3_*_ENABLED 选项")
+
+        logger.info("-" * 60)
+        logger.info("已启用渠道: %s", ', '.join(enabled_channels))
+        logger.info("-" * 60)
+
+        max_delay = max(delays) if delays else 0
 
         new_count = 0
         with self._batch_writer:
@@ -381,44 +444,67 @@ class TraceIPPipeline:
                 new_count += 1
                 logger.info("[%d/%d] 深度查询: %s", i, total, ip)
 
-                results = self._query_channels_parallel(ip, [
-                    ('aizhan', fetch_aizhan,
-                     {'cookie': aizhan_settings.aizhan_cookie, 'delay': 0}),
-                    ('chinaz', fetch_chinaz,
-                     {'cookie': chinaz_settings.chinaz_cookie, 'delay': 0}),
-                    ('fofa_host', fetch_fofa_host,
-                     {'key': fofa_settings.fofa_api_key, 'delay': 0}),
-                ], channel_timeout)
+                channel_specs = []
 
-                aizhan_data = results.get('aizhan', {'raw_error': 'no result'})
-                chinaz_data = results.get('chinaz', {'raw_error': 'no result'})
-                fofa_data = results.get('fofa_host', {'raw_error': 'no result'})
+                if trace_settings.phase3_aizhan_enabled:
+                    channel_specs.append(
+                        ('aizhan', fetch_aizhan,
+                         {'cookie': aizhan_settings.aizhan_cookie, 'delay': 0}))
 
-                if aizhan_data.get('success'):
-                    dc = aizhan_data.get('domain_count', 0)
-                    loc = aizhan_data.get('location', 'N/A')
-                    logger.info("  爱站: ✅ %s - %d 个域名", loc, dc)
-                else:
-                    logger.info("  爱站: ❌ %s",
-                                aizhan_data.get('error', 'N/A'))
+                if trace_settings.phase3_chinaz_enabled:
+                    channel_specs.append(
+                        ('chinaz', fetch_chinaz,
+                         {'cookie': chinaz_settings.chinaz_cookie, 'delay': 0}))
 
-                if chinaz_data.get('success'):
-                    dc = len(chinaz_data.get('domains', []))
-                    loc = chinaz_data.get('location', 'N/A')
-                    logger.info("  站长: ✅ %s - %d 个域名", loc, dc)
-                else:
-                    logger.info("  站长: ❌ %s",
-                                chinaz_data.get('error', 'N/A'))
+                if trace_settings.phase3_fofa_host_enabled:
+                    channel_specs.append(
+                        ('fofa_host', fetch_fofa_host,
+                         {'key': fofa_settings.fofa_api_key, 'delay': 0}))
 
-                if 'raw_error' in fofa_data:
-                    logger.info("  Fofa Host: ❌ %s",
-                                fofa_data.get('error_message', 'N/A'))
-                else:
-                    logger.info("  Fofa Host: ✅")
+                if not channel_specs:
+                    logger.warning("没有可用的深度查询渠道，跳过此 IP")
+                    continue
 
-                self._batch_writer.add(ip, 'aizhan', aizhan_data)
-                self._batch_writer.add(ip, 'chinaz', chinaz_data)
-                self._batch_writer.add(ip, 'fofa_host', fofa_data)
+                results = self._query_channels_parallel(ip, channel_specs, channel_timeout)
+
+                aizhan_data = results.get('aizhan', {'raw_error': 'no result'}) if trace_settings.phase3_aizhan_enabled else None
+                chinaz_data = results.get('chinaz', {'raw_error': 'no result'}) if trace_settings.phase3_chinaz_enabled else None
+                fofa_data = results.get('fofa_host', {'raw_error': 'no result'}) if trace_settings.phase3_fofa_host_enabled else None
+
+                if aizhan_data:
+                    if aizhan_data.get('success'):
+                        dc = aizhan_data.get('domain_count', 0)
+                        loc = aizhan_data.get('location', 'N/A')
+                        logger.info("  爱站: ✅ %s - %d 个域名", loc, dc)
+                    else:
+                        logger.info("  爱站: ❌ %s",
+                                    aizhan_data.get('error', 'N/A'))
+
+                if chinaz_data:
+                    if chinaz_data.get('success'):
+                        dc = len(chinaz_data.get('domains', []))
+                        loc = chinaz_data.get('location', 'N/A')
+                        logger.info("  站长: ✅ %s - %d 个域名", loc, dc)
+                    else:
+                        logger.info("  站长: ❌ %s",
+                                    chinaz_data.get('error', 'N/A'))
+
+                if fofa_data:
+                    if 'raw_error' in fofa_data:
+                        logger.info("  Fofa Host: ❌ %s",
+                                    fofa_data.get('error_message', 'N/A'))
+                    else:
+                        logger.info("  Fofa Host: ✅")
+
+                if trace_settings.phase3_aizhan_enabled:
+                    self._batch_writer.add(ip, 'aizhan', aizhan_data)
+
+                if trace_settings.phase3_chinaz_enabled:
+                    self._batch_writer.add(ip, 'chinaz', chinaz_data)
+
+                if trace_settings.phase3_fofa_host_enabled:
+                    self._batch_writer.add(ip, 'fofa_host', fofa_data)
+
                 self._batch_writer.flush_batch()
 
                 self._progress.record(ip, 3)
