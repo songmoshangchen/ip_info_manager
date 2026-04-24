@@ -161,21 +161,27 @@ class TextDomainLookupReporter(BaseDomainLookupReporter):
         )
         builder.build()
 
+        cn_chars = '一二三四五六七八九十'
+        chapter_num = 1
+
         builder.new_chapter()
-        builder.add_heading('一、报告概述', 1)
+        builder.add_heading(f'{cn_chars[chapter_num - 1]}、报告概述', 1)
+        chapter_num += 1
         total_candidates = sum(ip_data[ip].get('ip_domain_lookup', {}).get('candidates', []) and len(ip_data[ip].get('ip_domain_lookup', {}).get('candidates', [])) or 0 for ip in ip_data)
         builder.add_body(f'本报告对目标IP地址进行了多渠道域名反向查询，并通过DNS解析验证确认域名当前是否仍指向目标IP。共涉及 {total_ips} 个 IP 地址，收集候选域名 {total_candidates} 个。')
 
         if channel_stats:
             builder.new_chapter()
-            builder.add_heading('二、域名收集统计', 1)
+            builder.add_heading(f'{cn_chars[chapter_num - 1]}、域名收集统计', 1)
+            chapter_num += 1
             builder.table_caption('域名收集渠道统计')
             ch_rows = [[ch, str(count)] for ch, count in sorted(channel_stats.items(), key=lambda x: -x[1])]
             builder.add_table(['收集渠道', '域名数量'], ch_rows)
 
         if verify_stats:
             builder.new_chapter()
-            builder.add_heading('三、DNS验证统计', 1)
+            builder.add_heading(f'{cn_chars[chapter_num - 1]}、DNS验证统计', 1)
+            chapter_num += 1
             builder.add_body('对所有候选域名进行DNS解析验证，结果如下：')
             builder.table_caption('DNS验证结果统计')
             v_rows = [[status_map.get(st, st), str(count)] for st, count in verify_stats.items()]
@@ -183,7 +189,8 @@ class TextDomainLookupReporter(BaseDomainLookupReporter):
 
         if matched_data:
             builder.new_chapter()
-            builder.add_heading('四、验证通过映射（按IP分表）', 1)
+            builder.add_heading(f'{cn_chars[chapter_num - 1]}、验证通过映射（按IP分表）', 1)
+            chapter_num += 1
             builder.add_body('以下为各IP地址验证确认仍指向目标IP的全部域名列表：')
 
             by_ip = {}
@@ -196,7 +203,7 @@ class TextDomainLookupReporter(BaseDomainLookupReporter):
                 builder.add_table(['IP', '域名'], rows)
 
         builder.new_chapter()
-        builder.add_heading('五、IP域名收集详情', 1)
+        builder.add_heading(f'{cn_chars[chapter_num - 1]}、IP域名收集详情', 1)
         builder.add_body('各IP地址的域名反查汇总统计：')
         builder.table_caption('IP域名反查汇总')
         summary_rows = []

@@ -35,10 +35,10 @@ def main():
 
     phase_group = parser.add_argument_group('阶段控制')
     phase_group.add_argument(
-        '--from-phase', type=int, choices=[1, 2, 3, 4],
+        '--from-phase', type=int, choices=[1, 2, 3, 4, 5],
         help='从指定阶段开始（默认从阶段1开始）')
     phase_group.add_argument(
-        '--only-phase', type=int, choices=[1, 2, 3, 4],
+        '--only-phase', type=int, choices=[1, 2, 3, 4, 5],
         help='只执行指定阶段')
 
     rule_group = parser.add_argument_group('分类规则')

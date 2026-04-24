@@ -116,6 +116,61 @@ class TextTraceReporter(BaseTraceReporter):
         if no_info_list:
             logger.info("信息不足IP已保存: %s (%d 条)", output_path, len(no_info_list))
 
+    @staticmethod
+    def _extract_deep_location(info):
+        aizhan = info.get('aizhan', {})
+        chinaz = info.get('chinaz', {})
+        if aizhan.get('success') and aizhan.get('location'):
+            return aizhan['location']
+        if chinaz.get('success') and chinaz.get('location'):
+            return chinaz['location']
+        return 'N/A'
+
+    @staticmethod
+    def _extract_deep_isp(info):
+        aizhan = info.get('aizhan', {})
+        chinaz = info.get('chinaz', {})
+        if aizhan.get('success') and aizhan.get('isp'):
+            return aizhan['isp']
+        if chinaz.get('success') and chinaz.get('isp'):
+            return chinaz['isp']
+        return 'N/A'
+
+    @staticmethod
+    def _extract_all_domains(info):
+        domains = {}
+        for src_name in ('aizhan', 'chinaz'):
+            src = info.get(src_name, {})
+            if not src.get('success'):
+                continue
+            for d in src.get('domains', []):
+                domain = d.get('domain', '')
+                if domain and domain not in domains:
+                    domains[domain] = {'domain': domain, 'source': src_name}
+                    if d.get('title'):
+                        domains[domain]['title'] = d['title']
+                    if d.get('start_time'):
+                        domains[domain]['start_time'] = d['start_time']
+                    if d.get('end_time'):
+                        domains[domain]['end_time'] = d['end_time']
+        return list(domains.values())
+
+    @staticmethod
+    def _extract_fofa_ports(info):
+        fofa = info.get('fofa_host', {})
+        if fofa.get('error'):
+            return []
+        ports = []
+        for p in fofa.get('ports', []):
+            products = ', '.join(pr.get('product', '') for pr in p.get('products', []))
+            ports.append({
+                'port': p.get('port', ''),
+                'protocol': p.get('protocol', ''),
+                'update_time': p.get('update_time', ''),
+                'products': products,
+            })
+        return ports
+
     def generate_docx_report(self):
         from tools.docx_builder import DOCX_AVAILABLE, DocxBuilder
 
@@ -167,16 +222,42 @@ class TextTraceReporter(BaseTraceReporter):
         )
         builder.build()
 
+        cn_chars = '一二三四五六七八九十'
+        chapter_num = 1
+
         builder.new_chapter()
-        builder.add_heading('一、报告概述', 1)
-        builder.add_body(f'本报告对目标IP地址进行了多维度关联分析，结合被动DNS数据、WHOIS注册信息以及网络流量特征，完成了对攻击来源的溯源定位。')
+        builder.add_heading(f'{cn_chars[chapter_num - 1]}、报告概述', 1)
+        chapter_num += 1
+        builder.add_body(f'本报告对目标IP地址进行了多维度关联分析，结合被动DNS数据、WHOIS注册信息、网络空间测绘数据以及IP反查域名信息，完成了对攻击来源的溯源定位。')
         builder.add_heading('1.1 分析目标', 2)
         builder.add_body(f'本次分析共涉及 {total_ips} 个 IP 地址，通过多渠道信息采集与关联分析，判定其归属、用途及潜在风险。')
         builder.add_heading('1.2 分析方法', 2)
-        builder.add_body('采用以下多渠道关联分析方法：被动DNS历史记录查询、WHOIS注册信息查询、反向DNS解析、自动化规则分类引擎。')
+        builder.add_body('采用以下多渠道关联分析方法：')
+        builder.add_body('（1）IP基础信息查询（IPInfo）：获取IP的ASN、组织、国家等归属信息；')
+        builder.add_body('（2）反向DNS解析（RDNS PTR）：通过反向解析获取IP关联的主机名；')
+        builder.add_body('（3）爱站网IP反查：查询IP关联的域名及网站标题，获取地理位置和运营商信息；')
+        builder.add_body('（4）站长之家IP反查：查询IP关联的域名及历史解析时间段，交叉验证归属地信息；')
+        builder.add_body('（5）FOFA网络空间测绘：探测IP开放的端口、运行的服务及产品指纹信息。')
+        builder.add_heading('1.3 数据源统计', 2)
+        aizhan_ok = sum(1 for info in ip_data.values() if info.get('aizhan', {}).get('success'))
+        chinaz_ok = sum(1 for info in ip_data.values() if info.get('chinaz', {}).get('success'))
+        fofa_ok = sum(1 for info in ip_data.values() if info.get('fofa_host', {}) and not info.get('fofa_host', {}).get('error', True))
+        builder.table_caption('数据源查询统计')
+        builder.add_table(
+            ['数据源', '查询成功数', '说明'],
+            [
+                ['IPInfo', str(total_ips), 'ASN、组织、国家归属'],
+                ['RDNS PTR', str(total_ips), '反向DNS主机名'],
+                ['爱站网', str(aizhan_ok), 'IP反查域名、归属地、运营商'],
+                ['站长之家', str(chinaz_ok), 'IP反查域名、历史解析记录'],
+                ['FOFA', str(fofa_ok), '端口、服务、产品指纹'],
+            ],
+        )
 
         builder.new_chapter()
-        builder.add_heading('二、目标信息', 1)
+        builder.add_heading(f'{cn_chars[chapter_num - 1]}、目标信息', 1)
+        chapter_num += 1
+        builder.add_body('以下为全部目标IP的基础信息汇总，结合多渠道数据进行综合展示。')
         builder.table_caption('IP基本信息汇总')
         ip_rows = []
         for ip in sorted(ip_data.keys()):
@@ -187,13 +268,16 @@ class TextTraceReporter(BaseTraceReporter):
             country = ipinfo.get('country', 'N/A')
             org = ipinfo.get('as_name', 'N/A')
             hostname = rdns.get('hostname', '') if rdns.get('has_ptr') else 'N/A'
-            cat = classify.get('label', 'N/A')
-            ip_rows.append([ip, country, org, hostname, cat])
-        builder.add_table(['IP地址', '国家', 'ASN/组织', 'RDNS', '分类'], ip_rows)
+            cat = label_map.get(classify.get('category', ''), classify.get('label', 'N/A'))
+            location = self._extract_deep_location(info)
+            isp = self._extract_deep_isp(info)
+            ip_rows.append([ip, country, org, hostname, location, isp, cat])
+        builder.add_table(['IP地址', '国家', 'ASN/组织', 'RDNS', '归属地', '运营商', '分类'], ip_rows)
 
         if classification:
             builder.new_chapter()
-            builder.add_heading('三、分类统计', 1)
+            builder.add_heading(f'{cn_chars[chapter_num - 1]}、分类统计', 1)
+            chapter_num += 1
             builder.add_body('经自动化规则分类引擎判定，各类别IP分布如下：')
             builder.table_caption('IP分类统计')
             class_rows = []
@@ -201,8 +285,99 @@ class TextTraceReporter(BaseTraceReporter):
                 class_rows.append([label_map.get(cat, cat), str(count)])
             builder.add_table(['类别', '数量'], class_rows)
 
+        deep_ips = []
+        for ip in sorted(ip_data.keys()):
+            info = ip_data[ip]
+            classify = info.get('trace_classify', {})
+            if classify.get('need_deep_query'):
+                deep_ips.append(ip)
+
+        if deep_ips:
+            builder.new_chapter()
+            builder.add_heading(f'{cn_chars[chapter_num - 1]}、深度查询详情', 1)
+            chapter_num += 1
+            builder.add_body(f'以下 {len(deep_ips)} 个IP经分类判定需要进行深度查询，其爱站网、站长之家、FOFA查询结果如下：')
+
+            for ip in deep_ips:
+                info = ip_data[ip]
+                builder.add_heading(ip, 2)
+
+                location = self._extract_deep_location(info)
+                isp = self._extract_deep_isp(info)
+                builder.add_body(f'归属地：{location}    运营商：{isp}')
+
+                domains = self._extract_all_domains(info)
+                if domains:
+                    builder.add_heading(f'反查域名（共 {len(domains)} 个）', 3)
+                    builder.table_caption(f'{ip} 反查域名')
+                    d_rows = []
+                    for d in domains:
+                        source_label = '爱站' if d['source'] == 'aizhan' else '站长之家'
+                        time_range = ''
+                        if d.get('start_time') or d.get('end_time'):
+                            time_range = f"{d.get('start_time', '')} ~ {d.get('end_time', '')}"
+                        d_rows.append([
+                            d['domain'],
+                            d.get('title', ''),
+                            time_range,
+                            source_label,
+                        ])
+                    builder.add_table(['域名', '网站标题', '解析时间段', '来源'], d_rows)
+                else:
+                    builder.add_body('未发现关联域名。')
+
+                ports = self._extract_fofa_ports(info)
+                if ports:
+                    builder.add_heading(f'开放端口与服务（共 {len(ports)} 个）', 3)
+                    builder.table_caption(f'{ip} 开放端口与服务')
+                    p_rows = []
+                    for p in ports:
+                        p_rows.append([
+                            str(p['port']),
+                            p['protocol'],
+                            p['products'],
+                            p['update_time'],
+                        ])
+                    builder.add_table(['端口', '协议', '产品/服务', '更新时间'], p_rows)
+                else:
+                    builder.add_body('FOFA未探测到开放端口信息。')
+
+        ai_ips = []
+        for ip in sorted(ip_data.keys()):
+            info = ip_data[ip]
+            if info.get('ai_analysis'):
+                ai_ips.append(ip)
+
+        if ai_ips:
+            builder.new_chapter()
+            builder.add_heading(f'{cn_chars[chapter_num - 1]}、AI研判结果', 1)
+            chapter_num += 1
+            builder.add_body(f'共 {len(ai_ips)} 个IP经AI研判分析，结果如下：')
+            builder.table_caption('AI研判汇总')
+            ai_rows = []
+            for ip in ai_ips:
+                ai = ip_data[ip]['ai_analysis']
+                ai_rows.append([
+                    ip,
+                    ai.get('net_type', 'N/A'),
+                    ai.get('trace_value', 'N/A'),
+                    ai.get('action', 'N/A'),
+                ])
+            builder.add_table(['IP', '网络类型', '溯源价值', '建议操作'], ai_rows)
+
+            builder.add_heading('研判详情', 2)
+            for ip in ai_ips:
+                ai = ip_data[ip]['ai_analysis']
+                builder.add_heading(ip, 3)
+                builder.add_body(f'网络类型：{ai.get("net_type", "N/A")}')
+                builder.add_body(f'溯源价值：{ai.get("trace_value", "N/A")}')
+                builder.add_body(f'建议操作：{ai.get("action", "N/A")}')
+                if ai.get('note'):
+                    builder.add_body(f'分析说明：{ai["note"]}')
+
         builder.new_chapter()
-        builder.add_heading('四、查询统计', 1)
+        builder.add_heading(f'{cn_chars[chapter_num - 1]}、查询统计', 1)
+        chapter_num += 1
         builder.add_body(f'需要深度查询：{deep_needed} 个IP，跳过深度查询：{deep_skipped} 个IP，未识别RDNS：{unclassified_count} 条，信息不足IP：{no_info_count} 条。')
 
         unclassified_path = os.path.join(self._output_dir, f'{self._prefix}.unclassified_rdns')
@@ -211,7 +386,8 @@ class TextTraceReporter(BaseTraceReporter):
                 unclassified = json.load(f)
             if unclassified:
                 builder.new_chapter()
-                builder.add_heading('五、未识别RDNS记录', 1)
+                builder.add_heading(f'{cn_chars[chapter_num - 1]}、未识别RDNS记录', 1)
+                chapter_num += 1
                 builder.add_body('以下RDNS记录未匹配任何已知规则，需进一步确认：')
                 builder.table_caption('未识别RDNS记录')
                 u_rows = [[item.get('ip', ''), item.get('hostname', ''), item.get('ipinfo_org', ''), item.get('ipinfo_country', '')] for item in unclassified]
