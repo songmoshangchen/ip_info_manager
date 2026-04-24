@@ -20,9 +20,21 @@ def _rfonts(style_obj, cn, en):
     if rf is None:
         rf = parse_xml(f'<w:rFonts {nsdecls("w")}/>')
         rPr.insert(0, rf)
+    for attr in ('asciiTheme', 'hAnsiTheme', 'eastAsiaTheme', 'cstheme'):
+        rf.attrib.pop(qn(f'w:{attr}'), None)
     rf.set(qn('w:ascii'), en)
     rf.set(qn('w:hAnsi'), en)
     rf.set(qn('w:eastAsia'), cn)
+
+
+def _color_black(rPr):
+    c = rPr.find(qn('w:color'))
+    if c is None:
+        c = parse_xml(f'<w:color {nsdecls("w")}/>')
+        rPr.append(c)
+    c.set(qn('w:val'), '000000')
+    for attr in ('themeColor', 'themeTint', 'themeShade'):
+        c.attrib.pop(qn(f'w:{attr}'), None)
 
 
 def _spacing(pPr, line=None, before=None, after=None):
@@ -67,7 +79,10 @@ def _set_run_font(run, cn, en, sz, bold=False):
     if rf is None:
         rf = parse_xml(f'<w:rFonts {nsdecls("w")}/>')
         rPr.insert(0, rf)
+    for attr in ('asciiTheme', 'hAnsiTheme', 'eastAsiaTheme', 'cstheme'):
+        rf.attrib.pop(qn(f'w:{attr}'), None)
     rf.set(qn('w:eastAsia'), cn)
+    _color_black(rPr)
 
 
 class DocxBuilder:
@@ -98,6 +113,7 @@ class DocxBuilder:
         normal.font.name = 'Times New Roman'
         normal.font.size = Pt(10.5)
         _rfonts(normal, 'SimSun', 'Times New Roman')
+        _color_black(normal.element.get_or_add_rPr())
         pPr = normal.element.get_or_add_pPr()
         _spacing(pPr, line=28)
         ind = pPr.find(qn('w:ind'))
@@ -115,6 +131,7 @@ class DocxBuilder:
             _rfonts(s, 'SimHei', 'Times New Roman')
             s.font.size = Pt(sz)
             s.font.bold = True
+            _color_black(s.element.get_or_add_rPr())
             pPr = s.element.get_or_add_pPr()
             pPr.append(parse_xml(f'<w:keepNext {nsdecls("w")}/>'))
             pPr.append(parse_xml(f'<w:keepLines {nsdecls("w")}/>'))
@@ -125,6 +142,7 @@ class DocxBuilder:
         cap.base_style = normal
         _rfonts(cap, 'SimSun', 'Times New Roman')
         cap.font.size = Pt(9)
+        _color_black(cap.element.get_or_add_rPr())
         pPr = cap.element.get_or_add_pPr()
         pPr.append(parse_xml(f'<w:jc {nsdecls("w")} w:val="center"/>'))
         pPr.append(parse_xml(f'<w:keepLines {nsdecls("w")}/>'))
@@ -134,6 +152,7 @@ class DocxBuilder:
         tc = doc.styles.add_style('TableCellPara', WD_STYLE_TYPE.PARAGRAPH)
         _rfonts(tc, 'SimSun', 'Times New Roman')
         tc.font.size = Pt(9)
+        _color_black(tc.element.get_or_add_rPr())
         pPr = tc.element.get_or_add_pPr()
         _no_indent(pPr)
         _spacing(pPr, line=20, before=2, after=2)
