@@ -704,7 +704,7 @@ def main():
 
     set_parser = subparsers.add_parser('set', help='设置配置值（自动校验类型）')
     set_parser.add_argument('key', help='配置键名')
-    set_parser.add_argument('value', help='配置值')
+    set_parser.add_argument('value', nargs='?', default='', help='配置值（不传或传空则清空该项）')
 
     delete_parser = subparsers.add_parser('delete', help='删除配置项')
     delete_parser.add_argument('key', help='配置键名')
