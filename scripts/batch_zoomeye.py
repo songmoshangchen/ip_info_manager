@@ -72,7 +72,7 @@ class BatchZoomeyeQuery:
         return pending
 
     def _query_ip(self, ip):
-        return fetch_channel(ip, key=self.settings.zoomeye_api_key)
+        return fetch_channel(ip, key=self.settings.zoomeye_api_key, timeout=self.settings.zoomeye_query_timeout)
 
     def _print_result(self, ip, data):
         total = data.get('total', 0)

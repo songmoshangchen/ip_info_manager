@@ -24,7 +24,7 @@ def validate_channel_key():
     print(f"✅ ZoomEye API Key 已配置（不进行在线校验，避免消耗额度）")
 
 
-def request_channel(ip: str, key: str = '', sub_type: str = '', **kwargs):
+def request_channel(ip: str, key: str = '', sub_type: str = '', timeout: float = 30, **kwargs):
     query_str = f"ip:{ip}"
     qbase64 = base64.b64encode(query_str.encode()).decode()
 
@@ -42,7 +42,7 @@ def request_channel(ip: str, key: str = '', sub_type: str = '', **kwargs):
     _logger.debug(f"请求 ZoomEye API: ip={ip}, query={query_str}")
 
     try:
-        response = requests.post(url, headers=headers, json=data, timeout=30)
+        response = requests.post(url, headers=headers, json=data, timeout=timeout)
         response.raise_for_status()
         result = response.json()
 
@@ -61,12 +61,12 @@ def request_channel(ip: str, key: str = '', sub_type: str = '', **kwargs):
         }
 
 
-def fetch_channel(ip: str, key: str = '', delay: float = 0, **kwargs) -> dict:
+def fetch_channel(ip: str, key: str = '', delay: float = 0, timeout: float = 30, **kwargs) -> dict:
     apply_delay(delay)
 
     _logger.debug(f"fetch_channel 开始: ip={ip}")
 
-    result = request_channel(ip, key=key, **kwargs)
+    result = request_channel(ip, key=key, timeout=timeout, **kwargs)
 
     if isinstance(result, dict) and result.get('raw_error'):
         _logger.debug(f"fetch_channel 请求失败: {result.get('error_message', 'Unknown')}")
@@ -94,6 +94,7 @@ def main(ip: str):
         ip=ip,
         key=settings.zoomeye_api_key,
         delay=settings.zoomeye_query_delay,
+        timeout=settings.zoomeye_query_timeout,
     )
     ip_writer.add_or_update_ip(ip=ip, channel="zoomeye", data=data)
 

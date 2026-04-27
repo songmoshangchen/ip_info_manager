@@ -101,7 +101,8 @@ class RdnsSettings(BaseIPSettings):
 
 class ZoomeyeSettings(BaseIPSettings):
     zoomeye_api_key: str = Field(default='', description='ZoomEye API Key')
-    zoomeye_query_delay: float = Field(default=1.0, description='ZoomEye 查询间隔（秒）')
+    zoomeye_query_timeout: float = Field(default=30.0, description='ZoomEye 查询超时时间（秒）')
+    zoomeye_query_delay: float = Field(default=2.0, description='ZoomEye 查询间隔（秒）')
 
 
 class SslCertSettings(BaseIPSettings):
