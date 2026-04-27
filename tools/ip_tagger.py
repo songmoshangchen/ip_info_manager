@@ -7,7 +7,7 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from config import Settings
-from scripts.logger_utils import get_batch_logger
+from utils.logger_utils import get_batch_logger
 
 _logger = get_batch_logger('ip_tagger')
 

@@ -6,7 +6,7 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from writer import IPWriter
 from channel.ipinfo_api import Settings, fetch_channel, validate_channel_key
-from scripts.logger_utils import get_batch_logger
+from utils.logger_utils import get_batch_logger
 
 
 class BatchIPInfoQuery:

@@ -7,7 +7,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from config import FofaSettings as Settings
 from writer import IPWriter
-from scripts.logger_utils import get_channel_logger
+from utils.logger_utils import get_channel_logger
 
 _logger = get_channel_logger('fofa_host')
 

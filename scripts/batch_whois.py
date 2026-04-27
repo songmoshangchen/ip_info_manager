@@ -5,7 +5,7 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from channel.whois_query import IPWriter, Settings, fetch_channel, validate_channel_key
-from scripts.logger_utils import get_batch_logger
+from utils.logger_utils import get_batch_logger
 
 
 class BatchWhoisQuery:
