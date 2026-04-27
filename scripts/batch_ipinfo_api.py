@@ -73,7 +73,7 @@ class BatchIPInfoQuery:
         return pending
 
     def _query_ip(self, ip):
-        return fetch_channel(ip, key=self.settings.ipinfo_access_token, use_api=self.use_api)
+        return fetch_channel(ip, key=self.settings.ipinfo_access_token, use_api=self.use_api, timeout=self.settings.ipinfo_query_timeout)
 
     def _print_result(self, ip, data):
         country = data.get('country', 'N/A')

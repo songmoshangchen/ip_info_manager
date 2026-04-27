@@ -23,7 +23,7 @@ def validate_channel_key():
     try:
         url = "https://fofa.info/api/v1/info/my"
         params = {"key": key}
-        response = requests.get(url, params=params, timeout=10)
+        response = requests.get(url, params=params, timeout=settings.fofa_validate_timeout)
         response.raise_for_status()
         data = response.json()
 
@@ -38,14 +38,14 @@ def validate_channel_key():
         sys.exit(1)
 
 
-def request_channel(ip: str, key: str = '', **kwargs):
+def request_channel(ip: str, key: str = '', timeout: float = 30.0, **kwargs):
     url = f"https://fofa.info/api/v1/host/{ip}"
     params = {"key": key, "detail": "true"}
 
     _logger.debug(f"请求 Fofa Host 聚合 API: ip={ip}")
 
     try:
-        response = requests.get(url, params=params, timeout=30)
+        response = requests.get(url, params=params, timeout=timeout)
         response.raise_for_status()
         return response.json()
     except Exception as e:
@@ -56,10 +56,10 @@ def request_channel(ip: str, key: str = '', **kwargs):
         }
 
 
-def fetch_channel(ip: str, key: str = '', delay: float = 2, **kwargs) -> dict:
+def fetch_channel(ip: str, key: str = '', delay: float = 2, timeout: float = 30.0, **kwargs) -> dict:
     apply_delay(delay)
 
-    result = request_channel(ip, key=key, **kwargs)
+    result = request_channel(ip, key=key, timeout=timeout, **kwargs)
 
     if isinstance(result, dict) and result.get('raw_error'):
         return format_output(result)
@@ -85,6 +85,7 @@ def main(ip: str):
         ip=ip,
         key=settings.fofa_api_key,
         delay=settings.fofa_query_delay,
+        timeout=settings.fofa_query_timeout,
     )
     ip_writer.add_or_update_ip(ip=ip, channel="fofa_host", data=data)
 

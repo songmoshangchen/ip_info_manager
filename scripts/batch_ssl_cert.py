@@ -76,6 +76,7 @@ class BatchSslCertQuery:
             ip=ip,
             port=self.settings.ssl_cert_port,
             timeout=self.settings.ssl_cert_timeout,
+            openssl_timeout=self.settings.ssl_cert_openssl_timeout,
         )
 
     def _print_result(self, ip, data):

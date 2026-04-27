@@ -72,7 +72,7 @@ class BatchFofaHostQuery:
         return pending
 
     def _query_ip(self, ip):
-        return fetch_channel(ip, key=self.settings.fofa_api_key)
+        return fetch_channel(ip, key=self.settings.fofa_api_key, timeout=self.settings.fofa_query_timeout)
 
     def _print_result(self, ip, data):
         country = data.get('country_name', 'N/A')

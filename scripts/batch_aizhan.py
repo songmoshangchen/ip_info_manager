@@ -72,7 +72,7 @@ class BatchAizhanQuery:
         return pending
 
     def _query_ip(self, ip):
-        return fetch_channel(ip, cookie=self.settings.aizhan_cookie)
+        return fetch_channel(ip, cookie=self.settings.aizhan_cookie, timeout=self.settings.aizhan_query_timeout)
 
     def _print_result(self, ip, data):
         domain_count = data.get("domain_count", 0)

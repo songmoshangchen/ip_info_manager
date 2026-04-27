@@ -29,7 +29,7 @@ def validate_channel_key():
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.87 Safari/537.36 SE 2.X MetaSr 1.0",
             "Cookie": cookie,
         }
-        response = requests.get(url, headers=headers, timeout=10, allow_redirects=False)
+        response = requests.get(url, headers=headers, timeout=settings.aizhan_validate_timeout, allow_redirects=False)
 
         if response.status_code in (301, 302):
             print("错误: 爱站网 Cookie 已失效（被重定向到登录页）")
@@ -45,7 +45,7 @@ def validate_channel_key():
         sys.exit(1)
 
 
-def request_channel(ip: str, cookie: str = '', **kwargs):
+def request_channel(ip: str, cookie: str = '', timeout: float = 15.0, **kwargs):
     _logger.debug(f"请求爱站网: ip={ip}")
     try:
         url = f"https://dns.aizhan.com/{ip}/"
@@ -58,7 +58,7 @@ def request_channel(ip: str, cookie: str = '', **kwargs):
             "Cookie": cookie,
         }
 
-        response = requests.get(url, headers=headers, timeout=15)
+        response = requests.get(url, headers=headers, timeout=timeout)
         response.raise_for_status()
 
         return response.text
@@ -179,10 +179,10 @@ def parse_response(raw_content: str, ip: str) -> dict:
     return result
 
 
-def fetch_channel(ip: str, key: str = '', cookie: str = '', delay: float = 2, **kwargs) -> dict:
+def fetch_channel(ip: str, key: str = '', cookie: str = '', delay: float = 2, timeout: float = 15.0, **kwargs) -> dict:
     apply_delay(delay)
 
-    raw = request_channel(ip, cookie=cookie, **kwargs)
+    raw = request_channel(ip, cookie=cookie, timeout=timeout, **kwargs)
 
     if isinstance(raw, dict) and raw.get('raw_error'):
         return format_output(raw)
@@ -214,6 +214,7 @@ def main(ip: str):
         ip=ip,
         cookie=settings.aizhan_cookie,
         delay=settings.aizhan_query_delay,
+        timeout=settings.aizhan_query_timeout,
     )
     ip_writer.add_or_update_ip(ip=ip, channel="aizhan", data=data)
 

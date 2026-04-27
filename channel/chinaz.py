@@ -37,7 +37,7 @@ def validate_channel_key():
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Cookie": cookie,
         }
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=settings.chinaz_validate_timeout)
         response.raise_for_status()
 
         soup = BeautifulSoup(response.text, "html.parser")
@@ -53,7 +53,7 @@ def validate_channel_key():
         print("✅ Cookie 格式验证通过，继续执行...")
 
 
-def request_channel(ip: str, cookie: str = '', **kwargs):
+def request_channel(ip: str, cookie: str = '', timeout: float = 15.0, **kwargs):
     _logger.debug(f"请求站长之家: ip={ip}")
     try:
         url = f"https://ipchaxun.com/{ip}/"
@@ -70,7 +70,7 @@ def request_channel(ip: str, cookie: str = '', **kwargs):
         if cookie:
             session.headers.update({"Cookie": cookie})
 
-        response = session.get(url, headers=headers, timeout=15)
+        response = session.get(url, headers=headers, timeout=timeout)
         response.raise_for_status()
 
         return response.text
@@ -174,10 +174,10 @@ def parse_response(raw_content: str, ip: str) -> dict:
     return result
 
 
-def fetch_channel(ip: str, key: str = '', cookie: str = '', delay: float = 2, **kwargs) -> dict:
+def fetch_channel(ip: str, key: str = '', cookie: str = '', delay: float = 2, timeout: float = 15.0, **kwargs) -> dict:
     apply_delay(delay)
 
-    raw = request_channel(ip, cookie=cookie, **kwargs)
+    raw = request_channel(ip, cookie=cookie, timeout=timeout, **kwargs)
 
     if isinstance(raw, dict) and raw.get('raw_error'):
         return format_output(raw)
@@ -209,6 +209,7 @@ def main(ip: str):
         ip=ip,
         cookie=settings.chinaz_cookie,
         delay=settings.chinaz_query_delay,
+        timeout=settings.chinaz_query_timeout,
     )
     ip_writer.add_or_update_ip(ip=ip, channel="chinaz", data=data)
 

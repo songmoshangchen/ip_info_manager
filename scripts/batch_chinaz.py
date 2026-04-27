@@ -71,7 +71,7 @@ class BatchChinazQuery:
         return pending
 
     def _query_ip(self, ip):
-        return fetch_channel(ip, cookie=self.settings.chinaz_cookie)
+        return fetch_channel(ip, cookie=self.settings.chinaz_cookie, timeout=self.settings.chinaz_query_timeout)
 
     def _print_result(self, ip, data):
         domain_count = len(data.get("domains", []))

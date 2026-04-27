@@ -26,7 +26,8 @@ def validate_channel_key():
     try:
         url = "https://fofa.info/api/v1/info/my"
         params = {"key": key}
-        response = requests.get(url, params=params, timeout=10)
+        settings = Settings()
+        response = requests.get(url, params=params, timeout=settings.fofa_validate_timeout)
         response.raise_for_status()
         data = response.json()
 
@@ -41,7 +42,7 @@ def validate_channel_key():
         sys.exit(1)
 
 
-def request_channel(ip: str, key: str = '', query_suffix: str = '', **kwargs):
+def request_channel(ip: str, key: str = '', query_suffix: str = '', timeout: float = 30.0, **kwargs):
     query_str = f'ip="{ip}"'
     if query_suffix:
         query_str += query_suffix
@@ -58,7 +59,7 @@ def request_channel(ip: str, key: str = '', query_suffix: str = '', **kwargs):
     _logger.debug(f"请求 Fofa Search API: ip={ip}, query={query_str}")
 
     try:
-        response = requests.get(url, params=params, timeout=30)
+        response = requests.get(url, params=params, timeout=timeout)
         response.raise_for_status()
         return response.json()
     except Exception as e:
@@ -69,12 +70,12 @@ def request_channel(ip: str, key: str = '', query_suffix: str = '', **kwargs):
         }
 
 
-def fetch_channel(ip: str, key: str = '', delay: float = 2, **kwargs) -> dict:
+def fetch_channel(ip: str, key: str = '', delay: float = 2, timeout: float = 30.0, **kwargs) -> dict:
     apply_delay(delay)
 
     _logger.debug(f"fetch_channel 开始: ip={ip}")
 
-    result = request_channel(ip, key=key, **kwargs)
+    result = request_channel(ip, key=key, timeout=timeout, **kwargs)
 
     if isinstance(result, dict) and result.get('raw_error'):
         _logger.debug(f"fetch_channel 请求失败: {result.get('error_message', 'Unknown')}")
@@ -103,6 +104,7 @@ def main(ip: str):
         ip=ip,
         key=settings.fofa_api_key,
         delay=settings.fofa_query_delay,
+        timeout=settings.fofa_query_timeout,
     )
     ip_writer.add_or_update_ip(ip=ip, channel="fofa_search", data=data)
 

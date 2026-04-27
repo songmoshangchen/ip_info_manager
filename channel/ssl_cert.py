@@ -20,7 +20,7 @@ def validate_channel_key():
     print("✅ SSL 证书渠道无需 Key 校验（直连目标 IP 获取证书）")
 
 
-def _get_ssl_cert_text(ip: str, port: int = 443, timeout: float = 5.0):
+def _get_ssl_cert_text(ip: str, port: int = 443, timeout: float = 5.0, openssl_timeout: float = 10.0):
     context = ssl.create_default_context()
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
@@ -31,17 +31,17 @@ def _get_ssl_cert_text(ip: str, port: int = 443, timeout: float = 5.0):
             if not der_cert:
                 return None
             pem_text = ssl.DER_cert_to_PEM_cert(der_cert)
-            return _cert_to_text(pem_text)
+            return _cert_to_text(pem_text, openssl_timeout=openssl_timeout)
 
 
-def _cert_to_text(pem_text: str) -> str:
+def _cert_to_text(pem_text: str, openssl_timeout: float = 10.0) -> str:
     tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.pem', delete=False, encoding='utf-8')
     try:
         tmp.write(pem_text)
         tmp.close()
         result = subprocess.run(
             ['openssl', 'x509', '-text', '-noout', '-in', tmp.name],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=openssl_timeout,
         )
         return result.stdout
     except FileNotFoundError:
@@ -80,11 +80,11 @@ def _parse_domains(cert_text: str) -> list:
     return domains
 
 
-def request_channel(ip: str, port: int = 443, timeout: float = 5.0, **kwargs):
+def request_channel(ip: str, port: int = 443, timeout: float = 5.0, openssl_timeout: float = 10.0, **kwargs):
     _logger.debug(f"获取 SSL 证书: ip={ip}, port={port}")
 
     try:
-        cert_text = _get_ssl_cert_text(ip, port=port, timeout=timeout)
+        cert_text = _get_ssl_cert_text(ip, port=port, timeout=timeout, openssl_timeout=openssl_timeout)
         if not cert_text:
             return {
                 'raw_error': True,
@@ -117,12 +117,12 @@ def request_channel(ip: str, port: int = 443, timeout: float = 5.0, **kwargs):
         }
 
 
-def fetch_channel(ip: str, port: int = 443, timeout: float = 5.0, delay: float = 0, **kwargs) -> dict:
+def fetch_channel(ip: str, port: int = 443, timeout: float = 5.0, openssl_timeout: float = 10.0, delay: float = 0, **kwargs) -> dict:
     apply_delay(delay)
 
     _logger.debug(f"fetch_channel 开始: ip={ip}")
 
-    result = request_channel(ip, port=port, timeout=timeout, **kwargs)
+    result = request_channel(ip, port=port, timeout=timeout, openssl_timeout=openssl_timeout, **kwargs)
 
     return format_output(result, ip=ip, port=port)
 
@@ -192,6 +192,7 @@ def main(ip: str):
         ip=ip,
         port=settings.ssl_cert_port,
         timeout=settings.ssl_cert_timeout,
+        openssl_timeout=settings.ssl_cert_openssl_timeout,
         delay=settings.ssl_cert_query_delay,
     )
     ip_writer.add_or_update_ip(ip=ip, channel="ssl_cert", data=data)

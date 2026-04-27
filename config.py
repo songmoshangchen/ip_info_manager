@@ -71,21 +71,29 @@ class Settings(BaseIPSettings):
 
 class FofaSettings(BaseIPSettings):
     fofa_api_key: str = Field(..., description='Fofa API Key（必填）')
+    fofa_query_timeout: float = Field(default=30.0, description='Fofa API 查询超时时间（秒）')
+    fofa_validate_timeout: float = Field(default=10.0, description='Fofa API Key 验证超时时间（秒）')
     fofa_query_delay: float = Field(default=2.0, description='Fofa API 查询间隔（秒）')
 
 
 class IpinfoSettings(BaseIPSettings):
     ipinfo_access_token: str = Field(..., description='Ipinfo Access Token（必填）')
+    ipinfo_query_timeout: float = Field(default=30.0, description='IPInfo API 查询超时时间（秒）')
+    ipinfo_validate_timeout: float = Field(default=30.0, description='IPInfo API 验证超时时间（秒）')
     ipinfo_query_delay: float = Field(default=1.2, description='Ipinfo API 查询间隔（秒）')
 
 
 class AizhanSettings(BaseIPSettings):
     aizhan_cookie: str = Field(..., description='爱站网 Cookie（必填）')
+    aizhan_query_timeout: float = Field(default=15.0, description='爱站网查询超时时间（秒）')
+    aizhan_validate_timeout: float = Field(default=10.0, description='爱站网 Cookie 验证超时时间（秒）')
     aizhan_query_delay: float = Field(default=2.0, description='爱站查询间隔（秒）')
 
 
 class ChinazSettings(BaseIPSettings):
     chinaz_cookie: str = Field(default='', description='站长之家 Cookie（可选）')
+    chinaz_query_timeout: float = Field(default=15.0, description='站长之家查询超时时间（秒）')
+    chinaz_validate_timeout: float = Field(default=10.0, description='站长之家 Cookie 验证超时时间（秒）')
     chinaz_query_delay: float = Field(default=2.0, description='站长之家查询间隔（秒）')
 
 
@@ -108,6 +116,7 @@ class ZoomeyeSettings(BaseIPSettings):
 class SslCertSettings(BaseIPSettings):
     ssl_cert_port: int = Field(default=443, description='SSL 证书获取端口')
     ssl_cert_timeout: float = Field(default=5.0, description='SSL 连接超时时间（秒）')
+    ssl_cert_openssl_timeout: float = Field(default=10.0, description='SSL 证书 OpenSSL 子进程超时时间（秒）')
     ssl_cert_query_delay: float = Field(default=0.5, description='SSL 证书查询间隔（秒）')
 
 

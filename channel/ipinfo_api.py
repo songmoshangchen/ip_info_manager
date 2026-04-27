@@ -21,7 +21,7 @@ def validate_channel_key():
             resp = requests.get(
                 "https://api.ipinfo.io/lite/8.8.8.8",
                 headers={"Authorization": f"Bearer {token}"},
-                timeout=30,
+                timeout=settings.ipinfo_validate_timeout,
             )
             resp.raise_for_status()
             print("✅ IPInfo Access Token 验证通过（API 模式）")
@@ -30,7 +30,7 @@ def validate_channel_key():
             sys.exit(1)
     else:
         try:
-            resp = requests.get("https://ipinfo.io/8.8.8.8/json", timeout=30)
+            resp = requests.get("https://ipinfo.io/8.8.8.8/json", timeout=settings.ipinfo_validate_timeout)
             resp.raise_for_status()
             print("✅ IPInfo 免费 API 连通性验证通过（无 API 模式）")
         except Exception as e:
@@ -38,13 +38,13 @@ def validate_channel_key():
             sys.exit(1)
 
 
-def _request_channel_api(ip: str, key: str):
+def _request_channel_api(ip: str, key: str, timeout: float = 30.0):
     try:
         url = f"https://api.ipinfo.io/lite/{ip}"
         response = requests.get(
             url,
             headers={"Authorization": f"Bearer {key}"},
-            timeout=30,
+            timeout=timeout,
         )
         response.raise_for_status()
         return response.json()
@@ -55,10 +55,10 @@ def _request_channel_api(ip: str, key: str):
         }
 
 
-def _request_channel_noapi(ip: str):
+def _request_channel_noapi(ip: str, timeout: float = 30.0):
     try:
         url = f"https://ipinfo.io/{ip}/json"
-        response = requests.get(url, timeout=30)
+        response = requests.get(url, timeout=timeout)
         response.raise_for_status()
         return response.json()
     except Exception as e:
@@ -68,18 +68,18 @@ def _request_channel_noapi(ip: str):
         }
 
 
-def request_channel(ip: str, key: str = '', use_api: bool = True, **kwargs):
+def request_channel(ip: str, key: str = '', use_api: bool = True, timeout: float = 30.0, **kwargs):
     _logger.debug(f"请求 IPInfo: ip={ip}, use_api={use_api}")
     if use_api:
-        return _request_channel_api(ip, key)
+        return _request_channel_api(ip, key, timeout=timeout)
     else:
-        return _request_channel_noapi(ip)
+        return _request_channel_noapi(ip, timeout=timeout)
 
 
-def fetch_channel(ip: str, key: str = '', delay: float = 2, use_api: bool = True, **kwargs) -> dict:
+def fetch_channel(ip: str, key: str = '', delay: float = 2, use_api: bool = True, timeout: float = 30.0, **kwargs) -> dict:
     apply_delay(delay)
 
-    result = request_channel(ip, key=key, use_api=use_api, **kwargs)
+    result = request_channel(ip, key=key, use_api=use_api, timeout=timeout, **kwargs)
 
     if isinstance(result, dict) and result.get('raw_error'):
         return format_output(result)
@@ -109,6 +109,7 @@ def main(ip: str):
         key=token,
         delay=settings.ipinfo_query_delay,
         use_api=use_api,
+        timeout=settings.ipinfo_query_timeout,
     )
 
     channel = "ipinfo_api" if use_api else "ipinfo"
