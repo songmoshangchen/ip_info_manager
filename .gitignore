@@ -5,7 +5,7 @@ __pycache__/
 *.progress
 *.xlsx
 data/
-channel/data/
+docs/
 debug_*.py
 .superpowers/
 *.bak
