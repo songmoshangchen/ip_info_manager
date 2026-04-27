@@ -68,10 +68,36 @@ python tools/config_tool.py set IP_CHINAZ_QUERY_DELAY 5.0
 
 1. 增大超时时间：
 
+**RDNS / Whois / SSL 证书：**
 ```bash
 python tools/config_tool.py set IP_RDNS_QUERY_TIMEOUT 5.0
 python tools/config_tool.py set IP_WHOIS_QUERY_TIMEOUT 5.0
 python tools/config_tool.py set IP_SSL_CERT_TIMEOUT 10
+python tools/config_tool.py set IP_SSL_CERT_OPENSSL_TIMEOUT 15.0
+```
+
+**Fofa：**
+```bash
+python tools/config_tool.py set IP_FOFA_QUERY_TIMEOUT 60.0
+python tools/config_tool.py set IP_FOFA_VALIDATE_TIMEOUT 30.0
+```
+
+**IPInfo：**
+```bash
+python tools/config_tool.py set IP_IPINFO_QUERY_TIMEOUT 60.0
+python tools/config_tool.py set IP_IPINFO_VALIDATE_TIMEOUT 60.0
+```
+
+**爱站：**
+```bash
+python tools/config_tool.py set IP_AIZHAN_QUERY_TIMEOUT 30.0
+python tools/config_tool.py set IP_AIZHAN_VALIDATE_TIMEOUT 20.0
+```
+
+**站长之家：**
+```bash
+python tools/config_tool.py set IP_CHINAZ_QUERY_TIMEOUT 30.0
+python tools/config_tool.py set IP_CHINAZ_VALIDATE_TIMEOUT 20.0
 ```
 
 2. 检查网络连接是否正常

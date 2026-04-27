@@ -181,20 +181,29 @@ IP_SSL_CERT_QUERY_DELAY=0.5
 
 **查询间隔与超时配置：**
 
-| 变量                        | 必填 | 默认值   | 说明              |
-| ------------------------- | -- | ----- | --------------- |
-| `IP_FOFA_QUERY_DELAY`     | 否  | `2.0` | Fofa 查询间隔（秒）    |
-| `IP_IPINFO_QUERY_DELAY`   | 否  | `1.2` | IPInfo 查询间隔（秒）  |
-| `IP_RDNS_QUERY_TIMEOUT`   | 否  | `1.5` | RDNS 查询超时（秒）    |
-| `IP_RDNS_QUERY_DELAY`     | 否  | `0.1` | RDNS 批量查询间隔（秒）  |
-| `IP_WHOIS_QUERY_TIMEOUT`  | 否  | `2.0` | Whois 查询超时（秒）   |
-| `IP_WHOIS_QUERY_DELAY`    | 否  | `0.5` | Whois 批量查询间隔（秒） |
-| `IP_AIZHAN_QUERY_DELAY`   | 否  | `2.0` | 爱站查询间隔（秒）       |
-| `IP_CHINAZ_QUERY_DELAY`   | 否  | `2.0` | 站长之家查询间隔（秒）     |
-| `IP_ZOOMEYE_QUERY_DELAY`  | 否  | `1.0` | ZoomEye 查询间隔（秒） |
-| `IP_SSL_CERT_PORT`        | 否  | `443` | SSL 证书获取端口      |
-| `IP_SSL_CERT_TIMEOUT`     | 否  | `5`   | SSL 连接超时（秒）     |
-| `IP_SSL_CERT_QUERY_DELAY` | 否  | `0.5` | SSL 证书查询间隔（秒）   |
+| 变量                           | 必填 | 默认值    | 说明                   |
+| ---------------------------- | -- | ------- | -------------------- |
+| `IP_FOFA_QUERY_DELAY`        | 否  | `2.0`   | Fofa 查询间隔（秒）         |
+| `IP_FOFA_QUERY_TIMEOUT`      | 否  | `30.0`  | Fofa 查询超时（秒）         |
+| `IP_FOFA_VALIDATE_TIMEOUT`   | 否  | `10.0`  | Fofa 凭证验证超时（秒）       |
+| `IP_IPINFO_QUERY_DELAY`      | 否  | `1.2`   | IPInfo 查询间隔（秒）       |
+| `IP_IPINFO_QUERY_TIMEOUT`    | 否  | `30.0`  | IPInfo 查询超时（秒）       |
+| `IP_IPINFO_VALIDATE_TIMEOUT` | 否  | `30.0`  | IPInfo 凭证验证超时（秒）     |
+| `IP_RDNS_QUERY_TIMEOUT`      | 否  | `1.5`   | RDNS 查询超时（秒）         |
+| `IP_RDNS_QUERY_DELAY`        | 否  | `0.1`   | RDNS 批量查询间隔（秒）       |
+| `IP_WHOIS_QUERY_TIMEOUT`     | 否  | `2.0`   | Whois 查询超时（秒）        |
+| `IP_WHOIS_QUERY_DELAY`       | 否  | `0.5`   | Whois 批量查询间隔（秒）      |
+| `IP_AIZHAN_QUERY_DELAY`      | 否  | `2.0`   | 爱站查询间隔（秒）           |
+| `IP_AIZHAN_QUERY_TIMEOUT`    | 否  | `15.0`  | 爱站查询超时（秒）           |
+| `IP_AIZHAN_VALIDATE_TIMEOUT` | 否  | `10.0`  | 爱站凭证验证超时（秒）         |
+| `IP_CHINAZ_QUERY_DELAY`      | 否  | `2.0`   | 站长之家查询间隔（秒）         |
+| `IP_CHINAZ_QUERY_TIMEOUT`    | 否  | `15.0`  | 站长之家查询超时（秒）         |
+| `IP_CHINAZ_VALIDATE_TIMEOUT` | 否  | `10.0`  | 站长之家凭证验证超时（秒）       |
+| `IP_ZOOMEYE_QUERY_DELAY`     | 否  | `1.0`   | ZoomEye 查询间隔（秒）      |
+| `IP_SSL_CERT_PORT`           | 否  | `443`   | SSL 证书获取端口           |
+| `IP_SSL_CERT_TIMEOUT`        | 否  | `5`     | SSL 连接超时（秒）          |
+| `IP_SSL_CERT_OPENSSL_TIMEOUT`| 否  | `10.0`  | SSL 证书 OpenSSL 超时（秒） |
+| `IP_SSL_CERT_QUERY_DELAY`    | 否  | `0.5`   | SSL 证书查询间隔（秒）        |
 
 **IP域名反查流水线渠道开关：**
 
