@@ -1,8 +1,12 @@
 import argparse
 import json
 import os
+import shutil
+import subprocess
 import sys
+import tempfile
 import time
+import zipfile
 
 import requests
 
@@ -18,6 +22,7 @@ REQUEST_HEADERS = {
     'User-Agent': 'ip-info-manager/ip-tagger-updater',
 }
 GITHUB_DELAY = 1
+FIREHOL_REPO_URL = 'https://github.com/firehol/blocklist-ipsets.git'
 
 
 def load_manifest(manifest_path: str) -> list[dict]:
@@ -143,9 +148,96 @@ def update_sources(config_dir: str, manifest: list[dict], dry_run: bool = False,
     return results
 
 
-def print_summary(results: dict, dry_run: bool):
+def import_from_directory(source_dir: str, config_dir: str, manifest: list[dict]):
+    _logger.info(f"从本地目录导入: {source_dir}")
+
+    updatable = [item for item in manifest if item.get('source_url')]
+    results = {'updated': [], 'skipped': [], 'failed': [], 'new': []}
+
+    for item in updatable:
+        filename = item['file']
+        label = item['label']
+        src_path = os.path.join(source_dir, filename)
+        dest_path = os.path.join(config_dir, filename)
+
+        if not os.path.exists(src_path):
+            _logger.warning(f"  目录中不存在: {filename}，跳过")
+            results['skipped'].append({'label': label, 'file': filename})
+            continue
+
+        if os.path.exists(dest_path):
+            local_size = os.path.getsize(dest_path)
+            src_size = os.path.getsize(src_path)
+            if local_size == src_size:
+                _logger.info(f"  跳过（相同）: {label} ({filename})")
+                results['skipped'].append({'label': label, 'file': filename})
+                continue
+
+        _logger.info(f"  复制: {label} ({filename})")
+        shutil.copy2(src_path, dest_path)
+        size_kb = os.path.getsize(dest_path) / 1024
+        _logger.info(f"  完成: {size_kb:.1f} KB")
+
+        if not os.path.exists(os.path.join(config_dir, filename)):
+            results['new'].append({'label': label, 'file': filename})
+        else:
+            results['updated'].append({'label': label, 'file': filename})
+
+    return results
+
+
+def import_from_archive(archive_path: str, config_dir: str, manifest: list[dict]):
+    _logger.info(f"从压缩包导入: {archive_path}")
+
+    if not os.path.exists(archive_path):
+        print(f"错误: 压缩包不存在: {archive_path}")
+        sys.exit(1)
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        _logger.info(f"解压到临时目录: {tmp_dir}")
+        with zipfile.ZipFile(archive_path, 'r') as zf:
+            zf.extractall(tmp_dir)
+
+        extracted_root = tmp_dir
+        top_items = os.listdir(tmp_dir)
+        if len(top_items) == 1 and os.path.isdir(os.path.join(tmp_dir, top_items[0])):
+            extracted_root = os.path.join(tmp_dir, top_items[0])
+
+        _logger.info(f"解压根目录: {extracted_root}")
+        return import_from_directory(extracted_root, config_dir, manifest)
+
+
+def import_from_git(config_dir: str, manifest: list[dict], repo_url: str = FIREHOL_REPO_URL):
+    _logger.info(f"从 Git 仓库克隆: {repo_url}")
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        repo_dir = os.path.join(tmp_dir, 'blocklist-ipsets')
+
+        try:
+            _logger.info("执行 git clone（浅克隆，仅最新提交）...")
+            result = subprocess.run(
+                ['git', 'clone', '--depth', '1', repo_url, repo_dir],
+                capture_output=True, text=True, timeout=300,
+            )
+            if result.returncode != 0:
+                _logger.error(f"git clone 失败: {result.stderr}")
+                print(f"错误: git clone 失败: {result.stderr}")
+                sys.exit(1)
+            _logger.info("git clone 完成")
+        except FileNotFoundError:
+            print("错误: 未找到 git 命令，请确保已安装 Git 并添加到 PATH")
+            sys.exit(1)
+        except subprocess.TimeoutExpired:
+            print("错误: git clone 超时（5分钟）")
+            sys.exit(1)
+
+        return import_from_directory(repo_dir, config_dir, manifest)
+
+
+def print_summary(results: dict, dry_run: bool = False, source: str = ""):
     prefix = "[DRY-RUN] " if dry_run else ""
-    print(f"\n{prefix}更新摘要:")
+    source_label = f"（来源: {source}）" if source else ""
+    print(f"\n{prefix}更新摘要{source_label}:")
     print(f"  新增: {len(results['new'])} 个")
     print(f"  更新: {len(results['updated'])} 个")
     print(f"  跳过（已是最新）: {len(results['skipped'])} 个")
@@ -160,7 +252,23 @@ def print_summary(results: dict, dry_run: bool):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='IP 标签源自动更新工具 — 从 FireHOL blocklist-ipsets 下载最新标签源文件')
+        description='IP 标签源更新工具 — 支持 GitHub 下载、Git 克隆、本地压缩包导入',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+使用示例:
+  python tools/ip_tagger_updater.py                          # 从 GitHub 逐文件下载
+  python tools/ip_tagger_updater.py --from-git               # git clone 整个仓库（推荐）
+  python tools/ip_tagger_updater.py --from-archive ./blocklist-ipsets-main.zip  # 从本地压缩包导入
+  python tools/ip_tagger_updater.py --dry-run                # 仅检查
+  python tools/ip_tagger_updater.py --force                  # 强制更新
+        """)
+
+    source_group = parser.add_mutually_exclusive_group()
+    source_group.add_argument('--from-git', action='store_true',
+                              help='通过 git clone 下载 FireHOL 仓库（浅克隆）')
+    source_group.add_argument('--from-archive', type=str, default=None, metavar='ZIP_PATH',
+                              help='从本地 ZIP 压缩包导入（支持 GitHub 下载的 zip）')
+
     parser.add_argument('--dry-run', action='store_true',
                         help='仅检查更新，不实际下载')
     parser.add_argument('--force', action='store_true',
@@ -179,14 +287,32 @@ def main():
 
     _logger.info(f"配置目录: {config_dir}")
     _logger.info(f"清单文件: {manifest_path}")
-    if args.dry_run:
-        _logger.info("模式: DRY-RUN（仅检查）")
-    if args.force:
-        _logger.info("模式: 强制更新")
 
     manifest = load_manifest(manifest_path)
-    results = update_sources(config_dir, manifest, dry_run=args.dry_run, force=args.force)
-    print_summary(results, dry_run=args.dry_run)
+
+    if args.from_git:
+        _logger.info("模式: Git 克隆")
+        if args.dry_run:
+            _logger.info("[DRY-RUN] 将执行 git clone + 导入")
+            print("[DRY-RUN] 将执行 git clone + 导入")
+            return
+        results = import_from_git(config_dir, manifest)
+        print_summary(results, source="git clone")
+    elif args.from_archive:
+        _logger.info(f"模式: 本地压缩包 ({args.from_archive})")
+        if args.dry_run:
+            _logger.info(f"[DRY-RUN] 将从 {args.from_archive} 导入")
+            print(f"[DRY-RUN] 将从 {args.from_archive} 导入")
+            return
+        results = import_from_archive(args.from_archive, config_dir, manifest)
+        print_summary(results, source=f"压缩包: {os.path.basename(args.from_archive)}")
+    else:
+        if args.dry_run:
+            _logger.info("模式: DRY-RUN（仅检查）")
+        if args.force:
+            _logger.info("模式: 强制更新")
+        results = update_sources(config_dir, manifest, dry_run=args.dry_run, force=args.force)
+        print_summary(results, dry_run=args.dry_run, source="GitHub 下载")
 
 
 if __name__ == "__main__":

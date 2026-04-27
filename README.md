@@ -791,15 +791,34 @@ run_tagger('data/ips.txt', mode='accumulate', output='data/202604/202604_ip_data
 
 ### tools/ip\_tagger\_updater.py — IP标签源自动更新工具
 
-从 [FireHOL blocklist-ipsets](https://github.com/firehol/blocklist-ipsets) 自动下载更新标签源文件。
+从 [FireHOL blocklist-ipsets](https://github.com/firehol/blocklist-ipsets) 自动下载更新标签源文件，支持三种导入方式：
 
 ```bash
-python tools/ip_tagger_updater.py                    # 更新所有有 source_url 的文件
-python tools/ip_tagger_updater.py --dry-run          # 仅检查，不下载
-python tools/ip_tagger_updater.py --force            # 强制更新（跳过缓存检查）
+python tools/ip_tagger_updater.py                    # 从 GitHub 逐文件下载
+python tools/ip_tagger_updater.py --from-git         # git clone 整个仓库（推荐）
+python tools/ip_tagger_updater.py --from-archive ./blocklist-ipsets-main.zip  # 从本地 ZIP 导入
+python tools/ip_tagger_updater.py --dry-run          # 仅检查
+python tools/ip_tagger_updater.py --force            # 强制更新
 ```
 
-**更新策略：** HEAD 请求检查远程文件 `Content-Length`，与本地大小对比，相同则跳过。内置 3 次重试机制应对 GitHub 连接不稳定。`source_url` 为空的自定义文件不自动更新。
+**导入方式：**
+
+| 方式 | 说明 | 适用场景 |
+|---|---|---|
+| 默认 | 逐文件从 GitHub raw 下载 | 少量文件更新 |
+| `--from-git` | git clone 浅克隆整个仓库 | 推荐，一次性获取所有文件 |
+| `--from-archive` | 从本地 ZIP 压缩包导入 | 离线环境、网络不稳定 |
+
+**更新策略：** 对比本地与远程文件大小，相同则跳过。临时文件自动清理（使用 `tempfile.TemporaryDirectory`）。
+
+**标签级别（ip\_tagger 查询时使用）：**
+
+| 级别 | 标签源数 | 说明 |
+|---|---|---|
+| `--level 1`（快速） | 5 | 核心威胁：银狐、僵尸网络C&C、Tor、SSH暴力破解、Bot |
+| `--level 2`（正常） | 13 | + 高危威胁、攻击IP、暴力破解、邮件、Apache、Spam等 |
+| `--level 3`（全量） | 23 | + 中危/低危威胁、乌克兰Blocklist、30天Spam等 |
+| 不指定 | 23 | 使用全部标签源 |
 
 ### tools/merge\_ip\_files.py — IP 文件合并/去重/验证
 

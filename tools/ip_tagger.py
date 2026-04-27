@@ -14,7 +14,7 @@ _logger = get_batch_logger('ip_tagger')
 BATCH_SIZE = 256
 
 
-def load_manifest(manifest_path: str) -> list[dict]:
+def load_manifest(manifest_path: str, level: int = None) -> list[dict]:
     if not os.path.exists(manifest_path):
         print(f"错误: 清单文件不存在: {manifest_path}")
         sys.exit(1)
@@ -28,6 +28,9 @@ def load_manifest(manifest_path: str) -> list[dict]:
         print(f"错误: manifest.json 中存在重复标签名: {set(dup)}")
         sys.exit(1)
 
+    if level is not None:
+        manifest = [item for item in manifest if item.get('level', 1) <= level]
+
     return manifest
 
 
@@ -39,6 +42,7 @@ def validate_manifest(manifest: list[dict], config_dir: str):
             missing.append(item['file'])
     if missing:
         print(f"错误: 以下配置文件缺失: {', '.join(missing)}")
+        print(f"请先运行: python tools/ip_tagger_updater.py")
         sys.exit(1)
 
 
@@ -253,7 +257,7 @@ def write_matched_tags(
     return written
 
 
-def run_tagger(ip_file: str, mode: str = 'accumulate', config_dir: str = None, output: str = None):
+def run_tagger(ip_file: str, mode: str = 'accumulate', config_dir: str = None, output: str = None, level: int = None):
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if config_dir is None:
         config_dir = os.path.join(project_root, 'config', 'ip_tagger')
@@ -263,8 +267,10 @@ def run_tagger(ip_file: str, mode: str = 'accumulate', config_dir: str = None, o
     _logger.info(f"IP 文件: {ip_file}")
     _logger.info(f"配置目录: {config_dir}")
     _logger.info(f"写入模式: {mode}")
+    if level:
+        _logger.info(f"标签级别: {level}")
 
-    manifest = load_manifest(manifest_path)
+    manifest = load_manifest(manifest_path, level=level)
     validate_manifest(manifest, config_dir)
 
     ip_list = read_ip_file(ip_file)
@@ -287,6 +293,8 @@ def main():
     parser.add_argument('ip_file', help='IP 文件路径（每行一个 IP）')
     parser.add_argument('--mode', choices=['accumulate', 'overwrite'], default='accumulate',
                         help='写入模式: accumulate=累加(默认), overwrite=覆盖')
+    parser.add_argument('--level', type=int, choices=[1, 2, 3], default=None,
+                        help='标签级别: 1=快速(5源), 2=正常(13源), 3=全量(27源), 不指定则使用全部')
     parser.add_argument('--output', default=None,
                         help='输出 JSON 文件路径 (默认: 使用 Settings 定位)')
     parser.add_argument('--config-dir', default=None,
@@ -310,10 +318,12 @@ def main():
     _logger.info(f"配置目录: {config_dir}")
     _logger.info(f"清单文件: {manifest_path}")
     _logger.info(f"写入模式: {args.mode}")
+    if args.level:
+        _logger.info(f"标签级别: {args.level}")
     if args.output:
         _logger.info(f"输出文件: {args.output}")
 
-    manifest = load_manifest(manifest_path)
+    manifest = load_manifest(manifest_path, level=args.level)
     validate_manifest(manifest, config_dir)
 
     ip_list = read_ip_file(args.ip_file)

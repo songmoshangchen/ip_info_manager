@@ -27,6 +27,7 @@ python tools/ip_tagger.py data/ips.txt
 |---|---|---|---|
 | `ip_file` | 是 | — | IP 文件路径（每行一个 IP） |
 | `--mode` | 否 | `accumulate` | 写入模式：`accumulate`（累加）或 `overwrite`（覆盖） |
+| `--level` | 否 | 全部 | 标签级别：`1`（快速5源）、`2`（正常13源）、`3`（全量23源） |
 | `--output` | 否 | Settings 定位 | 输出 JSON 文件路径 |
 | `--config-dir` | 否 | `config/ip_tagger` | 标签配置文件目录 |
 | `--manifest` | 否 | `{config-dir}/manifest.json` | 清单文件路径 |
@@ -36,6 +37,15 @@ python tools/ip_tagger.py data/ips.txt
 ```bash
 # 默认累加模式（使用 Settings 定位 JSON 文件）
 python tools/ip_tagger.py data/ips.txt
+
+# 快速模式（仅 5 个核心标签源，最快）
+python tools/ip_tagger.py data/ips.txt --level 1
+
+# 正常模式（13 个标签源，平衡速度与覆盖面）
+python tools/ip_tagger.py data/ips.txt --level 2
+
+# 全量模式（23 个标签源，最全面）
+python tools/ip_tagger.py data/ips.txt --level 3
 
 # 覆盖模式（清空已有标签重写）
 python tools/ip_tagger.py data/ips.txt --mode overwrite
@@ -89,17 +99,20 @@ run_tagger('data/ips.txt', mode='accumulate', output='data/202604/202604_ip_data
 ### 基本用法
 
 ```bash
-# 更新所有有 source_url 的标签源文件
+# 方式1：从 GitHub 逐文件下载（默认）
 python tools/ip_tagger_updater.py
+
+# 方式2：git clone 整个仓库（推荐，稳定）
+python tools/ip_tagger_updater.py --from-git
+
+# 方式3：从本地 ZIP 压缩包导入（离线环境）
+python tools/ip_tagger_updater.py --from-archive ./blocklist-ipsets-main.zip
 
 # 仅检查更新，不实际下载
 python tools/ip_tagger_updater.py --dry-run
 
 # 强制更新所有文件（跳过缓存检查）
 python tools/ip_tagger_updater.py --force
-
-# 指定配置目录
-python tools/ip_tagger_updater.py --config-dir config/ip_tagger
 ```
 
 ### 更新策略
