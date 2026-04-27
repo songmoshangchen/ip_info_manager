@@ -1,0 +1,9 @@
+[
+  {"file": "yinhu.ipset", "label": "银狐"},
+  {"file": "feodo_badips.ipset", "label": "僵尸网络C&C"},
+  {"file": "iblocklist_abuse_zeus.netset", "label": "Zeus银行木马"},
+  {"file": "iblocklist_abuse_spyeye.netset", "label": "SpyEye银行木马"},
+  {"file": "iblocklist_abuse_palevo.netset", "label": "Palevo蠕虫"},
+  {"file": "cybercrime.ipset", "label": "综合犯罪IP"},
+  {"file": "firehol_anonymous.netset", "label": "匿名IP"}
+]

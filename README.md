@@ -18,6 +18,7 @@ python channel/rdns_ptr.py 8.8.8.8
 ## 功能概述
 
 - **多渠道情报采集**：通过 Fofa（Host聚合/搜索）、IPInfo（API/免API）、RDNS PTR、Whois、爱站、站长之家、ZoomEye、SSL 证书等渠道批量查询 IP 信息
+- **IP标签打标**：基于本地威胁情报文件批量匹配 IP 标签（银狐、僵尸网络C&C等），支持累加/覆盖模式
 - **JSON 数据存储**：所有 IP 数据以 JSON 格式统一存储，按 IP + 渠道组织
 - **命令行查询**：支持按 IP、渠道、字段等条件检索数据
 - **Excel 导出**：将 IP 数据导出为格式化的 Excel 文件
@@ -40,6 +41,10 @@ ip_info_manager/
 ├── writer.py               # IP 数据写入器
 ├── reader.py               # IP 数据读取器
 ├── exporter.py             # Excel 导出器
+├── config/                 # 配置文件目录
+│   └── ip_tagger/          # IP标签打标配置
+│       ├── manifest.json   # 标签清单（文件 → 标签名映射）
+│       └── *.ipset/netset  # 威胁情报源文件
 ├── channel/                # 数据采集渠道
 │   ├── _template.py        # 渠道模板（规范参考）
 │   ├── fofa_host.py        # Fofa Host 聚合查询
@@ -82,6 +87,7 @@ ip_info_manager/
 ├── tools/                  # 辅助工具
 │   ├── docx_builder.py   # Word 报告生成公共引擎（python-docx）
 │   ├── ai_analysis.py    # AI 研判辅助工具（筛选待研判IP、统计）
+│   ├── ip_tagger.py      # IP标签打标工具（基于本地威胁情报文件批量匹配）
 │   ├── merge_ip_files.py   # IP 文件合并/去重/验证
 │   ├── config_tool.py      # .env 配置管理工具
 │   ├── progress_tool.py    # .progress 进度文件管理工具
@@ -714,6 +720,74 @@ IP_IP_DOMAIN_LOOKUP_FOFA_SEARCH_ENABLED=false
 - 需安装 `python-docx`（`pip install python-docx`）
 - 未安装时流水线自动跳过报告生成阶段，输出警告信息，不影响其他功能
 
+### tools/ip\_tagger.py — IP标签打标工具
+
+基于本地威胁情报文件（`.ipset`/`.netset`）批量匹配 IP 并写入标签数据。纯本地计算，无网络请求。
+
+```bash
+python tools/ip_tagger.py data/ips.txt                                         # 累加模式（默认）
+python tools/ip_tagger.py data/ips.txt --mode overwrite                        # 覆盖模式
+python tools/ip_tagger.py data/ips.txt --output data/202604/202604_ip_data.json  # 指定输出 JSON
+python tools/ip_tagger.py data/ips.txt --config-dir config/ip_tagger           # 指定配置目录
+```
+
+**参数说明：**
+
+| 参数 | 必填 | 默认值 | 说明 |
+|---|---|---|---|
+| `ip_file` | 是 | — | IP 文件路径（每行一个 IP） |
+| `--mode` | 否 | `accumulate` | 写入模式：`accumulate`（累加）或 `overwrite`（覆盖） |
+| `--output` | 否 | Settings 定位 | 输出 JSON 文件路径 |
+| `--config-dir` | 否 | `config/ip_tagger` | 标签配置文件目录 |
+| `--manifest` | 否 | `{config-dir}/manifest.json` | 清单文件路径 |
+
+**写入模式：**
+
+- `accumulate`（累加）：将新标签合并到已有 `tags` 字段，按标签名去重
+- `overwrite`（覆盖）：清空已有 `tags` 字段后重新写入
+
+**标签配置：**
+
+配置目录 `config/ip_tagger/` 包含：
+- `manifest.json` — 标签清单，声明每个文件对应的标签名
+- `*.ipset` / `*.netset` — 威胁情报源文件（每行一个 IP 或 CIDR 网段，`#` 开头为注释）
+
+`manifest.json` 格式：
+
+```json
+[
+  {"file": "yinhu.ipset", "label": "银狐"},
+  {"file": "feodo_badips.ipset", "label": "僵尸网络C&C"}
+]
+```
+
+**写入的 JSON 数据格式（tags 渠道）：**
+
+```json
+{
+  "tags": {
+    "labels": ["银狐", "僵尸网络C&C"],
+    "details": [
+      {"label": "银狐", "source": "yinhu.ipset"},
+      {"label": "僵尸网络C&C", "source": "feodo_badips.ipset"}
+    ],
+    "query_time": "2026-04-27T10:00:00"
+  }
+}
+```
+
+**场景集成：**
+
+可通过 `run_tagger()` 公共接口在流水线中直接调用：
+
+```python
+from tools.ip_tagger import run_tagger
+run_tagger('data/ips.txt', mode='accumulate')
+run_tagger('data/ips.txt', mode='accumulate', output='data/202604/202604_ip_data.json')
+```
+
+**核心算法：** 统一 IPv4/IPv6 整数排序双指针扫描，O(n+m) 复杂度。
+
 ### tools/merge\_ip\_files.py — IP 文件合并/去重/验证
 
 ```bash
@@ -821,4 +895,5 @@ python tools/ai_analysis.py count                                       # 统计
 | `SslCertSettings`        | `ssl_cert_port`、`ssl_cert_timeout`、`ssl_cert_query_delay`                                                                    |
 | `IPDomainLookupSettings` | `rdns_ptr_enabled`、`aizhan_enabled`、`chinaz_enabled`、`zoomeye_enabled`、`fofa_search_enabled`、`ssl_cert_enabled`              |
 | `TraceIPSettings`        | `phase1_ipinfo_enabled`、`phase1_rdns_ptr_enabled`、`phase3_aizhan_enabled`、`phase3_chinaz_enabled`、`phase3_fofa_host_enabled` |
+| `IpTaggerSettings`       | `ip_tagger_config_dir` |
 

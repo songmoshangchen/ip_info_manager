@@ -135,3 +135,7 @@ class TraceIPSettings(BaseIPSettings):
     phase3_aizhan_enabled: bool = Field(default=True, description='溯源IP流水线阶段3：启用爱站网 IP 反查域名')
     phase3_chinaz_enabled: bool = Field(default=True, description='溯源IP流水线阶段3：启用站长之家 IP 反查域名')
     phase3_fofa_host_enabled: bool = Field(default=True, description='溯源IP流水线阶段3：启用 Fofa Host 聚合查询')
+
+
+class IpTaggerSettings(BaseIPSettings):
+    ip_tagger_config_dir: str = Field(default='config/ip_tagger', description='IP标签配置目录')
