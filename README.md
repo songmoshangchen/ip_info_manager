@@ -2,6 +2,19 @@
 
 一个用于批量采集、存储、查询和导出 IP 地址多维度情报信息的命令行工具。
 
+## 快速开始
+
+```bash
+git clone https://github.com/songmoshangchen/ip_info_manager.git
+cd ip_info_manager
+pip install -r requirements.txt
+cp .env.example .env
+python tools/config_tool.py set IP_FOFA_API_KEY "你的Key"
+python channel/rdns_ptr.py 8.8.8.8
+```
+
+详细的初始化步骤（可选依赖安装、API 凭证获取、数据存储配置等）请参阅 **[references/setup.md](references/setup.md)**。
+
 ## 功能概述
 
 - **多渠道情报采集**：通过 Fofa（Host聚合/搜索）、IPInfo（API/免API）、RDNS PTR、Whois、爱站、站长之家、ZoomEye、SSL 证书等渠道批量查询 IP 信息
@@ -96,6 +109,8 @@ ip_info_manager/
 
 ## 环境配置
 
+> 完整的初始化指南请参阅 **[references/setup.md](references/setup.md)**，包含依赖安装、API 凭证获取、数据存储配置和安装验证等详细步骤。
+
 ### 1. 安装依赖
 
 ```bash
@@ -105,6 +120,7 @@ pip install -r requirements.txt
 当前依赖：
 
 - `pydantic-settings>=2.0.0` — 配置管理
+- `ipinfo>=5.0.0` — IPInfo SDK
 - `beautifulsoup4>=4.12.0` — HTML 解析（爱站/站长之家）
 - `requests>=2.28.0` — HTTP 请求
 - `python-whois` — Whois 查询（可选，手动安装）
