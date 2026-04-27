@@ -7,7 +7,8 @@
 ```
 用户需要给一批 IP 打威胁情报标签 → ip_tagger.py
 用户需要查看/编辑标签配置清单 → 编辑 config/ip_tagger/manifest.json
-用户需要更新标签源文件 → 手动下载替换（后续将提供自动更新脚本）
+用户需要更新标签源文件 → python tools/ip_tagger_updater.py
+用户需要新增自定义标签源 → 添加文件到 config/ip_tagger/ + 更新 manifest.json
 ```
 
 ## 核心用法（ip_tagger.py）
@@ -60,10 +61,10 @@ python tools/ip_tagger.py data/ips.txt --config-dir config/ip_tagger
   "1.2.3.4": {
     "ip": "1.2.3.4",
     "tags": {
-      "labels": ["银狐", "僵尸网络C&C"],
+      "labels": ["银狐", "高危威胁"],
       "details": [
         {"label": "银狐", "source": "yinhu.ipset"},
-        {"label": "僵尸网络C&C", "source": "feodo_badips.ipset"}
+        {"label": "高危威胁", "source": "firehol_level1.netset"}
       ],
       "query_time": "2026-04-27T10:00:00"
     }
@@ -81,38 +82,80 @@ run_tagger('data/ips.txt', mode='accumulate')
 run_tagger('data/ips.txt', mode='accumulate', output='data/202604/202604_ip_data.json')
 ```
 
+## 标签源更新（ip_tagger_updater.py）
+
+从 [FireHOL blocklist-ipsets](https://github.com/firehol/blocklist-ipsets) 自动下载更新标签源文件。
+
+### 基本用法
+
+```bash
+# 更新所有有 source_url 的标签源文件
+python tools/ip_tagger_updater.py
+
+# 仅检查更新，不实际下载
+python tools/ip_tagger_updater.py --dry-run
+
+# 强制更新所有文件（跳过缓存检查）
+python tools/ip_tagger_updater.py --force
+
+# 指定配置目录
+python tools/ip_tagger_updater.py --config-dir config/ip_tagger
+```
+
+### 更新策略
+
+- 通过 HEAD 请求检查远程文件 `Content-Length`，与本地文件大小对比
+- 大小相同则跳过（已是最新）
+- 大小不同则下载覆盖
+- `source_url` 为空的条目不自动更新（自定义维护）
+- 内置 3 次重试机制，应对 GitHub 连接不稳定
+
+### 建议更新频率
+
+| 标签源 | 建议更新频率 | 说明 |
+|---|---|---|
+| blocklist_de 系列 | 每天或每周 | 48小时攻击数据，变化快 |
+| firehol_level1 | 每周 | 聚合列表，相对稳定 |
+| feodo/cybercrime | 每周 | 恶意软件 C&C，变化中等 |
+| tor_exits | 每周 | Tor 出口节点列表 |
+| stopforumspam_7d | 每周 | 7天 spam 数据 |
+
 ## 标签配置管理
 
 ### 配置目录结构
 
 ```
 config/ip_tagger/
-├── manifest.json                # 标签清单（文件 → 标签名映射）
-├── yinhu.ipset                  # 银狐木马 IP 列表
-├── feodo_badips.ipset           # Feodo 僵尸网络 C&C
-├── iblocklist_abuse_zeus.netset # Zeus 银行木马
-├── iblocklist_abuse_spyeye.netset # SpyEye 银行木马
-├── iblocklist_abuse_palevo.netset # Palevo 蠕虫
-├── cybercrime.ipset             # 综合犯罪 IP
-└── firehol_anonymous.netset     # 匿名 IP（Tor/VPN）
+├── manifest.json                # 标签清单（文件 → 标签名映射 + 下载源）
+├── yinhu.ipset                  # 银狐木马（自定义维护）
+├── feodo_badips.ipset           # 僵尸网络 C&C（FireHOL）
+├── cybercrime.ipset             # 综合犯罪 IP（FireHOL）
+├── firehol_level1.netset        # 高危威胁（FireHOL）
+├── blocklist_de.ipset           # Blocklist 攻击 IP（FireHOL）
+├── blocklist_de_ssh.ipset       # SSH 暴力破解（FireHOL）
+├── tor_exits.ipset              # Tor 出口节点（FireHOL）
+└── stopforumspam_7d.ipset       # 垃圾论坛 Spam（FireHOL）
 ```
 
 ### manifest.json 格式
 
 ```json
 [
-  {"file": "yinhu.ipset", "label": "银狐"},
-  {"file": "feodo_badips.ipset", "label": "僵尸网络C&C"},
-  {"file": "iblocklist_abuse_zeus.netset", "label": "Zeus银行木马"},
-  {"file": "iblocklist_abuse_spyeye.netset", "label": "SpyEye银行木马"},
-  {"file": "iblocklist_abuse_palevo.netset", "label": "Palevo蠕虫"},
-  {"file": "cybercrime.ipset", "label": "综合犯罪IP"},
-  {"file": "firehol_anonymous.netset", "label": "匿名IP"}
+  {"file": "yinhu.ipset", "label": "银狐", "source_url": "", "note": "自定义维护"},
+  {"file": "feodo_badips.ipset", "label": "僵尸网络C&C", "source_url": "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/feodo_badips.ipset"},
+  {"file": "cybercrime.ipset", "label": "综合犯罪IP", "source_url": "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/cybercrime.ipset"},
+  {"file": "firehol_level1.netset", "label": "高危威胁", "source_url": "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset"},
+  {"file": "blocklist_de.ipset", "label": "Blocklist攻击IP", "source_url": "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/blocklist_de.ipset"},
+  {"file": "blocklist_de_ssh.ipset", "label": "SSH暴力破解", "source_url": "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/blocklist_de_ssh.ipset"},
+  {"file": "tor_exits.ipset", "label": "Tor出口节点", "source_url": "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/tor_exits.ipset"},
+  {"file": "stopforumspam_7d.ipset", "label": "垃圾论坛Spam", "source_url": "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/stopforumspam_7d.ipset"}
 ]
 ```
 
 - `file`：相对于 config-dir 的文件名
 - `label`：标签名称（支持中文），不可重复
+- `source_url`：下载源 URL（为空则不自动更新）
+- `note`：可选备注
 
 ### 配置文件格式（.ipset / .netset）
 
@@ -131,16 +174,16 @@ config/ip_tagger/
 ### 新增标签源
 
 1. 将 `.ipset`/`.netset` 文件放入 `config/ip_tagger/`
-2. 在 `manifest.json` 中添加一行：`{"file": "新文件.ipset", "label": "标签名"}`
+2. 在 `manifest.json` 中添加条目（如需自动更新则填写 `source_url`）
 3. 重新运行 `ip_tagger.py`
 
-### 标签源更新
+### 新增 FireHOL 标签源
 
-标签源文件来自外部威胁情报项目（如 [FireHOL blocklist-ipsets](https://github.com/firehol/blocklist-ipsets)），需要定期更新。
+如需从 FireHOL 仓库新增标签源：
 
-**当前方式**：手动下载替换配置文件。
-
-**计划中**：后续将提供自动更新脚本，从 GitHub 下载最新的标签源文件，并预处理为流式查询友好的格式。
+1. 在 [FireHOL blocklist-ipsets](https://github.com/firehol/blocklist-ipsets/tree/master) 找到目标文件
+2. 在 `manifest.json` 中添加：`{"file": "文件名.ipset", "label": "标签名", "source_url": "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/文件名.ipset"}`
+3. 运行 `python tools/ip_tagger_updater.py` 下载
 
 ## 核心算法
 

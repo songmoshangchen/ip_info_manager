@@ -88,6 +88,7 @@ ip_info_manager/
 │   ├── docx_builder.py   # Word 报告生成公共引擎（python-docx）
 │   ├── ai_analysis.py    # AI 研判辅助工具（筛选待研判IP、统计）
 │   ├── ip_tagger.py      # IP标签打标工具（基于本地威胁情报文件批量匹配）
+│   ├── ip_tagger_updater.py # IP标签源自动更新工具（从FireHOL下载）
 │   ├── merge_ip_files.py   # IP 文件合并/去重/验证
 │   ├── config_tool.py      # .env 配置管理工具
 │   ├── progress_tool.py    # .progress 进度文件管理工具
@@ -756,8 +757,8 @@ python tools/ip_tagger.py data/ips.txt --config-dir config/ip_tagger           #
 
 ```json
 [
-  {"file": "yinhu.ipset", "label": "银狐"},
-  {"file": "feodo_badips.ipset", "label": "僵尸网络C&C"}
+  {"file": "yinhu.ipset", "label": "银狐", "source_url": "", "note": "自定义维护"},
+  {"file": "feodo_badips.ipset", "label": "僵尸网络C&C", "source_url": "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/feodo_badips.ipset"}
 ]
 ```
 
@@ -787,6 +788,18 @@ run_tagger('data/ips.txt', mode='accumulate', output='data/202604/202604_ip_data
 ```
 
 **核心算法：** 统一 IPv4/IPv6 整数排序双指针扫描，O(n+m) 复杂度。
+
+### tools/ip\_tagger\_updater.py — IP标签源自动更新工具
+
+从 [FireHOL blocklist-ipsets](https://github.com/firehol/blocklist-ipsets) 自动下载更新标签源文件。
+
+```bash
+python tools/ip_tagger_updater.py                    # 更新所有有 source_url 的文件
+python tools/ip_tagger_updater.py --dry-run          # 仅检查，不下载
+python tools/ip_tagger_updater.py --force            # 强制更新（跳过缓存检查）
+```
+
+**更新策略：** HEAD 请求检查远程文件 `Content-Length`，与本地大小对比，相同则跳过。内置 3 次重试机制应对 GitHub 连接不稳定。`source_url` 为空的自定义文件不自动更新。
 
 ### tools/merge\_ip\_files.py — IP 文件合并/去重/验证
 

@@ -1,9 +1,10 @@
 [
-  {"file": "yinhu.ipset", "label": "银狐"},
-  {"file": "feodo_badips.ipset", "label": "僵尸网络C&C"},
-  {"file": "iblocklist_abuse_zeus.netset", "label": "Zeus银行木马"},
-  {"file": "iblocklist_abuse_spyeye.netset", "label": "SpyEye银行木马"},
-  {"file": "iblocklist_abuse_palevo.netset", "label": "Palevo蠕虫"},
-  {"file": "cybercrime.ipset", "label": "综合犯罪IP"},
-  {"file": "firehol_anonymous.netset", "label": "匿名IP"}
+  {"file": "yinhu.ipset", "label": "银狐", "source_url": "", "note": "自定义维护"},
+  {"file": "feodo_badips.ipset", "label": "僵尸网络C&C", "source_url": "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/feodo_badips.ipset"},
+  {"file": "cybercrime.ipset", "label": "综合犯罪IP", "source_url": "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/cybercrime.ipset"},
+  {"file": "firehol_level1.netset", "label": "高危威胁", "source_url": "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset"},
+  {"file": "blocklist_de.ipset", "label": "Blocklist攻击IP", "source_url": "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/blocklist_de.ipset"},
+  {"file": "blocklist_de_ssh.ipset", "label": "SSH暴力破解", "source_url": "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/blocklist_de_ssh.ipset"},
+  {"file": "tor_exits.ipset", "label": "Tor出口节点", "source_url": "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/tor_exits.ipset"},
+  {"file": "stopforumspam_7d.ipset", "label": "垃圾论坛Spam", "source_url": "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/stopforumspam_7d.ipset"}
 ]
