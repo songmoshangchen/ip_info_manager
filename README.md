@@ -764,18 +764,15 @@ python tools/ip_tagger.py data/ips.txt --config-dir config/ip_tagger           #
 
 **写入的 JSON 数据格式（tags 渠道）：**
 
+只写入命中标签的 IP，格式为标签名列表：
+
 ```json
 {
-  "tags": {
-    "labels": ["银狐", "僵尸网络C&C"],
-    "details": [
-      {"label": "银狐", "source": "yinhu.ipset"},
-      {"label": "僵尸网络C&C", "source": "feodo_badips.ipset"}
-    ],
-    "query_time": "2026-04-27T10:00:00"
-  }
+  "tags": ["银狐", "高危威胁", "SSH暴力破解"]
 }
 ```
+
+**月度更新提醒：** ip_tagger 运行时检查 `.last_update` 标记，过月未更新则提醒。
 
 **场景集成：**
 
@@ -784,7 +781,7 @@ python tools/ip_tagger.py data/ips.txt --config-dir config/ip_tagger           #
 ```python
 from tools.ip_tagger import run_tagger
 run_tagger('data/ips.txt', mode='accumulate')
-run_tagger('data/ips.txt', mode='accumulate', output='data/202604/202604_ip_data.json')
+run_tagger('data/ips.txt', level=1)
 ```
 
 **核心算法：** 统一 IPv4/IPv6 整数排序双指针扫描，O(n+m) 复杂度。
@@ -815,10 +812,10 @@ python tools/ip_tagger_updater.py --force            # 强制更新
 
 | 级别 | 标签源数 | 说明 |
 |---|---|---|
-| `--level 1`（快速） | 5 | 核心威胁：银狐、僵尸网络C&C、Tor、SSH暴力破解、Bot |
-| `--level 2`（正常） | 13 | + 高危威胁、攻击IP、暴力破解、邮件、Apache、Spam等 |
-| `--level 3`（全量） | 23 | + 中危/低危威胁、乌克兰Blocklist、30天Spam等 |
-| 不指定 | 23 | 使用全部标签源 |
+| `--level 1`（快速） | 21 | 核心威胁：银狐、C&C、Tor、SSH、Bot、高危/中危/低危威胁、各类攻击 |
+| `--level 2`（正常） | 31 | + Spamhaus、GreenSnow、PHP系列、乌克兰Blocklist、Spam30天 |
+| `--level 3`（全量） | 35 | + AbuseIPDB（74万+16万条）、匿名IP全量（190万条） |
+| 不指定 | 35 | 使用全部标签源 |
 
 ### tools/merge\_ip\_files.py — IP 文件合并/去重/验证
 
