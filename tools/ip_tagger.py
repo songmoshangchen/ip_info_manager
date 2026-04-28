@@ -14,6 +14,29 @@ _logger = get_batch_logger('ip_tagger')
 BATCH_SIZE = 256
 
 
+def check_update_reminder(config_dir: str):
+    marker_path = os.path.join(config_dir, '.last_update')
+    now = time.localtime()
+    current_month = f"{now.tm_year}-{now.tm_mon:02d}"
+
+    if os.path.exists(marker_path):
+        with open(marker_path, 'r', encoding='utf-8') as f:
+            last_month = f.read().strip()
+        if last_month == current_month:
+            return
+
+    print(f"提醒: 本月尚未更新标签源文件，建议执行: python tools/ip_tagger_updater.py --from-git")
+    _logger.warning(f"月度更新提醒: 当前月份 {current_month} 尚未更新标签源")
+
+
+def mark_updated(config_dir: str):
+    marker_path = os.path.join(config_dir, '.last_update')
+    now = time.localtime()
+    current_month = f"{now.tm_year}-{now.tm_mon:02d}"
+    with open(marker_path, 'w', encoding='utf-8') as f:
+        f.write(current_month)
+
+
 def load_manifest(manifest_path: str, level: int = None) -> list[dict]:
     if not os.path.exists(manifest_path):
         print(f"错误: 清单文件不存在: {manifest_path}")
@@ -138,7 +161,7 @@ def process_all_tags(
     ip_list: list[str],
     manifest: list[dict],
     config_dir: str,
-) -> dict[str, list[dict]]:
+) -> dict[str, list[str]]:
     _logger.info(f"开始处理 {len(ip_list)} 个 IP，共 {len(manifest)} 个标签源")
 
     valid_items = []
@@ -154,7 +177,7 @@ def process_all_tags(
     valid_items.sort(key=lambda x: x[1])
     _logger.info(f"有效 IP: {len(valid_items)}，无效 IP: {invalid_count}")
 
-    ip_tags: dict[str, list[dict]] = {}
+    ip_tags: dict[str, list[str]] = {}
 
     total = len(manifest)
     for idx, item in enumerate(manifest):
@@ -173,7 +196,8 @@ def process_all_tags(
             ip_str = valid_items[match_idx][0]
             if ip_str not in ip_tags:
                 ip_tags[ip_str] = []
-            ip_tags[ip_str].append({"label": label, "source": source_file})
+            if label not in ip_tags[ip_str]:
+                ip_tags[ip_str].append(label)
 
     _logger.info(f"全部标签源处理完成: {len(ip_tags)}/{len(valid_items)} 个 IP 命中至少一个标签")
 
@@ -195,11 +219,10 @@ def _resolve_json_path(output: str = None) -> str:
 
 
 def write_matched_tags(
-    ip_tags: dict[str, list[dict]],
+    ip_tags: dict[str, list[str]],
     mode: str,
     output: str = None,
 ):
-    now = time.strftime('%Y-%m-%dT%H:%M:%S')
     json_path = _resolve_json_path(output)
 
     if os.path.exists(json_path):
@@ -212,41 +235,19 @@ def write_matched_tags(
 
     written = 0
 
-    for ip_str, details in ip_tags.items():
-        if not details:
+    for ip_str, labels in ip_tags.items():
+        if not labels:
             continue
-
-        labels = [d['label'] for d in details]
 
         if ip_str not in data:
             data[ip_str] = {"ip": ip_str}
 
         if mode == 'overwrite' or 'tags' not in data[ip_str]:
-            data[ip_str]['tags'] = {
-                "labels": labels,
-                "details": details,
-                "query_time": now,
-            }
+            data[ip_str]['tags'] = labels
         else:
-            existing = data[ip_str]['tags']
-            existing_labels = set(existing.get('labels', []))
-            existing_details = existing.get('details', [])
-
-            new_labels = list(existing_labels | set(labels))
-
-            existing_sources = {(d['label'], d['source']) for d in existing_details}
-            merged_details = list(existing_details)
-            for d in details:
-                key = (d['label'], d['source'])
-                if key not in existing_sources:
-                    merged_details.append(d)
-                    existing_sources.add(key)
-
-            data[ip_str]['tags'] = {
-                "labels": new_labels,
-                "details": merged_details,
-                "query_time": now,
-            }
+            existing = set(data[ip_str].get('tags', []))
+            merged = list(existing | set(labels))
+            data[ip_str]['tags'] = merged
 
         written += 1
 
@@ -272,6 +273,7 @@ def run_tagger(ip_file: str, mode: str = 'accumulate', config_dir: str = None, o
 
     manifest = load_manifest(manifest_path, level=level)
     validate_manifest(manifest, config_dir)
+    check_update_reminder(config_dir)
 
     ip_list = read_ip_file(ip_file)
     if not ip_list:
@@ -325,6 +327,7 @@ def main():
 
     manifest = load_manifest(manifest_path, level=args.level)
     validate_manifest(manifest, config_dir)
+    check_update_reminder(config_dir)
 
     ip_list = read_ip_file(args.ip_file)
     if not ip_list:

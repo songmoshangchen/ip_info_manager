@@ -314,6 +314,14 @@ def main():
         results = update_sources(config_dir, manifest, dry_run=args.dry_run, force=args.force)
         print_summary(results, dry_run=args.dry_run, source="GitHub 下载")
 
+    if not args.dry_run and results.get('failed') is not None and len(results.get('failed', [])) == 0:
+        now = time.localtime()
+        current_month = f"{now.tm_year}-{now.tm_mon:02d}"
+        marker_path = os.path.join(config_dir, '.last_update')
+        with open(marker_path, 'w', encoding='utf-8') as f:
+            f.write(current_month)
+        _logger.info(f"已更新标记: {current_month}")
+
 
 if __name__ == "__main__":
     main()
