@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -133,4 +134,6 @@ class IPClassifier:
             return value_str.startswith(match_str_lower)
         elif match_type == 'exact':
             return value_str == match_str_lower
+        elif match_type == 'regex':
+            return bool(re.match(match_str, value_str))
         return False
