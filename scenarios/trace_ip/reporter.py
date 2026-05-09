@@ -302,6 +302,8 @@ class TextTraceReporter(BaseTraceReporter):
             'crawler_scanner': '爬虫/扫描器',
             'residential': '家用宽带',
             'other': '其他（需确认）',
+            'invalid_rdns': '无效RDNS',
+            'excluded_domain': '排除域名',
         }
         desc_map = {
             'cloud_provider': 'AWS/阿里云/腾讯云等云主机，可能用于部署攻击工具',
@@ -309,6 +311,8 @@ class TextTraceReporter(BaseTraceReporter):
             'crawler_scanner': '自动化扫描工具（如Censys/Shodan），跳过深度查询',
             'residential': '个人宽带用户，可能为肉鸡或代理出口',
             'other': '未匹配已知规则，需人工或AI研判确认',
+            'invalid_rdns': 'RDNS反解为纯IP地址格式，属于无效域名',
+            'excluded_domain': '已排除的域名类型',
         }
         deep_query_map = {
             'cloud_provider': True,
@@ -316,8 +320,10 @@ class TextTraceReporter(BaseTraceReporter):
             'crawler_scanner': False,
             'residential': True,
             'other': True,
+            'invalid_rdns': False,
+            'excluded_domain': False,
         }
-        cat_order = ['other', 'crawler_scanner', 'residential', 'cloud_provider', 'cdn']
+        cat_order = ['other', 'invalid_rdns', 'excluded_domain', 'crawler_scanner', 'residential', 'cloud_provider', 'cdn']
 
         builder = DocxBuilder(
             report_title='IP溯源分析报告',
@@ -461,6 +467,18 @@ class TextTraceReporter(BaseTraceReporter):
         # ── 三、溯源优先级 ──
         cat_weight = {'cloud_provider': 2, 'residential': 1, 'other': 0}
 
+        def _cat_display(info):
+            classify = info.get('trace_classify', {})
+            category = classify.get('category', '')
+            if category == 'other':
+                return label_map.get('other', '其他（需确认）')
+            label = label_map.get(category, category)
+            matched_by = classify.get('matched_by', [])
+            if matched_by and matched_by[0].get('note'):
+                note = matched_by[0]['note']
+                return f'{label}（{note}）'
+            return label
+
         def _trace_priority(ip):
             info = ip_data[ip]
             is_cn = self._is_china_ip(info)
@@ -551,8 +569,7 @@ class TextTraceReporter(BaseTraceReporter):
                     info = ip_data[ip]
                     n_dom = _count_domains(info)
                     n_pt = len(self._extract_fofa_ports(info))
-                    classify = info.get('trace_classify', {})
-                    cat = label_map.get(classify.get('category', ''), 'N/A')
+                    cat = _cat_display(info)
                     org = info.get('ipinfo_api', {}).get('as_name', 'N/A')
                     p1_rows.append([ip, org, cat, str(n_dom), str(n_pt), _trace_action(ip)])
                 builder.add_table(['IP', '组织', '分类', '域名数', '端口数', '建议溯源路径'], p1_rows)
@@ -566,8 +583,7 @@ class TextTraceReporter(BaseTraceReporter):
                     info = ip_data[ip]
                     n_dom = _count_domains(info)
                     n_pt = len(self._extract_fofa_ports(info))
-                    classify = info.get('trace_classify', {})
-                    cat = label_map.get(classify.get('category', ''), 'N/A')
+                    cat = _cat_display(info)
                     country = info.get('ipinfo_api', {}).get('country', 'N/A')
                     org = info.get('ipinfo_api', {}).get('as_name', 'N/A')
                     p2_rows.append([ip, country, org, cat, str(n_dom), str(n_pt), _trace_action(ip)])
@@ -582,8 +598,7 @@ class TextTraceReporter(BaseTraceReporter):
                     info = ip_data[ip]
                     n_dom = _count_domains(info)
                     n_pt = len(self._extract_fofa_ports(info))
-                    classify = info.get('trace_classify', {})
-                    cat = label_map.get(classify.get('category', ''), 'N/A')
+                    cat = _cat_display(info)
                     country = info.get('ipinfo_api', {}).get('country', 'N/A')
                     org = info.get('ipinfo_api', {}).get('as_name', 'N/A')
                     p3_rows.append([ip, country, org, cat, str(n_dom), str(n_pt), _trace_action(ip)])
@@ -596,8 +611,7 @@ class TextTraceReporter(BaseTraceReporter):
                 p4_rows = []
                 for ip in p4_ips:
                     info = ip_data[ip]
-                    classify = info.get('trace_classify', {})
-                    cat = label_map.get(classify.get('category', ''), 'N/A')
+                    cat = _cat_display(info)
                     country = info.get('ipinfo_api', {}).get('country', 'N/A')
                     org = info.get('ipinfo_api', {}).get('as_name', 'N/A')
                     p4_rows.append([ip, country, org, cat])
