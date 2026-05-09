@@ -61,6 +61,7 @@ class IPClassifier:
                             'pattern': pattern['match'],
                             'type': pattern['type'],
                             'value': str(field_value),
+                            'note': pattern.get('note', ''),
                         }],
                         need_deep_query=cat_def.get('need_deep_query', True),
                         classify_time=datetime.now().isoformat(),
