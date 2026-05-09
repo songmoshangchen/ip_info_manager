@@ -20,6 +20,7 @@ from reader import IPReader
 from writer import IPWriter
 
 from .classifier import IPClassifier
+from .excel_exporter import generate_trace_excel
 from .progress import BatchIPWriter, ProgressManager
 from .reporter import BaseTraceReporter, TextTraceReporter
 
@@ -32,7 +33,7 @@ PHASE_NAMES = {
     2: '自动分类过滤',
     3: '深度查询',
     4: '汇总输出',
-    5: '生成 Word 报告',
+    5: '生成报告（Word + Excel）',
 }
 
 
@@ -101,7 +102,7 @@ class TraceIPPipeline:
             2: self._phase2_classify,
             3: self._phase3_deep_query,
             4: self._phase4_summary,
-            5: self._reporter.generate_docx_report,
+            5: self._phase5_generate_reports,
         }
 
         for phase_num in phases_to_run:
@@ -531,6 +532,12 @@ class TraceIPPipeline:
 
     def _phase4_summary(self):
         self._reporter.generate_summary(self._ips, self._reporter.report)
+
+    # ── Phase 5: 生成报告（Word + Excel） ──
+
+    def _phase5_generate_reports(self):
+        self._reporter.generate_docx_report()
+        generate_trace_excel(self._output_dir, self._prefix)
 
     # ── 并行查询核心方法 ──
 
