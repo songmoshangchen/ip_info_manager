@@ -53,6 +53,12 @@ def main():
     output_group.add_argument(
         '--no-deep-query', action='store_true',
         help='分类后不执行深度查询阶段')
+    output_group.add_argument(
+        '--no-tagger', action='store_true',
+        help='跳过 IP 标签打标阶段')
+    output_group.add_argument(
+        '--tagger-level', type=int, choices=[1, 2, 3],
+        help='标签级别：1=快速(21源), 2=正常(31源), 3=全量(35源)')
 
     timeout_group = parser.add_argument_group('超时控制')
     timeout_group.add_argument(
@@ -72,6 +78,8 @@ def main():
         'no_custom_rules': args.no_custom_rules,
         'no_deep_query': args.no_deep_query,
         'channel_timeout': args.channel_timeout,
+        'no_tagger': args.no_tagger,
+        'tagger_level': args.tagger_level,
     }
 
     logger.info("=" * 60)
@@ -84,6 +92,10 @@ def main():
         logger.info("仅执行阶段: %d", args.only_phase)
     if args.no_deep_query:
         logger.info("深度查询: 已禁用")
+    if args.no_tagger:
+        logger.info("标签打标: 已禁用")
+    if args.tagger_level:
+        logger.info("标签级别: %d", args.tagger_level)
     if args.channel_timeout:
         logger.info("渠道超时: %ds", args.channel_timeout)
     logger.info("=" * 60)

@@ -54,6 +54,7 @@ class TraceIPPipeline:
     def __init__(self, ip_file: str, config: dict,
                  reporter: BaseTraceReporter = None):
         self._config = config
+        self._config['ip_file'] = ip_file
         self._ips = _load_ips(ip_file)
 
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(
@@ -61,7 +62,8 @@ class TraceIPPipeline:
         self._output_dir = self._resolve_output_dir(project_root)
 
         prefix = Settings().trace_ip_project_name
-        
+        self._prefix = prefix
+
         scenario_settings = Settings().model_copy(update={'storage_name': prefix})
 
         self._ip_reader = IPReader(settings=scenario_settings, storage_dir=self._output_dir)
@@ -94,6 +96,9 @@ class TraceIPPipeline:
         if from_phase and from_phase > 1:
             self._progress.clear_from(from_phase)
             logger.info("从阶段 %d 开始，已清除后续阶段的标记文件", from_phase)
+
+        if not self._config.get('no_tagger'):
+            self._run_ip_tagger()
 
         phases_to_run = [only_phase] if only_phase else [1, 2, 3, 4, 5]
 
@@ -538,6 +543,26 @@ class TraceIPPipeline:
     def _phase5_generate_reports(self):
         self._reporter.generate_docx_report()
         generate_trace_excel(self._output_dir, self._prefix)
+
+    # ── IP 标签打标 ──
+
+    def _run_ip_tagger(self):
+        from tools.ip_tagger import run_tagger
+
+        json_path = os.path.join(self._output_dir, f'{self._prefix}.json')
+        level = self._config.get('tagger_level')
+
+        logger.info("")
+        logger.info("=" * 60)
+        logger.info("IP 标签打标")
+        logger.info("=" * 60)
+
+        run_tagger(
+            ip_file=self._config.get('ip_file', ''),
+            mode='accumulate',
+            output=json_path,
+            level=level,
+        )
 
     # ── 并行查询核心方法 ──
 
