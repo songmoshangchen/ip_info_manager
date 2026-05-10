@@ -23,6 +23,7 @@ python channel/rdns_ptr.py 8.8.8.8
 - **命令行查询**：支持按 IP、渠道、字段等条件检索数据
 - **Excel 导出**：将 IP 数据导出为格式化的 Excel 文件
 - **断点续查**：批量查询和流水线均支持进度保存，中断后可继续
+- **任务状态查询**：通过 `status_tool.py` 查看流水线/批量查询的运行状态、进度和 ETA，支持 AI 异步执行模式
 - **并发查询**：RDNS 查询提供多线程并发版本，流水线内部并行查询多渠道
 - **IP 反查域名**：通过爱站网和站长之家查询 IP 绑定的域名信息
 - **溯源IP处理流水线**：自动采集、IP标签打标、分类过滤、深度查询、溯源优先级分级、汇总报告（Word + Excel）
@@ -886,6 +887,30 @@ python tools/progress_tool.py generate data/ip_data.json --channel fofa_host -o 
 python tools/progress_tool.py remove data/ip_data.fofa_host.progress 1.2.3.4 5.6.7.8
 python tools/progress_tool.py remove data/ip_data.fofa_host.progress --from-file ips.txt
 ```
+
+### tools/status\_tool.py — 任务状态查询工具
+
+查看流水线或批量查询任务的运行状态、进度和预计剩余时间（ETA）。
+
+```bash
+python tools/status_tool.py trace_ip              # 查看溯源流水线状态
+python tools/status_tool.py ip_domain_lookup      # 查看IP域名反查状态
+python tools/status_tool.py batch                 # 查看批量查询状态
+python tools/status_tool.py cleanup trace_ip      # 清理残留 PID 文件
+python tools/status_tool.py cleanup ip_domain_lookup
+python tools/status_tool.py cleanup batch
+```
+
+**状态说明：**
+
+| 状态 | 含义 |
+|------|------|
+| 🟢 运行中 | 任务正在执行，心跳正常 |
+| ⏳ 疑似卡死 | 进程存在但心跳超过 120 秒未更新 |
+| ⚠️ 异常终止 | PID 文件存在但进程已不存在，可断点续跑 |
+| ⬜ 未运行 | 任务未启动或已完成 |
+
+**AI 异步执行模式：** 长时间任务建议用 `blocking=false` 启动，通过 `status_tool.py` 定期查看进度，任务完成后再继续后续操作。
 
 ### tools/verify\_ip\_domain.py — IP-域名映射验证
 
