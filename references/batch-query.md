@@ -84,9 +84,21 @@ ipinfo_api 有两种模式，使用前需确认：
 批量脚本自动在数据文件同目录生成 `{storage_file}.{channel_name}.progress` 进度文件。
 
 - 中断后重新运行同一命令，会自动跳过已处理的 IP
+- 运行前自动显示断点进度：`发现进度文件: 已处理 50/100 (50.0%)，将从断点继续`
 - 如需**全部**重新查询，删除对应的 `.progress` 文件
 - 如需重新查询**特定** IP，用 `tools/progress_tool.py` 从进度文件中移除目标 IP
 - 以上操作仅解除已处理标记（允许重新查询），不会直接触发查询，需重新运行批量命令才会生效
+
+## 任务状态查询
+
+批量查询运行时会自动写入 PID 文件，可通过 `status_tool.py` 查看运行状态：
+
+```bash
+python tools/status_tool.py batch                        # 查看运行状态、进度、ETA
+python tools/status_tool.py cleanup batch                # 清理残留 PID 文件
+```
+
+批量查询运行中每个 IP 处理后会显示 ETA 预计剩余时间。
 
 ### 进度文件管理
 

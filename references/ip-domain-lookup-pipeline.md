@@ -78,6 +78,16 @@ python tools/config_tool.py set IP_IP_DOMAIN_LOOKUP_SSL_CERT_ENABLED true
 
 - 使用 `--from-phase N` 跳过已完成阶段
 - 支持 Ctrl+C 安全中断
+- 运行前自动显示断点进度：`发现进度文件: 已处理 124/167 (74.3%)，将从断点继续`
+
+## 任务状态查询
+
+流水线运行时会自动写入 PID 文件，可通过 `status_tool.py` 查看运行状态：
+
+```bash
+python tools/status_tool.py ip_domain_lookup              # 查看运行状态、进度、ETA
+python tools/status_tool.py cleanup ip_domain_lookup      # 清理残留 PID 文件
+```
 
 ## 输出文件
 

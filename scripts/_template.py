@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from writer import IPWriter
 from channel.xxx import Settings, fetch_xxx, validate_channel_key
 from utils.logger_utils import get_batch_logger
+from utils.pid_manager import PidManager
 
 
 class BatchXxxQuery:
@@ -20,6 +21,10 @@ class BatchXxxQuery:
 
         self.load_stats = {}
         self.pending_ips = self._load_pending_ips()
+        self._pid = PidManager(
+            os.path.dirname(self.ip_writer.storage_file),
+            os.path.basename(self.ip_writer.storage_file).replace('.json', '')
+        )
 
     @property
     def progress_file(self):
@@ -136,6 +141,14 @@ class BatchXxxQuery:
         total_count = self.load_stats['unique_count']
         processed_count = self.load_stats['already_processed']
 
+        if processed_count > 0:
+            pct = processed_count / total_count * 100 if total_count else 0
+            self.logger.info(f"发现进度文件: 已处理 {processed_count}/{total_count} ({pct:.1f}%)，将从断点继续")
+
+        self._pid.write_pid(
+            f'batch_{self.channel_name}', self.ip_file,
+            total_count, current_phase=1)
+
         self.logger.info("开始批量查询 XXX 信息")
         self.logger.info(f"IP 文件: {self.ip_file}")
         if self.load_stats['duplicate_count'] > 0:
@@ -150,10 +163,12 @@ class BatchXxxQuery:
         success_count = 0
         fail_count = 0
         start_time = time.time()
+        new_count = 0
 
         try:
             for ip in self.pending_ips:
                 current_count += 1
+                new_count += 1
                 query_start = time.time()
 
                 self.logger.info(f"[{current_count}/{total_count}] 正在查询: {ip}")
@@ -174,9 +189,22 @@ class BatchXxxQuery:
                 self.logger.debug(f"已写入 {ip} 的 {self.channel_name} 数据")
                 self._save_progress(ip)
 
+                self._pid.update_heartbeat(current_phase=1)
+
+                if new_count > 1:
+                    elapsed = time.time() - start_time
+                    remaining = total_count - current_count
+                    if remaining > 0:
+                        avg = elapsed / new_count
+                        eta_s = remaining * avg
+                        eta_m = int(eta_s // 60)
+                        eta_sec = int(eta_s % 60)
+                        self.logger.info(f"  ETA: ~{eta_m}min{eta_sec:02d}s (剩余 {remaining} 个IP)")
+
                 time.sleep(delay)
 
         except KeyboardInterrupt:
+            self._pid.remove_pid()
             total_elapsed = time.time() - start_time
             self.logger.info("=" * 60)
             self.logger.info("查询已中断！")
@@ -188,6 +216,7 @@ class BatchXxxQuery:
             self.logger.info("=" * 60)
             sys.exit(0)
 
+        self._pid.remove_pid()
         total_elapsed = time.time() - start_time
         self.logger.info("=" * 60)
         self.logger.info("批量查询完成！")

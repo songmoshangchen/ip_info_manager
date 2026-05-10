@@ -19,6 +19,8 @@ from config import (
 from reader import IPReader
 from writer import IPWriter
 
+from utils.pid_manager import PidManager
+
 from .classifier import IPClassifier
 from .excel_exporter import generate_trace_excel
 from .progress import BatchIPWriter, ProgressManager
@@ -81,6 +83,7 @@ class TraceIPPipeline:
         self._classifier = IPClassifier(builtin_path, custom_path)
         self._progress = ProgressManager(self._output_dir, prefix)
         self._batch_writer = BatchIPWriter(IPWriter(settings=scenario_settings, storage_dir=self._output_dir))
+        self._pid = PidManager(self._output_dir, prefix)
 
         if reporter:
             self._reporter = reporter
@@ -99,6 +102,20 @@ class TraceIPPipeline:
 
         phases_to_run = [only_phase] if only_phase else [1, 2, 3, 4, 5]
 
+        self._pid.write_pid(
+            'trace_ip', self._config.get('ip_file', ''),
+            len(self._ips),
+            current_phase=phases_to_run[0] if phases_to_run else 1,
+            from_phase=from_phase,
+            only_phase=only_phase,
+        )
+
+        try:
+            self._run_phases(phases_to_run, from_phase, only_phase)
+        finally:
+            self._pid.remove_pid()
+
+    def _run_phases(self, phases_to_run, from_phase, only_phase):
         phase_methods = {
             1: self._phase1_collect_basic,
             2: self._phase2_classify,
@@ -112,6 +129,8 @@ class TraceIPPipeline:
                 if from_phase and phase_num < from_phase:
                     logger.info("跳过阶段 %d（已完成）", phase_num)
                     continue
+
+            self._pid.update_heartbeat(current_phase=phase_num)
 
             logger.info("")
             logger.info("=" * 60)
@@ -139,7 +158,9 @@ class TraceIPPipeline:
 
         processed = self._progress.load_completed(1)
         if processed:
-            logger.info("发现进度文件，已完成 %d 个IP，从断点继续", len(processed))
+            pct = len(processed) / len(self._ips) * 100 if self._ips else 0
+            logger.info("发现进度文件: 已处理 %d/%d (%.1f%%)，将从断点继续",
+                        len(processed), len(self._ips), pct)
 
         ipinfo_settings = IpinfoSettings()
         rdns_settings = RdnsSettings()
@@ -182,11 +203,15 @@ class TraceIPPipeline:
         logger.info("-" * 60)
 
         max_delay = max(delays) if delays else 0
+        _p1_start = time.time()
+        _p1_new_count = 0
 
         with self._batch_writer:
             for i, ip in enumerate(self._ips, 1):
                 if ip in processed:
                     continue
+
+                _p1_new_count += 1
 
                 channel_specs = []
 
@@ -233,6 +258,18 @@ class TraceIPPipeline:
 
                 self._progress.record(ip, 1)
                 self._progress.flush()
+
+                self._pid.update_heartbeat(current_phase=1)
+
+                if _p1_new_count > 0:
+                    elapsed = time.time() - _p1_start
+                    remaining = total - i
+                    if _p1_new_count > 1 and remaining > 0:
+                        avg = elapsed / _p1_new_count
+                        eta_s = remaining * avg
+                        eta_m = int(eta_s // 60)
+                        eta_sec = int(eta_s % 60)
+                        logger.info("  ETA: ~%dmin%02ds (剩余 %d 个IP)", eta_m, eta_sec, remaining)
 
                 time.sleep(max_delay)
 
@@ -393,8 +430,9 @@ class TraceIPPipeline:
 
         processed = self._progress.load_completed(3)
         if processed:
-            logger.info("发现进度文件，已完成 %d 个IP，从断点继续",
-                         len(processed))
+            pct = len(processed) / total * 100 if total else 0
+            logger.info("发现进度文件: 已处理 %d/%d (%.1f%%)，将从断点继续",
+                         len(processed), total, pct)
 
         aizhan_settings = AizhanSettings()
         chinaz_settings = ChinazSettings()
@@ -443,6 +481,7 @@ class TraceIPPipeline:
 
         max_delay = max(delays) if delays else 0
 
+        _p3_start = time.time()
         new_count = 0
         with self._batch_writer:
             for i, ip in enumerate(filtered_ips, 1):
@@ -517,6 +556,18 @@ class TraceIPPipeline:
 
                 self._progress.record(ip, 3)
                 self._progress.flush()
+
+                self._pid.update_heartbeat(current_phase=3)
+
+                if new_count > 1:
+                    elapsed = time.time() - _p3_start
+                    remaining = total - i
+                    if remaining > 0:
+                        avg = elapsed / new_count
+                        eta_s = remaining * avg
+                        eta_m = int(eta_s // 60)
+                        eta_sec = int(eta_s % 60)
+                        logger.info("  ETA: ~%dmin%02ds (剩余 %d 个IP)", eta_m, eta_sec, remaining)
 
                 time.sleep(max_delay)
 
