@@ -102,6 +102,8 @@ class TraceIPPipeline:
 
         phases_to_run = [only_phase] if only_phase else [1, 2, 3, 4, 5]
 
+        self._check_dependencies(phases_to_run)
+
         self._pid.write_pid(
             'trace_ip', self._config.get('ip_file', ''),
             len(self._ips),
@@ -114,6 +116,27 @@ class TraceIPPipeline:
             self._run_phases(phases_to_run, from_phase, only_phase)
         finally:
             self._pid.remove_pid()
+
+    def _check_dependencies(self, phases_to_run):
+        if 5 in phases_to_run:
+            from tools.docx_builder import DOCX_AVAILABLE
+            if not DOCX_AVAILABLE:
+                logger.error("=" * 60)
+                logger.error("缺少必需依赖: python-docx")
+                logger.error("Phase 5 (生成报告) 需要此依赖才能生成 Word 报告")
+                logger.error("安装命令: pip install python-docx")
+                logger.error("=" * 60)
+                sys.exit(1)
+
+            try:
+                import openpyxl
+            except ImportError:
+                logger.error("=" * 60)
+                logger.error("缺少必需依赖: openpyxl")
+                logger.error("Phase 5 (生成报告) 需要此依赖才能生成 Excel 报告")
+                logger.error("安装命令: pip install openpyxl")
+                logger.error("=" * 60)
+                sys.exit(1)
 
     def _run_phases(self, phases_to_run, from_phase, only_phase):
         phase_methods = {

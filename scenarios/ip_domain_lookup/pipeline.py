@@ -93,6 +93,8 @@ class IPDomainLookupPipeline:
 
         phases_to_run = [only_phase] if only_phase else [1, 2, 3, 4]
 
+        self._check_dependencies(phases_to_run)
+
         self._pid.write_pid(
             'ip_domain_lookup', self._config.get('ip_file', ''),
             len(self._ips),
@@ -105,6 +107,17 @@ class IPDomainLookupPipeline:
             self._run_phases(phases_to_run, from_phase, only_phase)
         finally:
             self._pid.remove_pid()
+
+    def _check_dependencies(self, phases_to_run):
+        if 4 in phases_to_run:
+            from tools.docx_builder import DOCX_AVAILABLE
+            if not DOCX_AVAILABLE:
+                logger.error("=" * 60)
+                logger.error("缺少必需依赖: python-docx")
+                logger.error("Phase 4 (生成 Word 报告) 需要此依赖")
+                logger.error("安装命令: pip install python-docx")
+                logger.error("=" * 60)
+                sys.exit(1)
 
     def _run_phases(self, phases_to_run, from_phase, only_phase):
 

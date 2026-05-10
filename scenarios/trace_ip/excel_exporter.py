@@ -2,8 +2,12 @@ import json
 import logging
 import os
 
-from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, PatternFill
+try:
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    OPENPYXL_AVAILABLE = True
+except ImportError:
+    OPENPYXL_AVAILABLE = False
 
 logger = logging.getLogger('ip_info_manager.scenarios.trace_ip')
 
@@ -154,9 +158,7 @@ def _build_row(ip, info):
 
 
 def generate_trace_excel(output_dir, prefix):
-    try:
-        from openpyxl import Workbook
-    except ImportError:
+    if not OPENPYXL_AVAILABLE:
         logger.warning('openpyxl 未安装，跳过 Excel 导出。安装命令：pip install openpyxl')
         return False
 
