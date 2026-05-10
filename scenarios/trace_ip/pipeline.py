@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import sys
@@ -617,6 +618,56 @@ class TraceIPPipeline:
     def _phase5_generate_reports(self):
         self._reporter.generate_docx_report()
         generate_trace_excel(self._output_dir, self._prefix)
+        self._print_report_summary()
+
+    def _print_report_summary(self):
+        from scenarios.trace_ip.excel_exporter import _trace_priority, _extract_all_domains
+
+        json_path = os.path.join(self._output_dir, f'{self._prefix}.json')
+        if not os.path.exists(json_path):
+            return
+
+        with open(json_path, 'r', encoding='utf-8') as f:
+            ip_data = json.load(f)
+
+        p_groups = {1: [], 2: [], 3: [], 4: []}
+        for ip, info in ip_data.items():
+            if info.get('trace_classify', {}).get('need_deep_query'):
+                lvl = _trace_priority(ip, info)
+                p_groups[lvl].append((ip, info))
+
+        logger.info("")
+        logger.info("=" * 60)
+        logger.info("报告摘要")
+        logger.info("=" * 60)
+        logger.info("P1 核心溯源: %d 个IP", len(p_groups[1]))
+        if p_groups[1]:
+            for ip, _ in p_groups[1][:10]:
+                logger.info("  %s", ip)
+            if len(p_groups[1]) > 10:
+                logger.info("  ... 共 %d 个", len(p_groups[1]))
+        logger.info("P2 重点溯源: %d 个IP", len(p_groups[2]))
+        logger.info("P3 辅助溯源: %d 个IP", len(p_groups[3]))
+        logger.info("P4 暂缓: %d 个IP", len(p_groups[4]))
+
+        max_domains = 0
+        top_ip = None
+        for ip, info in ip_data.items():
+            domains = _extract_all_domains(info)
+            if len(domains) > max_domains:
+                max_domains = len(domains)
+                top_ip = ip
+
+        if top_ip and max_domains > 0:
+            logger.info("高价值IP: %s (%d 个域名)", top_ip, max_domains)
+
+        docx_path = os.path.join(self._output_dir, f'{self._prefix}.trace_report.docx')
+        xlsx_path = os.path.join(self._output_dir, f'{self._prefix}.trace_report.xlsx')
+        if os.path.exists(docx_path):
+            logger.info("Word 报告: %s", docx_path)
+        if os.path.exists(xlsx_path):
+            logger.info("Excel 报告: %s", xlsx_path)
+        logger.info("=" * 60)
 
     # ── IP 标签打标 ──
 
