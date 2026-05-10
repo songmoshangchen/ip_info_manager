@@ -41,6 +41,20 @@ def main():
         '--only-phase', type=int, choices=[1, 2, 3, 4],
         help='只执行指定阶段')
 
+    shortcut_group = parser.add_argument_group('快捷命令（等同于 --only-phase N）')
+    shortcut_group.add_argument(
+        '--collect-only', action='store_true',
+        help='只执行 Phase 1（域名收集）')
+    shortcut_group.add_argument(
+        '--dns-verify-only', action='store_true',
+        help='只执行 Phase 2（DNS 正向验证）')
+    shortcut_group.add_argument(
+        '--summary-only', action='store_true',
+        help='只执行 Phase 3（汇总报告）')
+    shortcut_group.add_argument(
+        '--generate-report', action='store_true',
+        help='只执行 Phase 4（生成 Word 报告）')
+
     timeout_group = parser.add_argument_group('超时控制')
     timeout_group.add_argument(
         '--channel-timeout', type=int, default=0,
@@ -53,6 +67,27 @@ def main():
         help='DNS 并发线程数（默认 10）')
 
     args = parser.parse_args()
+
+    shortcuts = [args.collect_only, args.dns_verify_only,
+                 args.summary_only, args.generate_report]
+    shortcut_map = {
+        0: ('collect_only', 1),
+        1: ('dns_verify_only', 2),
+        2: ('summary_only', 3),
+        3: ('generate_report', 4),
+    }
+
+    active_shortcuts = [i for i, s in enumerate(shortcuts) if s]
+    if len(active_shortcuts) > 1:
+        names = [shortcut_map[i][0] for i in active_shortcuts]
+        parser.error(f'快捷命令互斥，不能同时使用: {", ".join("--" + n.replace("_", "-") for n in names)}')
+
+    if active_shortcuts and args.only_phase:
+        name = shortcut_map[active_shortcuts[0]][0]
+        parser.error(f'--only-phase 和 --{name.replace("_", "-")} 不能同时使用')
+
+    if active_shortcuts:
+        args.only_phase = shortcut_map[active_shortcuts[0]][1]
 
     if not os.path.exists(args.ip_file):
         logger.error("找不到文件 %s", args.ip_file)
@@ -73,7 +108,8 @@ def main():
     if args.from_phase:
         logger.info("起始阶段: %d", args.from_phase)
     if args.only_phase:
-        logger.info("仅执行阶段: %d", args.only_phase)
+        phase_names = {1: '域名收集', 2: 'DNS 正向验证', 3: '汇总报告', 4: '生成 Word 报告'}
+        logger.info("仅执行阶段: %d - %s", args.only_phase, phase_names.get(args.only_phase, ''))
     logger.info("DNS超时: %ss", args.dns_timeout)
     logger.info("DNS并发: %d", args.dns_concurrency)
     logger.info("=" * 60)

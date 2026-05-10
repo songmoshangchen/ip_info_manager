@@ -41,6 +41,23 @@ def main():
         '--only-phase', type=int, choices=[1, 2, 3, 4, 5],
         help='只执行指定阶段')
 
+    shortcut_group = parser.add_argument_group('快捷命令（等同于 --only-phase N）')
+    shortcut_group.add_argument(
+        '--collect-only', action='store_true',
+        help='只执行 Phase 1（基础情报采集）')
+    shortcut_group.add_argument(
+        '--classify-only', action='store_true',
+        help='只执行 Phase 2（自动分类过滤）')
+    shortcut_group.add_argument(
+        '--deep-query-only', action='store_true',
+        help='只执行 Phase 3（深度查询）')
+    shortcut_group.add_argument(
+        '--summary-only', action='store_true',
+        help='只执行 Phase 4（汇总输出）')
+    shortcut_group.add_argument(
+        '--generate-report', action='store_true',
+        help='只执行 Phase 5（生成 Word + Excel 报告）')
+
     rule_group = parser.add_argument_group('分类规则')
     rule_group.add_argument(
         '--custom-rules', type=str,
@@ -67,6 +84,28 @@ def main():
 
     args = parser.parse_args()
 
+    shortcuts = [args.collect_only, args.classify_only,
+                 args.deep_query_only, args.summary_only, args.generate_report]
+    shortcut_map = {
+        0: ('collect_only', 1),
+        1: ('classify_only', 2),
+        2: ('deep_query_only', 3),
+        3: ('summary_only', 4),
+        4: ('generate_report', 5),
+    }
+
+    active_shortcuts = [i for i, s in enumerate(shortcuts) if s]
+    if len(active_shortcuts) > 1:
+        names = [shortcut_map[i][0] for i in active_shortcuts]
+        parser.error(f'快捷命令互斥，不能同时使用: {", ".join("--" + n.replace("_", "-") for n in names)}')
+
+    if active_shortcuts and args.only_phase:
+        name = shortcut_map[active_shortcuts[0]][0]
+        parser.error(f'--only-phase 和 --{name.replace("_", "-")} 不能同时使用')
+
+    if active_shortcuts:
+        args.only_phase = shortcut_map[active_shortcuts[0]][1]
+
     if not os.path.exists(args.ip_file):
         logger.error("找不到文件 %s", args.ip_file)
         sys.exit(1)
@@ -89,7 +128,8 @@ def main():
     if args.from_phase:
         logger.info("起始阶段: %d", args.from_phase)
     if args.only_phase:
-        logger.info("仅执行阶段: %d", args.only_phase)
+        phase_names = {1: '基础情报采集', 2: '自动分类过滤', 3: '深度查询', 4: '汇总输出', 5: '生成报告'}
+        logger.info("仅执行阶段: %d - %s", args.only_phase, phase_names.get(args.only_phase, ''))
     if args.no_deep_query:
         logger.info("深度查询: 已禁用")
     if args.no_tagger:
