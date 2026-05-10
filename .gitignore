@@ -15,4 +15,4 @@ debug_*.py
 *~
 *.swp
 .trae/
-scenarios/trace_ip/classifiers/custom_rules.json
+custom_rules.json
