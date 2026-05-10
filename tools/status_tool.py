@@ -63,7 +63,7 @@ def _determine_status(pid_data: dict) -> str:
         return 'not_running'
 
     pid = pid_data.get('pid')
-    if not PidManager.is_process_alive(pid):
+    if not pid or not PidManager.is_process_alive(pid):
         return 'crashed'
 
     last_hb_str = pid_data.get('last_heartbeat', '')
