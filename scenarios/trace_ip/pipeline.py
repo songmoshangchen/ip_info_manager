@@ -30,7 +30,7 @@ DEEP_QUERY_CATEGORIES = {'cloud_provider', 'residential', 'other'}
 
 PHASE_NAMES = {
     1: '基础情报采集',
-    2: '自动分类过滤',
+    2: '自动分类过滤 + 标签打标',
     3: '深度查询',
     4: '汇总输出',
     5: '生成报告（Word + Excel）',
@@ -96,9 +96,6 @@ class TraceIPPipeline:
         if from_phase and from_phase > 1:
             self._progress.clear_from(from_phase)
             logger.info("从阶段 %d 开始，已清除后续阶段的标记文件", from_phase)
-
-        if not self._config.get('no_tagger'):
-            self._run_ip_tagger()
 
         phases_to_run = [only_phase] if only_phase else [1, 2, 3, 4, 5]
 
@@ -259,6 +256,9 @@ class TraceIPPipeline:
         if self._progress.is_phase_done(2):
             logger.info("阶段2已完成，跳过")
             return
+
+        if not self._config.get('no_tagger'):
+            self._run_ip_tagger()
 
         classification = {}
         stats = {}
