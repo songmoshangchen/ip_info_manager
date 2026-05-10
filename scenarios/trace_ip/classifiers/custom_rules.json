@@ -1,11 +1,1 @@
-{
-  "excluded_domain": {
-    "label": "排除域名",
-    "description": "已确认的无效域名，排除进一步分析",
-    "need_deep_query": false,
-    "patterns": [
-      { "field": "rdns_ptr.hostname", "match": "deuschef2", "type": "exact", "note": "单节无效域名" },
-      { "field": "rdns_ptr.hostname", "match": "191610.localhost", "type": "exact", "note": "本地回环地址" }
-    ]
-  }
-}
+{}
