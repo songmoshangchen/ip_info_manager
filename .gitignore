@@ -16,3 +16,4 @@ debug_*.py
 *.swp
 .trae/
 custom_rules.json
+.last_update
