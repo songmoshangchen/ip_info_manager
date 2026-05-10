@@ -102,6 +102,36 @@ def main():
 
     pipeline = TraceIPPipeline(args.ip_file, config)
 
+    total_ips = len(pipeline._ips)
+    only_phase = args.only_phase
+    from_phase = args.from_phase or 1
+
+    if not only_phase or only_phase == 1:
+        phase1_channels = 0
+        if pipeline._config.get('phase1_ipinfo_enabled', True):
+            phase1_channels += 1
+        if pipeline._config.get('phase1_rdns_ptr_enabled', True):
+            phase1_channels += 1
+        phase1_avg = 2.0 * phase1_channels if phase1_channels > 0 else 0
+
+        est_phase1 = total_ips * phase1_avg
+        logger.info("Phase 1 预估: ~%d 分钟 (%d IP × %d 渠道 × %.0fs/IP)",
+                     max(1, int(est_phase1 / 60)), total_ips, phase1_channels, phase1_avg)
+
+    if (not only_phase or only_phase == 3) and from_phase <= 3 and not args.no_deep_query:
+        phase3_channels = 0
+        if pipeline._config.get('phase3_aizhan_enabled', True):
+            phase3_channels += 1
+        if pipeline._config.get('phase3_chinaz_enabled', True):
+            phase3_channels += 1
+        if pipeline._config.get('phase3_fofa_host_enabled', True):
+            phase3_channels += 1
+        phase3_avg = 3.0 * phase3_channels if phase3_channels > 0 else 0
+
+        est_phase3 = total_ips * phase3_avg
+        logger.info("Phase 3 预估: ~%d 分钟 (%d IP × %d 渠道 × %.0fs/IP)",
+                     max(1, int(est_phase3 / 60)), total_ips, phase3_channels, phase3_avg)
+
     try:
         pipeline.run()
     except KeyboardInterrupt:
