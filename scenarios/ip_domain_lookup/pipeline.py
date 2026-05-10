@@ -304,7 +304,7 @@ class IPDomainLookupPipeline:
 
                 self._pid.update_heartbeat(current_phase=1)
 
-                if _dl_new_count > 1:
+                if _dl_new_count > 0:
                     elapsed = time.time() - _dl_start
                     remaining = total - i
                     if remaining > 0:

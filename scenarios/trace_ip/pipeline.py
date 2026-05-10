@@ -261,10 +261,10 @@ class TraceIPPipeline:
 
                 self._pid.update_heartbeat(current_phase=1)
 
-                if _p1_new_count > 0:
+                if _p1_new_count > 1:
                     elapsed = time.time() - _p1_start
                     remaining = total - i
-                    if _p1_new_count > 1 and remaining > 0:
+                    if remaining > 0:
                         avg = elapsed / _p1_new_count
                         eta_s = remaining * avg
                         eta_m = int(eta_s // 60)
