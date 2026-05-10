@@ -261,7 +261,7 @@ class TraceIPPipeline:
 
                 self._pid.update_heartbeat(current_phase=1)
 
-                if _p1_new_count > 1:
+                if _p1_new_count > 0:
                     elapsed = time.time() - _p1_start
                     remaining = total - i
                     if remaining > 0:
