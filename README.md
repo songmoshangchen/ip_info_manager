@@ -92,10 +92,12 @@ ip_info_manager/
 │   ├── merge_ip_files.py   # IP 文件合并/去重/验证
 │   ├── config_tool.py      # .env 配置管理工具
 │   ├── progress_tool.py    # .progress 进度文件管理工具
+│   ├── status_tool.py      # 任务状态查询工具（运行状态/进度/ETA）
 │   └── verify_ip_domain.py # IP-域名映射验证
 ├── utils/                  # 通用工具
 │   ├── file_utils.py
-│   └── ip_utils.py
+│   ├── ip_utils.py
+│   └── pid_manager.py      # PID 文件管理（任务运行状态检测）
 └── data/                   # 数据存储根目录
     ├── {storage_dir}/      # channel/batch 通用数据（由 IP_STORAGE_DIR 决定）
     │   ├── {storage_name}.json  # 主数据文件
