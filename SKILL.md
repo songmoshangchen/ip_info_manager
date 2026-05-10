@@ -38,7 +38,7 @@ ip_info_manager/
 ├── scenarios/trace_ip/       # 溯源 IP 流水线（5 阶段 + 标签打标）
 ├── scenarios/ip_domain_lookup/ # IP 域名反查流水线（4 阶段）
 ├── tools/                    # 辅助工具（config/merge/progress/verify/ai_analysis/docx_builder）
-├── utils/                    # 通用工具（file_utils/ip_utils）
+├── utils/                    # 通用工具（file_utils/ip_utils/pid_manager）
 └── data/                     # 数据存储根目录
 ```
 
