@@ -574,6 +574,8 @@ python -m scenarios.trace_ip ips.txt                       # 完整流水线
 python -m scenarios.trace_ip ips.txt --no-deep-query       # 只采集+分类，不深度查询
 python -m scenarios.trace_ip ips.txt --from-phase 2         # 从阶段2开始
 python -m scenarios.trace_ip ips.txt --only-phase 2         # 只执行分类阶段
+python -m scenarios.trace_ip ips.txt --generate-report      # 只生成报告（等同于 --only-phase 5）
+python -m scenarios.trace_ip ips.txt --collect-only         # 只执行基础采集（等同于 --only-phase 1）
 python -m scenarios.trace_ip ips.txt --no-custom-rules      # 不加载外部规则
 python -m scenarios.trace_ip ips.txt --custom-rules my.json # 使用指定规则文件
 python -m scenarios.trace_ip ips.txt --channel-timeout 30   # 单渠道超时30秒
@@ -693,6 +695,7 @@ IP_TRACE_IP_PHASE3_FOFA_HOST_ENABLED=false  # 禁用 Fofa Host
 python -m scenarios.ip_domain_lookup ips.txt                       # 完整流水线
 python -m scenarios.ip_domain_lookup ips.txt --from-phase 2         # 从阶段2开始
 python -m scenarios.ip_domain_lookup ips.txt --only-phase 1         # 只执行域名收集
+python -m scenarios.ip_domain_lookup ips.txt --generate-report      # 只生成报告（等同于 --only-phase 4）
 python -m scenarios.ip_domain_lookup ips.txt --channel-timeout 30   # 单渠道超时30秒
 python -m scenarios.ip_domain_lookup ips.txt --dns-timeout 5        # DNS超时5秒
 python -m scenarios.ip_domain_lookup ips.txt --dns-concurrency 20   # DNS并发20线程

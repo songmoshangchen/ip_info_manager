@@ -45,11 +45,23 @@ ip_info_manager/
 
 ## 数据存储路径
 
-所有命令在项目根目录 `ip_info_manager/` 下执行。
+**所有命令必须在项目根目录 `ip_info_manager/` 下执行**，否则会找不到模块。AI 启动命令时务必设置 `cwd` 为项目根目录。
 
 - **channel/batch 通用数据**：`data/{IP_STORAGE_DIR}/{IP_STORAGE_NAME}.json`
 - **溯源 IP 场景数据**：`data/trace_ip/{IP_TRACE_IP_PROJECT_NAME}/`
 - **IP 域名反查数据**：`data/ip_domain_lookup/{IP_IP_DOMAIN_LOOKUP_PROJECT_NAME}/`
+
+## 快捷命令
+
+流水线支持语义化参数别名，比 `--only-phase N` 更直观：
+
+| 快捷命令 | 等同于 | 说明 |
+|---------|--------|------|
+| `--collect-only` | `--only-phase 1` | 只执行基础采集 |
+| `--classify-only` | `--only-phase 2` | 只执行分类过滤（仅溯源流水线） |
+| `--deep-query-only` | `--only-phase 3` | 只执行深度查询（仅溯源流水线） |
+| `--summary-only` | `--only-phase 4` | 只执行汇总输出 |
+| `--generate-report` | `--only-phase 5` | 只生成报告（Word + Excel） |
 
 ## AI 异步执行模式
 
