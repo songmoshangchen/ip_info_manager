@@ -1,12 +1,18 @@
 import json
 import os
 import sys
-import socket
 import argparse
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
-SUPPORTED_CHANNELS = ('aizhan', 'chinaz')
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from utils.dns_verify import (
+    SUPPORTED_CHANNELS,
+    extract_domain_mappings,
+    batch_verify,
+    build_verify_results,
+    add_verify_stats,
+)
 
 
 def load_ip_data(data_file):
@@ -22,131 +28,6 @@ def load_ip_data(data_file):
 def save_ip_data(data_file, data):
     with open(data_file, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-
-
-def extract_domain_mappings(ip_data, channels):
-    mappings = []
-    for ip, entry in ip_data.items():
-        if not isinstance(entry, dict):
-            continue
-        for channel in channels:
-            channel_data = entry.get(channel)
-            if not isinstance(channel_data, dict):
-                continue
-            if not channel_data.get('success'):
-                continue
-            domains = channel_data.get('domains', [])
-            for d in domains:
-                if isinstance(d, dict) and d.get('domain'):
-                    mappings.append({
-                        'ip': ip,
-                        'domain': d['domain'],
-                        'source': channel,
-                    })
-                elif isinstance(d, str):
-                    mappings.append({
-                        'ip': ip,
-                        'domain': d,
-                        'source': channel,
-                    })
-    return mappings
-
-
-def resolve_domain(domain, timeout=3):
-    try:
-        socket.setdefaulttimeout(timeout)
-        _, _, ip_list = socket.gethostbyname_ex(domain)
-        return ip_list
-    except socket.gaierror:
-        return []
-    except socket.timeout:
-        return None
-    except Exception:
-        return []
-
-
-def verify_one(mapping, timeout=3):
-    ip = mapping['ip']
-    domain = mapping['domain']
-    source = mapping['source']
-    resolved = resolve_domain(domain, timeout)
-
-    if resolved is None:
-        status = 'timeout'
-    elif len(resolved) == 0:
-        status = 'unresolved'
-    elif ip in resolved:
-        status = 'matched'
-    else:
-        status = 'changed'
-
-    return {
-        'domain': domain,
-        'source': source,
-        'original_ip': ip,
-        'resolved_ips': resolved if resolved is not None else [],
-        'status': status,
-    }
-
-
-def batch_verify(mappings, concurrency=10, timeout=3, progress_callback=None):
-    results = []
-    total = len(mappings)
-
-    with ThreadPoolExecutor(max_workers=concurrency) as executor:
-        future_to_idx = {}
-        for i, m in enumerate(mappings):
-            future = executor.submit(verify_one, m, timeout)
-            future_to_idx[future] = i
-
-        done_count = 0
-        for future in as_completed(future_to_idx):
-            done_count += 1
-            idx = future_to_idx[future]
-            try:
-                result = future.result()
-            except Exception as e:
-                m = mappings[idx]
-                result = {
-                    'domain': m['domain'],
-                    'source': m['source'],
-                    'original_ip': m['ip'],
-                    'resolved_ips': [],
-                    'status': 'error',
-                }
-            results.append((idx, result))
-            if progress_callback:
-                progress_callback(done_count, total)
-
-    results.sort(key=lambda x: x[0])
-    return [r for _, r in results]
-
-
-def build_verify_results(results):
-    from collections import defaultdict
-    ip_results = defaultdict(list)
-    for r in results:
-        ip_results[r['original_ip']].append(r)
-
-    verify_data = {}
-    for ip, items in ip_results.items():
-        matched = sum(1 for r in items if r['status'] == 'matched')
-        changed = sum(1 for r in items if r['status'] == 'changed')
-        unresolved = sum(1 for r in items if r['status'] == 'unresolved')
-        timeout = sum(1 for r in items if r['status'] == 'timeout')
-        error = sum(1 for r in items if r['status'] == 'error')
-
-        verify_data[ip] = {
-            'verify_time': datetime.now().isoformat(),
-            'total_domains': len(items),
-            'matched': matched,
-            'changed': changed,
-            'unresolved': unresolved,
-            'timeout': timeout,
-            'error': error,
-            'results': items,
-        }
-    return verify_data
 
 
 def print_report(results, show_all=False):
@@ -232,12 +113,24 @@ def main():
         if done == total:
             print()
 
-    results = batch_verify(mappings, args.concurrency, args.timeout, progress_callback=on_progress)
+    verify_results = batch_verify(mappings, args.concurrency, args.timeout, progress_callback=on_progress)
 
-    print_report(results, args.show_all)
+    display_results = []
+    for i, m in enumerate(mappings):
+        vr = verify_results[i]
+        display_results.append({
+            'domain': vr['domain'],
+            'source': ', '.join(m.get('sources', [m.get('source', '')])),
+            'original_ip': m['target_ip'],
+            'resolved_ips': vr['resolved_ips'],
+            'status': vr['status'],
+        })
+
+    print_report(display_results, args.show_all)
 
     if not args.dry_run:
-        verify_data = build_verify_results(results)
+        grouped = build_verify_results(mappings, verify_results)
+        verify_data = add_verify_stats(grouped)
         for ip, verify in verify_data.items():
             if ip in ip_data:
                 ip_data[ip]['domain_verify'] = verify

@@ -71,6 +71,9 @@ def main():
         '--no-deep-query', action='store_true',
         help='分类后不执行深度查询阶段')
     output_group.add_argument(
+        '--no-dns-verify', action='store_true',
+        help='跳过 Phase 3 的 DNS 域名正向验证')
+    output_group.add_argument(
         '--no-tagger', action='store_true',
         help='跳过 IP 标签打标阶段')
     output_group.add_argument(
@@ -116,6 +119,7 @@ def main():
         'custom_rules': args.custom_rules,
         'no_custom_rules': args.no_custom_rules,
         'no_deep_query': args.no_deep_query,
+        'no_dns_verify': args.no_dns_verify,
         'channel_timeout': args.channel_timeout,
         'no_tagger': args.no_tagger,
         'tagger_level': args.tagger_level,

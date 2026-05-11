@@ -199,6 +199,23 @@ class TextTraceReporter(BaseTraceReporter):
         ports = TextTraceReporter._extract_fofa_ports(info)
         return len(ports) > 0
 
+    @staticmethod
+    def _format_verify_status(verify_result):
+        status = verify_result.get('status', '')
+        resolved_ips = verify_result.get('resolved_ips', [])
+        if status == 'matched':
+            return '✅ 已确认'
+        elif status == 'changed':
+            ips_str = ', '.join(resolved_ips) if resolved_ips else '(无)'
+            return f'🔄 → {ips_str}'
+        elif status == 'unresolved':
+            return '❌ 无法解析'
+        elif status == 'timeout':
+            return '⏱️ 超时'
+        elif status == 'error':
+            return '⚠️ 错误'
+        return '—'
+
     def _write_ip_detail(self, builder, ip, info):
         ipinfo = info.get('ipinfo_api', {})
         rdns = info.get('rdns_ptr', {})
@@ -211,17 +228,35 @@ class TextTraceReporter(BaseTraceReporter):
         builder.add_body(f'国家/地区：{country}    ASN/组织：{org}    RDNS：{hostname}    归属地：{location}    运营商：{isp}')
 
         domains = self._extract_all_domains(info)
+        domain_verify = info.get('domain_verify', {})
+        verify_results = {}
+        if domain_verify and domain_verify.get('results'):
+            for r in domain_verify['results']:
+                verify_results[r['domain']] = r
+
         if domains:
             builder.add_heading(f'反查域名（共 {len(domains)} 个）', 3)
             builder.table_caption(f'{ip} 反查域名')
             d_rows = []
+            has_verify = bool(verify_results)
             for d in domains:
                 source_label = '爱站' if d['source'] == 'aizhan' else '站长之家'
                 time_range = ''
                 if d.get('start_time') or d.get('end_time'):
                     time_range = f"{d.get('start_time', '')} ~ {d.get('end_time', '')}"
-                d_rows.append([d['domain'], d.get('title', ''), time_range, source_label])
-            builder.add_table(['域名', '网站标题', '解析时间段', '来源'], d_rows)
+                if has_verify:
+                    vr = verify_results.get(d['domain'])
+                    if vr:
+                        status_label = self._format_verify_status(vr)
+                    else:
+                        status_label = '—'
+                    d_rows.append([d['domain'], d.get('title', ''), time_range, source_label, status_label])
+                else:
+                    d_rows.append([d['domain'], d.get('title', ''), time_range, source_label])
+            headers = ['域名', '网站标题', '解析时间段', '来源']
+            if has_verify:
+                headers.append('验证状态')
+            builder.add_table(headers, d_rows)
         else:
             builder.add_body('未发现关联域名。')
 

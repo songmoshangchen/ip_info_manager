@@ -135,6 +135,27 @@ def _trace_action(info):
     return '；'.join(actions)
 
 
+def _format_domain_with_verify(domain, domain_verify):
+    if not domain_verify or not domain_verify.get('results'):
+        return domain
+    for r in domain_verify['results']:
+        if r['domain'] == domain:
+            status = r.get('status', '')
+            if status == 'matched':
+                return f'{domain} ✅'
+            elif status == 'changed':
+                ips = ', '.join(r.get('resolved_ips', []))
+                return f'{domain} 🔄→{ips}'
+            elif status == 'unresolved':
+                return f'{domain} ❌'
+            elif status == 'timeout':
+                return f'{domain} ⏱️'
+            elif status == 'error':
+                return f'{domain} ⚠️'
+            break
+    return domain
+
+
 def _build_row(ip, info):
     country = info.get('ipinfo_api', {}).get('country', '')
     org = info.get('ipinfo_api', {}).get('as_name', '')
@@ -142,6 +163,11 @@ def _build_row(ip, info):
     ports = _extract_fofa_ports(info)
     tags_data = info.get('tags', [])
     tags_str = ', '.join(tags_data) if isinstance(tags_data, list) else str(tags_data)
+    domain_verify = info.get('domain_verify')
+    if domain_verify and domain_verify.get('results'):
+        formatted_domains = [_format_domain_with_verify(d, domain_verify) for d in domains]
+    else:
+        formatted_domains = domains
     return [
         ip,
         country,
@@ -150,7 +176,7 @@ def _build_row(ip, info):
         _cat_note(info),
         _trace_action(info),
         str(len(domains)),
-        '\n'.join(domains),
+        '\n'.join(formatted_domains),
         str(len(ports)),
         '\n'.join(ports),
         tags_str,

@@ -26,6 +26,11 @@ from .classifier import IPClassifier
 from .excel_exporter import generate_trace_excel
 from .progress import BatchIPWriter, ProgressManager
 from .reporter import BaseTraceReporter, TextTraceReporter
+from utils.dns_verify import (
+    extract_domain_mappings, batch_verify as dns_batch_verify,
+    build_verify_results as dns_build_verify_results,
+    add_verify_stats as dns_add_verify_stats,
+)
 
 logger = logging.getLogger('ip_info_manager.scenarios.trace_ip')
 
@@ -643,6 +648,8 @@ class TraceIPPipeline:
 
         self._progress.mark_phase_done(3)
 
+        self._dns_verify_phase3(filtered_ips, trace_settings)
+
         self._reporter.record_phase(3, {
             'status': 'done',
             'ips_deep_queried': total,
@@ -653,6 +660,67 @@ class TraceIPPipeline:
         logger.info("阶段3完成: 深度查询 %d 个IP "
                      "(断点续跑 %d, 新增 %d)",
                      total, skipped, new_count)
+
+    def _dns_verify_phase3(self, filtered_ips, trace_settings):
+        if self._config.get('no_dns_verify'):
+            logger.info("已跳过 DNS 域名验证（--no-dns-verify）")
+            return
+
+        if not trace_settings.phase3_dns_verify_enabled:
+            logger.info("DNS 域名验证: 已禁用（配置项 PHASE3_DNS_VERIFY_ENABLED=false）")
+            return
+
+        json_path = os.path.join(self._output_dir, f'{self._prefix}.json')
+        if not os.path.exists(json_path):
+            logger.info("DNS 域名验证: 无数据文件，跳过")
+            return
+
+        with open(json_path, 'r', encoding='utf-8') as f:
+            ip_data = json.load(f)
+
+        filtered_data = {ip: ip_data[ip] for ip in filtered_ips if ip in ip_data}
+        if not filtered_data:
+            logger.info("DNS 域名验证: 无深度查询数据，跳过")
+            return
+
+        mappings = extract_domain_mappings(filtered_data)
+        if not mappings:
+            logger.info("DNS 域名验证: 未提取到域名映射，跳过")
+            return
+
+        dns_timeout = trace_settings.dns_verify_timeout
+        dns_concurrency = trace_settings.dns_verify_concurrency
+
+        logger.info("-" * 60)
+        logger.info("开始 DNS 域名验证 (%d 个域名, 并发: %d, 超时: %.1fs)",
+                     len(mappings), dns_concurrency, dns_timeout)
+
+        def on_progress(done, total_count):
+            if done % 20 == 0 or done == total_count:
+                logger.info("DNS 验证进度: %d/%d", done, total_count)
+
+        verify_results = dns_batch_verify(
+            mappings, timeout=dns_timeout,
+            concurrency=dns_concurrency, progress_callback=on_progress)
+
+        grouped = dns_build_verify_results(mappings, verify_results)
+        verify_data = dns_add_verify_stats(grouped)
+
+        verify_stats = {'matched': 0, 'changed': 0, 'unresolved': 0,
+                        'timeout': 0, 'error': 0}
+        for ip, vd in verify_data.items():
+            for st in ('matched', 'changed', 'unresolved', 'timeout', 'error'):
+                verify_stats[st] += vd.get(st, 0)
+
+        with self._batch_writer:
+            for ip, vd in verify_data.items():
+                self._batch_writer.add(ip, 'domain_verify', vd)
+            self._batch_writer.flush_batch()
+
+        logger.info("DNS 验证完成: 匹配 %d, 变更 %d, 无法解析 %d, 超时 %d, 错误 %d",
+                     verify_stats['matched'], verify_stats['changed'],
+                     verify_stats['unresolved'], verify_stats['timeout'],
+                     verify_stats['error'])
 
     # ── Phase 4: 汇总输出 ──
 

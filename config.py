@@ -135,6 +135,9 @@ class TraceIPSettings(BaseIPSettings):
     phase3_aizhan_enabled: bool = Field(default=True, description='溯源IP流水线阶段3：启用爱站网 IP 反查域名')
     phase3_chinaz_enabled: bool = Field(default=True, description='溯源IP流水线阶段3：启用站长之家 IP 反查域名')
     phase3_fofa_host_enabled: bool = Field(default=True, description='溯源IP流水线阶段3：启用 Fofa Host 聚合查询')
+    phase3_dns_verify_enabled: bool = Field(default=True, description='溯源IP流水线阶段3：启用 DNS 域名正向验证')
+    dns_verify_timeout: float = Field(default=3.0, description='DNS 域名验证超时秒数')
+    dns_verify_concurrency: int = Field(default=10, description='DNS 域名验证并发线程数')
 
 
 class IpTaggerSettings(BaseIPSettings):
