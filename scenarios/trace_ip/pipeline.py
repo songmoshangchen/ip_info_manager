@@ -186,6 +186,29 @@ class TraceIPPipeline:
             logger.info("发现进度文件: 已处理 %d/%d (%.1f%%)，将从断点继续",
                         len(processed), len(self._ips), pct)
 
+        json_ips = self._ip_reader.list_all_ips()
+        processed_from_json = set()
+        for ip in json_ips:
+            if ip not in self._ips:
+                continue
+            ip_data = self._ip_reader.get_ip_data(ip)
+            if not ip_data:
+                continue
+            has_phase1_data = True
+            if 'ipinfo_api' not in ip_data or 'raw_error' in ip_data.get('ipinfo_api', {}):
+                has_phase1_data = False
+            if 'rdns_ptr' not in ip_data:
+                has_phase1_data = False
+            if has_phase1_data:
+                processed_from_json.add(ip)
+
+        if processed_from_json:
+            new_from_json = processed_from_json - processed
+            if new_from_json:
+                logger.info("从JSON中发现 %d 个IP已有完整阶段1数据（不在进度文件中），自动跳过",
+                            len(new_from_json))
+            processed = processed | processed_from_json
+
         ipinfo_settings = IpinfoSettings()
         rdns_settings = RdnsSettings()
         trace_settings = TraceIPSettings()
@@ -454,9 +477,32 @@ class TraceIPPipeline:
 
         processed = self._progress.load_completed(3)
         if processed:
-            pct = len(processed) / total * 100 if total else 0
+            pct = len(processed) / len(filtered_ips) * 100 if filtered_ips else 0
             logger.info("发现进度文件: 已处理 %d/%d (%.1f%%)，将从断点继续",
-                         len(processed), total, pct)
+                         len(processed), len(filtered_ips), pct)
+
+        json_ips = self._ip_reader.list_all_ips()
+        processed_from_json = set()
+        for ip in json_ips:
+            if ip not in filtered_ips:
+                continue
+            ip_data = self._ip_reader.get_ip_data(ip)
+            if not ip_data:
+                continue
+            has_phase3_data = False
+            for ch in ('aizhan', 'chinaz', 'fofa_host'):
+                if ch in ip_data and 'raw_error' not in ip_data[ch]:
+                    has_phase3_data = True
+                    break
+            if has_phase3_data:
+                processed_from_json.add(ip)
+
+        if processed_from_json:
+            new_from_json = processed_from_json - processed
+            if new_from_json:
+                logger.info("从JSON中发现 %d 个IP已有阶段3数据（不在进度文件中），自动跳过",
+                            len(new_from_json))
+            processed = processed | processed_from_json
 
         aizhan_settings = AizhanSettings()
         chinaz_settings = ChinazSettings()
