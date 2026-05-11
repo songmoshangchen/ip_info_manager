@@ -116,6 +116,27 @@ def main():
 
     pipeline = IPDomainLookupPipeline(args.ip_file, config)
 
+    total_ips = len(pipeline._ips)
+    only_phase = args.only_phase
+    from_phase = args.from_phase or 1
+
+    if not only_phase or only_phase == 1:
+        from config import IPDomainLookupSettings
+        dl_settings = IPDomainLookupSettings()
+        phase1_channels = sum([
+            dl_settings.rdns_ptr_enabled,
+            dl_settings.aizhan_enabled,
+            dl_settings.chinaz_enabled,
+            dl_settings.zoomeye_enabled,
+            dl_settings.fofa_search_enabled,
+            dl_settings.ssl_cert_enabled,
+        ])
+        phase1_avg = 2.5 * phase1_channels if phase1_channels > 0 else 0
+
+        est_phase1 = total_ips * phase1_avg
+        logger.info("Phase 1 预估: ~%d 分钟 (%d IP × %d 渠道 × %.1fs/IP)",
+                     max(1, int(est_phase1 / 60)), total_ips, phase1_channels, phase1_avg)
+
     try:
         pipeline.run()
     except KeyboardInterrupt:
