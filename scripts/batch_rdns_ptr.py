@@ -6,6 +6,7 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from channel.rdns_ptr import IPWriter, Settings, fetch_channel, validate_channel_key
 from utils.logger_utils import get_batch_logger
+from utils.pid_manager import PidManager
 
 
 class BatchRDNSQuery:
@@ -19,6 +20,10 @@ class BatchRDNSQuery:
 
         self.load_stats = {}
         self.pending_ips = self._load_pending_ips()
+        self._pid = PidManager(
+            os.path.dirname(self.ip_writer.storage_file),
+            os.path.basename(self.ip_writer.storage_file).replace('.json', '')
+        )
 
     @property
     def progress_file(self):
@@ -106,16 +111,27 @@ class BatchRDNSQuery:
         self.logger.info(f"超时时间: {self.settings.rdns_query_timeout} 秒")
         self.logger.info("-" * 60)
 
+
+        if processed_count > 0:
+            pct = processed_count / total_count * 100 if total_count else 0
+            self.logger.info(f"发现进度文件: 已处理 {processed_count}/{total_count} ({pct:.1f}%)，将从断点继续")
+
+        self._pid.write_pid(
+            f'batch_{self.channel_name}', self.ip_file,
+            total_count, current_phase=1)
+
         current_count = processed_count
         success_count = 0
         fail_count = 0
         has_ptr_count = 0
         no_ptr_count = 0
         start_time = time.time()
+        new_count = 0
 
         try:
             for ip in self.pending_ips:
                 current_count += 1
+                new_count += 1
                 query_start = time.time()
 
                 self.logger.info(f"[{current_count}/{total_count}] 正在查询: {ip}")
@@ -140,10 +156,23 @@ class BatchRDNSQuery:
                 self.ip_writer.add_or_update_ip(ip, self.channel_name, data)
                 self.logger.debug(f"已写入 {ip} 的 {self.channel_name} 数据")
                 self._save_progress(ip)
+                self._pid.update_heartbeat(current_phase=1)
+
+                if new_count > 0:
+                    elapsed = time.time() - start_time
+                    remaining = total_count - current_count
+                    if remaining > 0:
+                        avg = elapsed / new_count
+                        eta_s = remaining * avg
+                        eta_m = int(eta_s // 60)
+                        eta_sec = int(eta_s % 60)
+                        self.logger.info(f"  ETA: ~{eta_m}min{eta_sec:02d}s (剩余 {remaining} 个IP)")
+
 
                 time.sleep(delay)
 
         except KeyboardInterrupt:
+            self._pid.remove_pid()
             total_elapsed = time.time() - start_time
             self.logger.info("=" * 60)
             self.logger.info("查询已中断！")
@@ -166,6 +195,7 @@ class BatchRDNSQuery:
         self.logger.info(f"有 PTR 记录: {has_ptr_count} 个")
         self.logger.info(f"无 PTR 记录: {no_ptr_count} 个")
         self.logger.info(f"总耗时: {total_elapsed:.2f}s")
+        self._pid.remove_pid()
         self.logger.info("=" * 60)
 
 

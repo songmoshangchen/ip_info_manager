@@ -10,6 +10,7 @@ from queue import Queue
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from channel.rdns_ptr import Settings, fetch_channel, validate_channel_key
 from utils.logger_utils import get_batch_logger
+from utils.pid_manager import PidManager
 
 
 class ThreadSafeIPWriter:
@@ -87,6 +88,10 @@ class ConcurrentBatchRDNSQuery:
 
         self.load_stats = {}
         self.pending_ips = self._load_pending_ips()
+        self._pid = PidManager(
+            os.path.dirname(self.ip_writer.storage_file),
+            os.path.basename(self.ip_writer.storage_file).replace('.json', '')
+        )
 
         self.lock = threading.Lock()
         self.stats = {
@@ -226,6 +231,15 @@ class ConcurrentBatchRDNSQuery:
         self.logger.info(f"并发线程数: {self.max_workers}")
         self.logger.info(f"查询超时: {self.settings.rdns_query_timeout} 秒")
         self.logger.info("-" * 60)
+
+
+        if processed_count > 0:
+            pct = processed_count / total_count * 100 if total_count else 0
+            self.logger.info(f"发现进度文件: 已处理 {processed_count}/{total_count} ({pct:.1f}%)，将从断点继续")
+
+        self._pid.write_pid(
+            f'batch_{self.channel_name}', self.ip_file,
+            total_count, current_phase=1)
 
         if not self.pending_ips:
             self.logger.info("所有 IP 已处理完毕！")
