@@ -137,8 +137,8 @@ pip install -r requirements.txt
 - `beautifulsoup4>=4.12.0` — HTML 解析（爱站/站长之家）
 - `requests>=2.28.0` — HTTP 请求
 - `python-whois` — Whois 查询（可选，手动安装）
-- `openpyxl` — Excel 导出（可选，手动安装）
-- `python-docx>=1.0.0` — Word 报告生成（可选，未安装时流水线跳过报告生成阶段）
+- `openpyxl` — Excel 导出（Phase 5 必需，未安装时 Phase 5 报错退出）
+- `python-docx>=1.0.0` — Word 报告生成（Phase 5 必需，未安装时 Phase 5 报错退出）
 
 ### 2. 配置环境变量
 

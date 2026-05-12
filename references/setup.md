@@ -38,8 +38,8 @@ pip install -r requirements.txt
 
 | 包名 | 安装命令 | 用途 |
 |------|---------|------|
-| openpyxl | `pip install openpyxl` | Excel 导出功能 |
-| python-docx>=1.0.0 | `pip install python-docx` | Word 报告自动生成（未安装时流水线跳过报告阶段） |
+| openpyxl | `pip install openpyxl` | Excel 导出（Phase 5 必需） |
+| python-docx>=1.0.0 | `pip install python-docx` | Word 报告生成（Phase 5 必需） |
 | python-whois | `pip install python-whois` | Whois 查询渠道 |
 
 一次性全部安装可选依赖：

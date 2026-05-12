@@ -1,6 +1,6 @@
 # 辅助工具
 
-当用户需要使用辅助工具时读取此文件。包括 IP 文件处理、进度管理、域名验证、Word 报告生成。
+当用户需要使用辅助工具时读取此文件。包括 IP 文件处理、进度管理、域名验证、AI 研判、Word 报告生成。
 
 ## 决策树
 
@@ -8,6 +8,7 @@
 用户需要合并/去重/验证 IP 文件 → merge_ip_files.py
 用户需要管理 .progress 进度文件 → progress_tool.py
 用户需要验证域名是否仍解析到原 IP → verify_ip_domain.py
+用户需要 AI 研判辅助（筛选待研判 IP） → ai_analysis.py
 用户需要生成 Word 报告 → docx_builder.py（通过流水线自动调用）
 用户需要查看任务运行状态/进度/ETA → status_tool.py
 用户需要清理残留 PID 文件 → status_tool.py cleanup
@@ -130,5 +131,41 @@ python tools/status_tool.py cleanup batch
 这是库模块，不直接命令行运行。被 trace_ip 和 ip_domain_lookup 两个场景的 reporter 调用。
 
 - 需安装 `python-docx`（`pip install python-docx`）
-- 未安装时流水线自动跳过报告生成阶段，不影响其他功能
+- Phase 5 必需依赖，未安装时报错退出
 - 排版规范：宋体正文 + 黑体标题 + 三线表 + A4 公文版心
+
+## AI 研判辅助（ai_analysis.py）
+
+从溯源 IP 数据中筛选待 AI 研判的 IP（按分类过滤：other/cloud_provider/residential），批量输出供人工或 AI 分析。研判结果通过 `writer.py` 写入后，Word 报告会自动展示 AI 研判结果章节。
+
+### 查看待研判数量
+
+```bash
+python tools/ai_analysis.py count
+python tools/ai_analysis.py count --categories other
+python tools/ai_analysis.py count --categories other,cloud_provider
+```
+
+### 批量获取待研判数据
+
+```bash
+python tools/ai_analysis.py batch
+python tools/ai_analysis.py batch --size 20 --offset 10
+python tools/ai_analysis.py batch --categories other,cloud_provider
+```
+
+### 写入研判结果
+
+分析完成后通过 writer.py 写入：
+
+```bash
+python writer.py add "<IP>" ai_analysis net_type="阿里云ECS" trace_value="高" action="保留" note="疑似攻击者VPS"
+```
+
+### 参数说明
+
+| 参数 | 说明 |
+|------|------|
+| `--size` | 每批读取数量（默认 10） |
+| `--offset` | 偏移量（默认 0） |
+| `--categories` | 筛选分类，逗号分隔（默认 other,cloud_provider,residential） |
