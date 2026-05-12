@@ -609,6 +609,11 @@ class TextTraceReporter(BaseTraceReporter):
                     p1_rows.append([ip, org, cat, str(n_dom), str(n_pt), _trace_action(ip)])
                 builder.add_table(['IP', '组织', '分类', '域名数', '端口数', '建议溯源路径'], p1_rows)
 
+                for ip in p1_ips:
+                    info = ip_data[ip]
+                    if _count_domains(info) > 0:
+                        self._write_ip_detail(builder, ip, info)
+
             if p2_ips:
                 builder.add_heading(f'{ch_trace}.2 P2 重点溯源 — {len(p2_ips)} 个IP', 2)
                 builder.add_body('有反查域名（国外），或无域名但有端口信息的国内IP。可通过 WHOIS 查询或端口服务排查获取线索。')
@@ -623,6 +628,11 @@ class TextTraceReporter(BaseTraceReporter):
                     org = info.get('ipinfo_api', {}).get('as_name', 'N/A')
                     p2_rows.append([ip, country, org, cat, str(n_dom), str(n_pt), _trace_action(ip)])
                 builder.add_table(['IP', '国家', '组织', '分类', '域名数', '端口数', '建议溯源路径'], p2_rows)
+
+                for ip in p2_ips:
+                    info = ip_data[ip]
+                    if _count_domains(info) > 0:
+                        self._write_ip_detail(builder, ip, info)
 
             if p3_ips:
                 builder.add_heading(f'{ch_trace}.3 P3 辅助溯源 — {len(p3_ips)} 个IP', 2)
