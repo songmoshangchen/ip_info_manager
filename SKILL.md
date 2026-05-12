@@ -63,6 +63,16 @@ ip_info_manager/
 | `--summary-only` | `--only-phase 4` | 只执行汇总输出 |
 | `--generate-report` | `--only-phase 5` | 只生成报告（Word + Excel） |
 
+## 排除已溯源 IP
+
+报告生成时可通过 `--exclude-ips` 排除已溯源 IP，使报告聚焦于剩余待溯源 IP。仅在 Phase 5 生效。
+
+```bash
+python -m scenarios.trace_ip ips.txt --generate-report --exclude-ips traced_ips.txt
+```
+
+排除后报告所有统计重新计算，概述中明确显示排除信息。详见 references/trace-ip-pipeline.md。
+
 ## AI 异步执行模式
 
 长时间任务（溯源流水线、域名反查、批量查询）执行时间可能很长，AI 应使用异步模式管理：
