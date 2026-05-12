@@ -595,6 +595,28 @@ class TextTraceReporter(BaseTraceReporter):
                 ],
             )
 
+            verify_rows = []
+            for ip in deep_ips:
+                info = ip_data[ip]
+                dv = info.get('domain_verify')
+                if not dv or not dv.get('results'):
+                    continue
+                for r in dv['results']:
+                    if r.get('status') != 'matched':
+                        continue
+                    verify_rows.append([
+                        ip,
+                        r.get('domain', ''),
+                    ])
+            if verify_rows:
+                builder.add_heading('IP-域名验证状态', 2)
+                builder.add_body(
+                    f'对 {len(deep_ips)} 个深度查询IP进行 DNS 域名正向验证，'
+                    f'以下 {len(verify_rows)} 条 IP-域名映射经确认仍然有效。'
+                )
+                builder.table_caption('IP-域名验证状态')
+                builder.add_table(['IP', '域名'], verify_rows)
+
             if p1_ips:
                 builder.add_heading(f'{ch_trace}.1 P1 核心溯源 — {len(p1_ips)} 个IP', 2)
                 builder.add_body('有反查域名且为国内IP，可通过 ICP 备案查询域名持有者实名信息，溯源路径最短。')
@@ -608,11 +630,6 @@ class TextTraceReporter(BaseTraceReporter):
                     org = info.get('ipinfo_api', {}).get('as_name', 'N/A')
                     p1_rows.append([ip, org, cat, str(n_dom), str(n_pt), _trace_action(ip)])
                 builder.add_table(['IP', '组织', '分类', '域名数', '端口数', '建议溯源路径'], p1_rows)
-
-                for ip in p1_ips:
-                    info = ip_data[ip]
-                    if _count_domains(info) > 0:
-                        self._write_ip_detail(builder, ip, info)
 
             if p2_ips:
                 builder.add_heading(f'{ch_trace}.2 P2 重点溯源 — {len(p2_ips)} 个IP', 2)
@@ -628,11 +645,6 @@ class TextTraceReporter(BaseTraceReporter):
                     org = info.get('ipinfo_api', {}).get('as_name', 'N/A')
                     p2_rows.append([ip, country, org, cat, str(n_dom), str(n_pt), _trace_action(ip)])
                 builder.add_table(['IP', '国家', '组织', '分类', '域名数', '端口数', '建议溯源路径'], p2_rows)
-
-                for ip in p2_ips:
-                    info = ip_data[ip]
-                    if _count_domains(info) > 0:
-                        self._write_ip_detail(builder, ip, info)
 
             if p3_ips:
                 builder.add_heading(f'{ch_trace}.3 P3 辅助溯源 — {len(p3_ips)} 个IP', 2)
