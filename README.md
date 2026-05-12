@@ -927,7 +927,20 @@ python tools/status_tool.py cleanup batch
 
 ### tools/verify\_ip\_domain.py — IP-域名映射验证
 
-验证 IP 反查到的域名是否仍然解析到原始 IP（检测域名是否已过期或重新映射）。
+验证爱站/站长之家反查到的域名是否仍解析到原始 IP。
+
+**实战价值：**
+
+- 检测攻击者基础设施是否已失效或迁移（域名过期、更换服务器）
+- 评估威胁情报的时效性（域名变更可能表示攻击活动已停止或转移到新 IP）
+- 识别 CDN/负载均衡场景（单域名解析到多 IP）
+- 发现域名劫持或 DNS 污染情况
+
+**使用场景：**
+
+- Phase 3 深度查询完成后，对已采集的域名映射进行批量验证
+- 月度溯源报告生成前，更新域名验证状态
+- 对历史数据进行定期验证，追踪攻击者基础设施变化
 
 ```bash
 python tools/verify_ip_domain.py <JSON数据文件> [选项]
@@ -947,18 +960,62 @@ python tools/verify_ip_domain.py <JSON数据文件> [选项]
 **示例：**
 
 ```bash
-python tools/verify_ip_domain.py data/ip_data.json
-python tools/verify_ip_domain.py data/ip_data.json --dry-run --show-all
-python tools/verify_ip_domain.py data/ip_data.json --channel aizhan --concurrency 20
+# 验证5月份数据并写回
+python tools/verify_ip_domain.py data/trace_ip/202605/202605.json
+
+# 预览验证结果（不写回）
+python tools/verify_ip_domain.py data/trace_ip/202605/202605.json --dry-run --show-all
+
+# 只验证爱站数据，提高并发
+python tools/verify_ip_domain.py data/trace_ip/202605/202605.json --channel aizhan --concurrency 20
 ```
 
 **验证结果状态：**
 
-- `matched` — 域名仍解析到原始 IP ✅
-- `changed` — 域名已解析到其他 IP 🔄
-- `unresolved` — DNS 解析失败（域名可能已过期）❌
+| 状态            | 含义                    | 图标 | 战术意义                     |
+| ------------- | --------------------- | -- | ------------------------ |
+| `matched`     | 域名仍解析到原始 IP          | ✅  | 攻击基础设施仍在使用，优先级较高        |
+| `changed`     | 域名已解析到其他 IP（单域名→多IP） | 🔄  | 可能已迁移服务器或使用 CDN，需人工研判   |
+| `unresolved`  | DNS 解析失败（域名可能已过期）   | ❌  | 域名已失效，威胁可能已消除，可降低溯源优先级 |
+| `timeout`     | DNS 查询超时             | ⏱️  | 网络问题，建议重验              |
+| `error`       | 其他异常                 | ⚠️  | 程序异常，需排查               |
 
-验证结果会写入 JSON 文件中每个 IP 条目的 `domain_verify` 字段。
+**数据写入位置：**
+
+验证结果会写入 JSON 文件中每个 IP 条目的 `domain_verify` 字段，包含统计信息：
+
+- `matched`: 匹配数量
+- `changed`: 变更数量
+- `unresolved`: 无法解析数量
+- `timeout`: 超时数量
+- `error`: 错误数量
+
+**验证报告示例：**
+
+```
+域名映射验证报告
+======================================================================
+验证时间: 2026-05-12 10:17:21
+总域名数: 101
+  ✅ 仍然匹配: 6
+  🔄 已变更:   73
+  ❌ 无法解析: 22
+  ⏱️  解析超时: 0
+  ⚠️  其他错误: 0
+======================================================================
+
+--- 已变更的域名 (73 个) ---
+  🔄 [chinaz] zproxy.lum-superproxy.io
+     原始IP: 178.128.114.205 -> 当前解析到: 158.247.235.32, ...
+```
+
+**与溯源报告的关系：**
+
+域名验证结果会自动纳入溯源优先级评估：
+
+- 域名仍匹配的 IP 优先级较高（威胁仍活跃）
+- 域名无法解析的 IP 优先级降低（威胁可能已消除）
+- 域名变更的 IP 需人工研判（可能已迁移或使用 CDN）
 
 ### tools/ai\_analysis.py — AI 研判辅助工具
 
