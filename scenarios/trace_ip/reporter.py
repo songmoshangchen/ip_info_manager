@@ -22,7 +22,7 @@ class BaseTraceReporter(ABC):
         pass
 
     @abstractmethod
-    def generate_docx_report(self):
+    def generate_docx_report(self, exclude_info=None):
         pass
 
 
@@ -271,7 +271,7 @@ class TextTraceReporter(BaseTraceReporter):
         else:
             builder.add_body('FOFA未探测到开放端口信息。')
 
-    def generate_docx_report(self):
+    def generate_docx_report(self, exclude_info=None):
         from tools.docx_builder import DOCX_AVAILABLE, DocxBuilder
 
         if not DOCX_AVAILABLE:
@@ -300,6 +300,13 @@ class TextTraceReporter(BaseTraceReporter):
 
         with open(json_path, 'r', encoding='utf-8') as f:
             ip_data = json.load(f)
+
+        if exclude_info:
+            exclude_set = exclude_info['exclude_ips']
+            original_count = len(ip_data)
+            ip_data = {ip: info for ip, info in ip_data.items() if ip not in exclude_set}
+            logger.info("排除IP生效: 原始 %d 个, 排除 %d 个, 剩余 %d 个",
+                        original_count, exclude_info['effective_count'], len(ip_data))
 
         report_data = {}
         if os.path.exists(report_path):
@@ -377,7 +384,16 @@ class TextTraceReporter(BaseTraceReporter):
         chapter_num += 1
         builder.add_body(f'本报告对目标IP地址进行了多维度关联分析，结合被动DNS数据、WHOIS注册信息、网络空间测绘数据以及IP反查域名信息，完成了对攻击来源的溯源定位。')
         builder.add_heading('1.1 分析目标', 2)
-        builder.add_body(f'本次分析共涉及 {total_ips} 个 IP 地址，通过多渠道信息采集与关联分析，判定其归属、用途及潜在风险。')
+        if exclude_info:
+            original_total = total_ips + exclude_info['effective_count']
+            builder.add_body(
+                f'本次分析原始 IP 共 {original_total} 个，'
+                f'已排除 {exclude_info["effective_count"]} 个已溯源 IP，'
+                f'剩余待溯源 IP {total_ips} 个。'
+                f'通过多渠道信息采集与关联分析，判定其归属、用途及潜在风险。'
+            )
+        else:
+            builder.add_body(f'本次分析共涉及 {total_ips} 个 IP 地址，通过多渠道信息采集与关联分析，判定其归属、用途及潜在风险。')
         builder.add_heading('1.2 分析方法', 2)
         builder.add_body('采用以下多渠道关联分析方法：')
         builder.add_body('（1）IP基础信息查询（IPInfo）：获取IP的ASN、组织、国家等归属信息；')
@@ -704,6 +720,9 @@ class TextTraceReporter(BaseTraceReporter):
         if os.path.exists(unclassified_path):
             with open(unclassified_path, 'r', encoding='utf-8') as f:
                 unclassified = json.load(f)
+            if exclude_info:
+                exclude_set = exclude_info['exclude_ips']
+                unclassified = [item for item in unclassified if item.get('ip') not in exclude_set]
             if unclassified:
                 builder.new_chapter()
                 builder.add_heading(f'{cn_chars[chapter_num - 1]}、未识别RDNS记录', 1)

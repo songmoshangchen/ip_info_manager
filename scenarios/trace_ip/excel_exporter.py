@@ -183,7 +183,7 @@ def _build_row(ip, info):
     ]
 
 
-def generate_trace_excel(output_dir, prefix):
+def generate_trace_excel(output_dir, prefix, exclude_info=None):
     if not OPENPYXL_AVAILABLE:
         logger.warning('openpyxl 未安装，跳过 Excel 导出。安装命令：pip install openpyxl')
         return False
@@ -195,6 +195,13 @@ def generate_trace_excel(output_dir, prefix):
 
     with open(json_path, 'r', encoding='utf-8') as f:
         ip_data = json.load(f)
+
+    if exclude_info:
+        exclude_set = exclude_info['exclude_ips']
+        original_count = len(ip_data)
+        ip_data = {ip: info for ip, info in ip_data.items() if ip not in exclude_set}
+        logger.info("Excel 排除IP生效: 原始 %d 个, 排除 %d 个, 剩余 %d 个",
+                    original_count, exclude_info['effective_count'], len(ip_data))
 
     deep_ips = []
     for ip in sorted(ip_data.keys()):

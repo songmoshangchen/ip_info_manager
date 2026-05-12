@@ -80,6 +80,11 @@ def main():
         '--tagger-level', type=int, choices=[1, 2, 3],
         help='标签级别：1=快速(21源), 2=正常(31源), 3=全量(35源)')
 
+    exclude_group = parser.add_argument_group('排除控制')
+    exclude_group.add_argument(
+        '--exclude-ips', type=str,
+        help='排除IP文件路径（每行一个IP，Phase 5 报告生成时排除已溯源IP）')
+
     timeout_group = parser.add_argument_group('超时控制')
     timeout_group.add_argument(
         '--channel-timeout', type=int, default=0,
@@ -123,6 +128,7 @@ def main():
         'channel_timeout': args.channel_timeout,
         'no_tagger': args.no_tagger,
         'tagger_level': args.tagger_level,
+        'exclude_ips_file': args.exclude_ips,
     }
 
     logger.info("=" * 60)
@@ -142,6 +148,8 @@ def main():
         logger.info("标签级别: %d", args.tagger_level)
     if args.channel_timeout:
         logger.info("渠道超时: %ds", args.channel_timeout)
+    if args.exclude_ips:
+        logger.info("排除IP文件: %s", args.exclude_ips)
     logger.info("=" * 60)
 
     pipeline = TraceIPPipeline(args.ip_file, config)

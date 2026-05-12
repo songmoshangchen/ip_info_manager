@@ -730,11 +730,62 @@ class TraceIPPipeline:
     # ── Phase 5: 生成报告（Word + Excel） ──
 
     def _phase5_generate_reports(self):
-        self._reporter.generate_docx_report()
-        generate_trace_excel(self._output_dir, self._prefix)
-        self._print_report_summary()
+        exclude_ips_file = self._config.get('exclude_ips_file')
+        exclude_info = None
 
-    def _print_report_summary(self):
+        if exclude_ips_file:
+            exclude_info = self._load_exclude_ips(exclude_ips_file)
+
+        self._reporter.generate_docx_report(exclude_info=exclude_info)
+        generate_trace_excel(self._output_dir, self._prefix, exclude_info=exclude_info)
+        self._print_report_summary(exclude_info=exclude_info)
+
+    def _load_exclude_ips(self, exclude_ips_file: str) -> dict:
+        if not os.path.exists(exclude_ips_file):
+            logger.warning("排除IP文件不存在: %s，将不排除任何IP", exclude_ips_file)
+            return None
+
+        with open(exclude_ips_file, 'r', encoding='utf-8') as f:
+            exclude_set = set(line.strip() for line in f if line.strip())
+
+        if not exclude_set:
+            logger.info("排除IP文件为空，将不排除任何IP")
+            return None
+
+        json_path = os.path.join(self._output_dir, f'{self._prefix}.json')
+        if not os.path.exists(json_path):
+            logger.warning("找不到数据文件 %s，将不排除任何IP", json_path)
+            return None
+
+        with open(json_path, 'r', encoding='utf-8') as f:
+            ip_data = json.load(f)
+
+        data_ips = set(ip_data.keys())
+        effective_excludes = exclude_set & data_ips
+        not_in_data = exclude_set - data_ips
+
+        if not_in_data:
+            logger.info("排除文件中有 %d 个IP不在数据中（已忽略）: %s",
+                        len(not_in_data), ', '.join(sorted(not_in_data)[:10]))
+            if len(not_in_data) > 10:
+                logger.info("  ... 共 %d 个", len(not_in_data))
+
+        if not effective_excludes:
+            logger.info("排除文件中的IP均不在当前数据中，将不排除任何IP")
+            return None
+
+        logger.info("排除IP: 文件中 %d 个, 有效排除 %d 个, 不在数据中 %d 个",
+                    len(exclude_set), len(effective_excludes), len(not_in_data))
+
+        return {
+            'exclude_ips': effective_excludes,
+            'total_in_file': len(exclude_set),
+            'effective_count': len(effective_excludes),
+            'not_in_data_count': len(not_in_data),
+            'not_in_data_ips': sorted(not_in_data),
+        }
+
+    def _print_report_summary(self, exclude_info=None):
         from scenarios.trace_ip.excel_exporter import _trace_priority, _extract_all_domains
 
         json_path = os.path.join(self._output_dir, f'{self._prefix}.json')
@@ -743,6 +794,10 @@ class TraceIPPipeline:
 
         with open(json_path, 'r', encoding='utf-8') as f:
             ip_data = json.load(f)
+
+        if exclude_info:
+            exclude_set = exclude_info['exclude_ips']
+            ip_data = {ip: info for ip, info in ip_data.items() if ip not in exclude_set}
 
         p_groups = {1: [], 2: [], 3: [], 4: []}
         for ip, info in ip_data.items():
@@ -754,6 +809,10 @@ class TraceIPPipeline:
         logger.info("=" * 60)
         logger.info("报告摘要")
         logger.info("=" * 60)
+        if exclude_info:
+            logger.info("原始IP数: %d, 已排除: %d, 剩余: %d",
+                        len(ip_data) + exclude_info['effective_count'],
+                        exclude_info['effective_count'], len(ip_data))
         logger.info("P1 核心溯源: %d 个IP", len(p_groups[1]))
         if p_groups[1]:
             for ip, _ in p_groups[1][:10]:
