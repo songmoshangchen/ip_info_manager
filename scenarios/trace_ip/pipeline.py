@@ -740,7 +740,7 @@ class TraceIPPipeline:
         generate_trace_excel(self._output_dir, self._prefix, exclude_info=exclude_info)
         self._print_report_summary(exclude_info=exclude_info)
 
-    def _load_exclude_ips(self, exclude_ips_file: str) -> dict:
+    def _load_exclude_ips(self, exclude_ips_file: str) -> dict | None:
         if not os.path.exists(exclude_ips_file):
             logger.warning("排除IP文件不存在: %s，将不排除任何IP", exclude_ips_file)
             return None
