@@ -13,6 +13,11 @@ from channel.rdns_ptr import fetch_channel as fetch_rdns_ptr
 from channel.aizhan import fetch_channel as fetch_aizhan
 from channel.chinaz import fetch_channel as fetch_chinaz
 from channel.fofa_host import fetch_channel as fetch_fofa_host
+from channel.port_scan import (
+    fetch_channel as fetch_port_scan,
+    validate_engine as validate_nmap,
+    load_port_list, extract_historical_ports, build_port_string,
+)
 from config import (
     IpinfoSettings, RdnsSettings, AizhanSettings,
     ChinazSettings, FofaSettings, Settings, TraceIPSettings,
@@ -40,8 +45,10 @@ PHASE_NAMES = {
     1: '基础情报采集',
     2: '自动分类过滤 + 标签打标',
     3: '深度查询',
-    4: '汇总输出',
-    5: '生成报告（Word + Excel）',
+    4: 'DNS 域名正向验证',
+    5: '端口扫描',
+    6: '汇总输出',
+    7: '生成报告（Word + Excel）',
 }
 
 
@@ -124,12 +131,12 @@ class TraceIPPipeline:
             self._pid.remove_pid()
 
     def _check_dependencies(self, phases_to_run):
-        if 5 in phases_to_run:
+        if 7 in phases_to_run:
             from tools.docx_builder import DOCX_AVAILABLE
             if not DOCX_AVAILABLE:
                 logger.error("=" * 60)
                 logger.error("缺少必需依赖: python-docx")
-                logger.error("Phase 5 (生成报告) 需要此依赖才能生成 Word 报告")
+                logger.error("Phase 7 (生成报告) 需要此依赖才能生成 Word 报告")
                 logger.error("安装命令: pip install python-docx")
                 logger.error("=" * 60)
                 sys.exit(1)
@@ -139,7 +146,7 @@ class TraceIPPipeline:
             except ImportError:
                 logger.error("=" * 60)
                 logger.error("缺少必需依赖: openpyxl")
-                logger.error("Phase 5 (生成报告) 需要此依赖才能生成 Excel 报告")
+                logger.error("Phase 7 (生成报告) 需要此依赖才能生成 Excel 报告")
                 logger.error("安装命令: pip install openpyxl")
                 logger.error("=" * 60)
                 sys.exit(1)
@@ -149,8 +156,10 @@ class TraceIPPipeline:
             1: self._phase1_collect_basic,
             2: self._phase2_classify,
             3: self._phase3_deep_query,
-            4: self._phase4_summary,
-            5: self._phase5_generate_reports,
+            4: self._phase4_dns_verify,
+            5: self._phase5_port_scan,
+            6: self._phase6_summary,
+            7: self._phase7_generate_reports,
         }
 
         for phase_num in phases_to_run:
@@ -168,7 +177,7 @@ class TraceIPPipeline:
 
             phase_methods[phase_num]()
 
-        if 5 not in phases_to_run:
+        if 7 not in phases_to_run:
             self._reporter.save_report()
 
     def _resolve_output_dir(self, project_root: str) -> str:
@@ -648,8 +657,6 @@ class TraceIPPipeline:
 
         self._progress.mark_phase_done(3)
 
-        self._dns_verify_phase3(filtered_ips, trace_settings)
-
         self._reporter.record_phase(3, {
             'status': 'done',
             'ips_deep_queried': total,
@@ -661,15 +668,44 @@ class TraceIPPipeline:
                      "(断点续跑 %d, 新增 %d)",
                      total, skipped, new_count)
 
-    def _dns_verify_phase3(self, filtered_ips, trace_settings):
+    # ── Phase 4: DNS 域名正向验证 ──
+
+    def _phase4_dns_verify(self):
+        if self._progress.is_phase_done(4):
+            logger.info("阶段4已完成，跳过")
+            return
+
         if self._config.get('no_dns_verify'):
             logger.info("已跳过 DNS 域名验证（--no-dns-verify）")
+            self._reporter.record_phase(4, {
+                'status': 'skipped'})
+            self._progress.mark_phase_done(4)
             return
 
-        if not trace_settings.phase3_dns_verify_enabled:
-            logger.info("DNS 域名验证: 已禁用（配置项 PHASE3_DNS_VERIFY_ENABLED=false）")
+        trace_settings = TraceIPSettings()
+        if not trace_settings.phase4_dns_verify_enabled:
+            logger.info("DNS 域名验证: 已禁用（配置项 PHASE4_DNS_VERIFY_ENABLED=false）")
+            self._progress.mark_phase_done(4)
             return
 
+        filtered_ips = self._get_filtered_ips()
+
+        self._do_dns_verify(filtered_ips, trace_settings)
+
+        self._progress.mark_phase_done(4)
+
+        self._reporter.record_phase(4, {'status': 'done'})
+
+    def _get_filtered_ips(self) -> list:
+        prefix = Settings().trace_ip_project_name
+        filtered_file = os.path.join(
+            self._output_dir, f'{prefix}.trace_filtered_ips')
+        if not os.path.exists(filtered_file):
+            return self._ips
+        with open(filtered_file, 'r', encoding='utf-8') as f:
+            return [line.strip() for line in f if line.strip()]
+
+    def _do_dns_verify(self, filtered_ips: list, trace_settings):
         json_path = os.path.join(self._output_dir, f'{self._prefix}.json')
         if not os.path.exists(json_path):
             logger.info("DNS 域名验证: 无数据文件，跳过")
@@ -722,14 +758,164 @@ class TraceIPPipeline:
                      verify_stats['unresolved'], verify_stats['timeout'],
                      verify_stats['error'])
 
-    # ── Phase 4: 汇总输出 ──
+    # ── Phase 5: 端口扫描 ──
 
-    def _phase4_summary(self):
+    def _phase5_port_scan(self):
+        if self._progress.is_phase_done(5):
+            logger.info("阶段5已完成，跳过")
+            return
+
+        if self._config.get('no_port_scan'):
+            logger.info("已跳过端口扫描（--no-port-scan）")
+            self._reporter.record_phase(5, {
+                'status': 'skipped', 'ips_scanned': 0})
+            self._progress.mark_phase_done(5)
+            return
+
+        trace_settings = TraceIPSettings()
+        if not trace_settings.phase5_port_scan_enabled:
+            logger.info("端口扫描: 已禁用（配置项 PHASE5_PORT_SCAN_ENABLED=false）")
+            self._progress.mark_phase_done(5)
+            return
+
+        nmap_path = trace_settings.port_scan_nmap_path
+        if not validate_nmap(nmap_path):
+            logger.error("端口扫描: nmap 不可用（路径: %s），跳过此阶段", nmap_path)
+            self._progress.mark_phase_done(5)
+            return
+
+        top_ports = load_port_list(trace_settings.port_scan_port_list)
+        if not top_ports:
+            logger.error("端口扫描: 端口列表为空或文件不存在，跳过此阶段")
+            self._progress.mark_phase_done(5)
+            return
+
+        filtered_ips = self._get_filtered_ips()
+
+        processed = self._progress.load_completed(5)
+        if processed:
+            pct = len(processed) / len(filtered_ips) * 100 if filtered_ips else 0
+            logger.info("发现进度文件: 已处理 %d/%d (%.1f%%)，将从断点继续",
+                         len(processed), len(filtered_ips), pct)
+
+        json_ips = self._ip_reader.list_all_ips()
+        processed_from_json = set()
+        for ip in json_ips:
+            if ip not in filtered_ips:
+                continue
+            ip_data = self._ip_reader.get_ip_data(ip)
+            if ip_data and 'port_scan' in ip_data and 'error' not in ip_data.get('port_scan', {}):
+                processed_from_json.add(ip)
+
+        if processed_from_json:
+            new_from_json = processed_from_json - processed
+            if new_from_json:
+                logger.info("从JSON中发现 %d 个IP已有阶段5数据（不在进度文件中），自动跳过",
+                            len(new_from_json))
+            processed = processed | processed_from_json
+
+        total = len(filtered_ips)
+        
+        pending_ips = [ip for ip in filtered_ips if ip not in processed]
+        skipped = total - len(pending_ips)
+        
+        batch_size = trace_settings.port_scan_batch_size
+        timeout = trace_settings.port_scan_timeout
+
+        logger.info("需要端口扫描的IP: %d", total)
+        logger.info("已完成: %d", skipped)
+        logger.info("剩余: %d", len(pending_ips))
+        logger.info("-" * 60)
+        logger.info("✓ 端口扫描引擎: nmap (%s)", nmap_path)
+        logger.info("✓ 端口列表: %s (%d 个端口)", trace_settings.port_scan_port_list, len(top_ports))
+        logger.info("✓ 扫描超时: %ds/IP", timeout)
+        logger.info("✓ 批次大小: %d IP/批", batch_size)
+        logger.info("-" * 60)
+
+        _p5_start = time.time()
+        new_count = 0
+        batch_count = 0
+
+        with self._batch_writer:
+            for batch_idx in range(0, len(pending_ips), batch_size):
+                batch = pending_ips[batch_idx:batch_idx + batch_size]
+                batch_count += 1
+                
+                logger.info("=" * 60)
+                logger.info("批次 %d: 处理 %d 个IP", batch_count, len(batch))
+
+                for i, ip in enumerate(batch, 1):
+                    new_count += 1
+
+                    ip_data = self._ip_reader.get_ip_data(ip) or {}
+                    historical_ports = extract_historical_ports(ip_data)
+                    port_string = build_port_string(historical_ports, top_ports)
+
+                    global_idx = skipped + (batch_idx) + i
+                    logger.info("[%d/%d] 端口扫描: %s (历史端口: %d, Top端口: %d, 合计: %d)",
+                                global_idx, total, ip, len(historical_ports),
+                                len(top_ports), len(set(historical_ports + top_ports)))
+
+                    result = fetch_port_scan(
+                        ip=ip,
+                        nmap_path=nmap_path,
+                        port_string=port_string,
+                        timeout=timeout,
+                        historical_ports=historical_ports,
+                        delay=0,
+                    )
+
+                    open_count = result.get('open_count', 0)
+                    open_ports_list = result.get('open_ports', [])
+                    if 'error' in result:
+                        logger.info("  端口扫描: ❌ %s", result.get('error', 'Unknown'))
+                    elif open_count > 0:
+                        port_strs = [str(p.get('port', '')) for p in open_ports_list[:10]]
+                        suffix = '...' if open_count > 10 else ''
+                        logger.info("  端口扫描: ✅ %d 个开放端口 [%s%s]",
+                                    open_count, ', '.join(port_strs), suffix)
+                    else:
+                        logger.info("  端口扫描: 无开放端口")
+
+                    self._batch_writer.add(ip, 'port_scan', result)
+                    self._progress.record(ip, 5)
+                    self._pid.update_heartbeat(current_phase=5)
+
+                self._batch_writer.flush_batch()
+                self._progress.flush()
+                
+                logger.info("批次 %d 完成，进度已保存", batch_count)
+
+                if new_count > 0:
+                    elapsed = time.time() - _p5_start
+                    remaining = total - global_idx
+                    if remaining > 0:
+                        avg = elapsed / new_count
+                        eta_s = remaining * avg
+                        eta_m = int(eta_s // 60)
+                        eta_sec = int(eta_s % 60)
+                        logger.info("ETA: ~%dmin%02ds (剩余 %d 个IP)", eta_m, eta_sec, remaining)
+
+        self._progress.mark_phase_done(5)
+
+        self._reporter.record_phase(5, {
+            'status': 'done',
+            'ips_scanned': total,
+            'resumed_from': skipped,
+            'newly_scanned': new_count,
+        })
+
+        logger.info("阶段5完成: 端口扫描 %d 个IP (断点续跑 %d, 新增 %d)",
+                     total, skipped, new_count)
+
+    # ── Phase 6: 汇总输出 ──
+
+    def _phase6_summary(self):
         self._reporter.generate_summary(self._ips, self._reporter.report)
 
-    # ── Phase 5: 生成报告（Word + Excel） ──
+    # ── Phase 7: 生成报告（Word + Excel） ──
 
-    def _phase5_generate_reports(self):
+    def _phase7_generate_reports(self):
         exclude_ips_file = self._config.get('exclude_ips_file')
         exclude_info = None
 

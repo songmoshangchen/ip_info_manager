@@ -13,7 +13,7 @@ logger = logging.getLogger('ip_info_manager.scenarios.trace_ip')
 
 HEADERS = [
     'IP', '国家', 'ASN/组织', '分类', '分类说明', '建议溯源路径',
-    '域名数', '反查域名列表', '端口数', '开放端口列表', '标签',
+    '域名数', '反查域名列表', '端口数', '开放端口列表', '实时扫描端口数', '实时开放端口列表', '标签',
 ]
 
 SHEET_CONFIG = {
@@ -156,11 +156,29 @@ def _format_domain_with_verify(domain, domain_verify):
     return domain
 
 
+def _extract_port_scan_ports(info):
+    ps = info.get('port_scan', {})
+    if not ps or 'error' in ps:
+        return []
+    return ps.get('open_ports', [])
+
+
 def _build_row(ip, info):
     country = info.get('ipinfo_api', {}).get('country', '')
     org = info.get('ipinfo_api', {}).get('as_name', '')
     domains = _extract_all_domains(info)
     ports = _extract_fofa_ports(info)
+    port_scan_ports = _extract_port_scan_ports(info)
+    port_scan_strs = []
+    for p in port_scan_ports:
+        port_str = str(p.get('port', ''))
+        service = p.get('service', '')
+        product = p.get('product', '')
+        if product:
+            port_str = f"{port_str}({product})"
+        elif service:
+            port_str = f"{port_str}({service})"
+        port_scan_strs.append(port_str)
     tags_data = info.get('tags', [])
     tags_str = ', '.join(tags_data) if isinstance(tags_data, list) else str(tags_data)
     domain_verify = info.get('domain_verify')
@@ -179,6 +197,8 @@ def _build_row(ip, info):
         '\n'.join(formatted_domains),
         str(len(ports)),
         '\n'.join(ports),
+        str(len(port_scan_ports)),
+        '\n'.join(port_scan_strs),
         tags_str,
     ]
 
@@ -246,7 +266,7 @@ def generate_trace_excel(output_dir, prefix, exclude_info=None):
 
         col_widths = {
             1: 18, 2: 10, 3: 25, 4: 22, 5: 20, 6: 30,
-            7: 8, 8: 40, 9: 8, 10: 30, 11: 20,
+            7: 8, 8: 40, 9: 8, 10: 30, 11: 12, 12: 40, 13: 20,
         }
         for col_num, width in col_widths.items():
             ws.column_dimensions[chr(64 + col_num)].width = width

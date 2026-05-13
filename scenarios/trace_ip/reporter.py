@@ -87,7 +87,7 @@ class TextTraceReporter(BaseTraceReporter):
 
         logger.info("=" * 60)
 
-        self._report['phases']['phase4'] = {'status': 'done'}
+        self._report['phases']['phase6'] = {'status': 'done'}
         self._report['unclassified_rdns_count'] = unclassified_count
         self._report['unclassified_rdns_file'] = os.path.join(
             self._output_dir, f'{self._prefix}.unclassified_rdns')
@@ -270,6 +270,34 @@ class TextTraceReporter(BaseTraceReporter):
             builder.add_table(['端口', '协议', '产品/服务', '更新时间'], p_rows)
         else:
             builder.add_body('FOFA未探测到开放端口信息。')
+
+        port_scan = info.get('port_scan', {})
+        if port_scan and 'error' not in port_scan:
+            open_ports = port_scan.get('open_ports', [])
+            if open_ports:
+                builder.add_heading(f'实时端口扫描结果（共 {len(open_ports)} 个开放）', 3)
+                builder.table_caption(f'{ip} 实时端口扫描结果')
+                ps_rows = []
+                for p in open_ports:
+                    service_info = p.get('service', '')
+                    product = p.get('product', '')
+                    version = p.get('version', '')
+                    svc_str = service_info
+                    if product:
+                        svc_str = f"{product}" + (f" {version}" if version else "")
+                    ps_rows.append([str(p.get('port', '')), p.get('protocol', 'tcp'), svc_str or '—'])
+                builder.add_table(['端口', '协议', '服务'], ps_rows)
+
+                verified = port_scan.get('historical_ports_verified', [])
+                closed = port_scan.get('historical_ports_closed', [])
+                if verified or closed:
+                    builder.add_body(
+                        f'历史端口验证: {len(verified)} 个仍开放, {len(closed)} 个已关闭'
+                    )
+            elif port_scan.get('open_count', 0) == 0 and port_scan.get('total_scanned', 0) > 0:
+                builder.add_body(f'实时端口扫描: 扫描 {port_scan.get("total_scanned", 0)} 个端口，无开放端口。')
+        elif port_scan and 'error' in port_scan:
+            builder.add_body(f'实时端口扫描失败: {port_scan.get("error", "Unknown")}')
 
     def generate_docx_report(self, exclude_info=None):
         from tools.docx_builder import DOCX_AVAILABLE, DocxBuilder
@@ -690,7 +718,40 @@ class TextTraceReporter(BaseTraceReporter):
                     p4_rows.append([ip, country, org, cat])
                 builder.add_table(['IP', '国家', '组织', '分类'], p4_rows)
 
-        # ── 四、AI研判结果 ──
+        # ── 端口扫描结果章节 ──
+        port_scan_ips = [ip for ip in sorted(ip_data.keys())
+                         if ip_data[ip].get('port_scan') and 'error' not in ip_data[ip].get('port_scan', {})]
+        port_scan_ips_with_open = [ip for ip in port_scan_ips
+                                   if ip_data[ip].get('port_scan', {}).get('open_count', 0) > 0]
+
+        if port_scan_ips:
+            builder.new_chapter()
+            builder.add_heading(f'{cn_chars[chapter_num - 1]}、端口扫描结果', 1)
+            chapter_num += 1
+            builder.add_body(
+                f'对 {len(port_scan_ips)} 个IP执行了 nmap 端口扫描（Top 1000 + 历史端口验证），'
+                f'其中 {len(port_scan_ips_with_open)} 个IP发现开放端口。'
+            )
+
+            if port_scan_ips_with_open:
+                builder.table_caption('端口扫描结果汇总')
+                ps_rows = []
+                for ip in port_scan_ips_with_open:
+                    info = ip_data[ip]
+                    ps_data = info.get('port_scan', {})
+                    open_ports = ps_data.get('open_ports', [])
+                    port_strs = [str(p.get('port', '')) for p in open_ports[:20]]
+                    if len(open_ports) > 20:
+                        port_strs.append(f'... 共 {len(open_ports)} 个')
+                    ps_rows.append([
+                        ip,
+                        info.get('ipinfo_api', {}).get('country', 'N/A'),
+                        str(ps_data.get('open_count', 0)),
+                        '\n'.join(port_strs),
+                    ])
+                builder.add_table(['IP', '国家', '开放端口数', '开放端口列表'], ps_rows)
+
+        # ── AI研判结果 ──
         ai_ips = [ip for ip in sorted(ip_data.keys()) if ip_data[ip].get('ai_analysis')]
 
         if ai_ips:

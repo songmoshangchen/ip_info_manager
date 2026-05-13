@@ -36,7 +36,7 @@ ip_info_manager/
 ├── reader.py                 # IP 数据读取（含 Excel 导出）
 ├── channel/                  # 9 个数据采集渠道
 ├── scripts/                  # 10 个批量查询脚本
-├── scenarios/trace_ip/       # 溯源 IP 流水线（5 阶段 + 标签打标）
+├── scenarios/trace_ip/       # 溯源 IP 流水线（7 阶段：采集→标签打标→分类→深度查询→DNS验证→端口扫描→汇总→报告）
 ├── scenarios/ip_domain_lookup/ # IP 域名反查流水线（4 阶段）
 ├── tools/                    # 辅助工具（config/merge/progress/verify/ai_analysis/docx_builder/status_tool）
 ├── utils/                    # 通用工具（file_utils/ip_utils/pid_manager）
@@ -60,18 +60,82 @@ ip_info_manager/
 | `--collect-only` | `--only-phase 1` | 只执行基础采集 |
 | `--classify-only` | `--only-phase 2` | 只执行分类过滤（仅溯源流水线） |
 | `--deep-query-only` | `--only-phase 3` | 只执行深度查询（仅溯源流水线） |
-| `--summary-only` | `--only-phase 4` | 只执行汇总输出 |
-| `--generate-report` | `--only-phase 5` | 只生成报告（Word + Excel） |
+| `--dns-verify-only` | `--only-phase 4` | 只执行DNS域名验证（仅溯源流水线） |
+| `--port-scan-only` | `--only-phase 5` | 只执行端口扫描（仅溯源流水线） |
+| `--summary-only` | `--only-phase 6` | 只执行汇总输出 |
+| `--generate-report` | `--only-phase 7` | 只生成报告（Word + Excel） |
 
 ## 排除已溯源 IP
 
-报告生成时可通过 `--exclude-ips` 排除已溯源 IP，使报告聚焦于剩余待溯源 IP。仅在 Phase 5 生效。
+报告生成时可通过 `--exclude-ips` 排除已溯源 IP，使报告聚焦于剩余待溯源 IP。仅在 Phase 7 生效。
 
 ```bash
 python -m scenarios.trace_ip ips.txt --generate-report --exclude-ips traced_ips.txt
 ```
 
 排除后报告所有统计重新计算，概述中明确显示排除信息。详见 references/trace-ip-pipeline.md。
+
+## Phase 5 端口扫描（可选增强）
+
+### 功能说明
+
+端口扫描功能使用 **nmap** 对目标IP进行实时端口探测，验证 Fofa/ZoomEye 历史端口的当前状态并发现新增开放端口。该功能**默认关闭**，需显式启用。
+
+### 启用配置
+
+```bash
+# 通过 config_tool.py 启用
+cd ~/skills/ip_info_manager
+python tools/config_tool.py set IP_PHASE5_PORT_SCAN_ENABLED true
+python tools/config_tool.py set IP_PORT_SCAN_NMAP_PATH /usr/bin/nmap  # Linux
+# 或 Windows 路径
+python tools/config_tool.py set IP_PORT_SCAN_NMAP_PATH "E:\01Tools\NMAP\nmap.exe"
+
+# 调整超时和批次大小
+python tools/config_tool.py set IP_PORT_SCAN_TIMEOUT 120
+python tools/config_tool.py set IP_PORT_SCAN_BATCH_SIZE 10
+```
+
+### 使用方式
+
+```bash
+# 只运行端口扫描
+python -m scenarios.trace_ip ips.txt --port-scan-only
+
+# 完整流水线（包含端口扫描）
+python -m scenarios.trace_ip ips.txt
+
+# 断点续跑（中断后重新执行）
+python -m scenarios.trace_ip ips.txt --from-phase 5
+```
+
+### 批处理与断点续跑
+
+- **批处理模式**：每处理完一批（默认10个IP）后自动保存进度
+- **中断恢复**：Ctrl+C 或异常中断后，重新运行会自动跳过已完成的IP
+- **损失控制**：中断最多损失一批（默认10个IP）的扫描进度
+- **集合过滤**：基于集合运算过滤已完成IP，不依赖文件顺序
+
+### 扫描范围
+
+1. **历史端口验证** — 扫描 Fofa/ZoomEye 返回的历史端口
+2. **Top 1000 端口** — 扫描最常见的 1000 个端口
+3. **合并扫描** — 两者合并去重后一次性扫描
+
+### 输出数据
+
+端口扫描结果写入 `port_scan` 渠道字段，包含：
+- `open_ports`: 开放端口列表（含服务指纹）
+- `historical_ports_verified`: 仍开放的历史端口
+- `historical_ports_closed`: 已关闭的历史端口
+- `open_count`: 开放端口总数
+- `total_scanned`: 扫描的端口总数
+
+### 注意事项
+
+- 端口扫描耗时较长（每IP约60-120秒），建议先用 `--only-phase 5` 测试少量IP
+- 需要预先安装 nmap，详见 README.md 的端口扫描章节
+- Windows 上 nmap 需要 TCP Connect（`-sT`），速度比 Linux 的 SYN 扫描慢
 
 ## AI 异步执行模式
 

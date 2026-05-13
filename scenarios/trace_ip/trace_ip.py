@@ -27,7 +27,7 @@ def main():
     _setup_logging()
 
     parser = argparse.ArgumentParser(
-        description='溯源IP处理流水线 - 自动采集、分类、深度查询',
+        description='溯源IP处理流水线 - 自动采集、分类、深度查询、端口扫描',
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
@@ -35,10 +35,10 @@ def main():
 
     phase_group = parser.add_argument_group('阶段控制')
     phase_group.add_argument(
-        '--from-phase', type=int, choices=[1, 2, 3, 4, 5],
+        '--from-phase', type=int, choices=[1, 2, 3, 4, 5, 6, 7],
         help='从指定阶段开始（默认从阶段1开始）')
     phase_group.add_argument(
-        '--only-phase', type=int, choices=[1, 2, 3, 4, 5],
+        '--only-phase', type=int, choices=[1, 2, 3, 4, 5, 6, 7],
         help='只执行指定阶段')
 
     shortcut_group = parser.add_argument_group('快捷命令（等同于 --only-phase N）')
@@ -52,11 +52,17 @@ def main():
         '--deep-query-only', action='store_true',
         help='只执行 Phase 3（深度查询）')
     shortcut_group.add_argument(
+        '--dns-verify-only', action='store_true',
+        help='只执行 Phase 4（DNS 域名正向验证）')
+    shortcut_group.add_argument(
+        '--port-scan-only', action='store_true',
+        help='只执行 Phase 5（端口扫描）')
+    shortcut_group.add_argument(
         '--summary-only', action='store_true',
-        help='只执行 Phase 4（汇总输出）')
+        help='只执行 Phase 6（汇总输出）')
     shortcut_group.add_argument(
         '--generate-report', action='store_true',
-        help='只执行 Phase 5（生成 Word + Excel 报告）')
+        help='只执行 Phase 7（生成 Word + Excel 报告）')
 
     rule_group = parser.add_argument_group('分类规则')
     rule_group.add_argument(
@@ -72,7 +78,10 @@ def main():
         help='分类后不执行深度查询阶段')
     output_group.add_argument(
         '--no-dns-verify', action='store_true',
-        help='跳过 Phase 3 的 DNS 域名正向验证')
+        help='跳过 Phase 4 DNS 域名正向验证')
+    output_group.add_argument(
+        '--no-port-scan', action='store_true',
+        help='跳过 Phase 5 端口扫描')
     output_group.add_argument(
         '--no-tagger', action='store_true',
         help='跳过 IP 标签打标阶段')
@@ -83,7 +92,7 @@ def main():
     exclude_group = parser.add_argument_group('排除控制')
     exclude_group.add_argument(
         '--exclude-ips', type=str,
-        help='排除IP文件路径（每行一个IP，Phase 5 报告生成时排除已溯源IP）')
+        help='排除IP文件路径（每行一个IP，Phase 7 报告生成时排除已溯源IP）')
 
     timeout_group = parser.add_argument_group('超时控制')
     timeout_group.add_argument(
@@ -93,13 +102,17 @@ def main():
     args = parser.parse_args()
 
     shortcuts = [args.collect_only, args.classify_only,
-                 args.deep_query_only, args.summary_only, args.generate_report]
+                 args.deep_query_only, args.dns_verify_only,
+                 args.port_scan_only, args.summary_only,
+                 args.generate_report]
     shortcut_map = {
         0: ('collect_only', 1),
         1: ('classify_only', 2),
         2: ('deep_query_only', 3),
-        3: ('summary_only', 4),
-        4: ('generate_report', 5),
+        3: ('dns_verify_only', 4),
+        4: ('port_scan_only', 5),
+        5: ('summary_only', 6),
+        6: ('generate_report', 7),
     }
 
     active_shortcuts = [i for i, s in enumerate(shortcuts) if s]
@@ -125,6 +138,7 @@ def main():
         'no_custom_rules': args.no_custom_rules,
         'no_deep_query': args.no_deep_query,
         'no_dns_verify': args.no_dns_verify,
+        'no_port_scan': args.no_port_scan,
         'channel_timeout': args.channel_timeout,
         'no_tagger': args.no_tagger,
         'tagger_level': args.tagger_level,
@@ -138,10 +152,17 @@ def main():
     if args.from_phase:
         logger.info("起始阶段: %d", args.from_phase)
     if args.only_phase:
-        phase_names = {1: '基础情报采集', 2: '自动分类过滤', 3: '深度查询', 4: '汇总输出', 5: '生成报告'}
+        phase_names = {
+            1: '基础情报采集', 2: '自动分类过滤', 3: '深度查询',
+            4: 'DNS域名正向验证', 5: '端口扫描', 6: '汇总输出', 7: '生成报告',
+        }
         logger.info("仅执行阶段: %d - %s", args.only_phase, phase_names.get(args.only_phase, ''))
     if args.no_deep_query:
         logger.info("深度查询: 已禁用")
+    if args.no_dns_verify:
+        logger.info("DNS验证: 已禁用")
+    if args.no_port_scan:
+        logger.info("端口扫描: 已禁用")
     if args.no_tagger:
         logger.info("标签打标: 已禁用")
     if args.tagger_level:

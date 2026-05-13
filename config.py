@@ -135,9 +135,15 @@ class TraceIPSettings(BaseIPSettings):
     phase3_aizhan_enabled: bool = Field(default=True, description='溯源IP流水线阶段3：启用爱站网 IP 反查域名')
     phase3_chinaz_enabled: bool = Field(default=True, description='溯源IP流水线阶段3：启用站长之家 IP 反查域名')
     phase3_fofa_host_enabled: bool = Field(default=True, description='溯源IP流水线阶段3：启用 Fofa Host 聚合查询')
-    phase3_dns_verify_enabled: bool = Field(default=True, description='溯源IP流水线阶段3：启用 DNS 域名正向验证')
+    phase4_dns_verify_enabled: bool = Field(default=True, description='溯源IP流水线阶段4：启用 DNS 域名正向验证')
     dns_verify_timeout: float = Field(default=3.0, description='DNS 域名验证超时秒数')
     dns_verify_concurrency: int = Field(default=10, description='DNS 域名验证并发线程数')
+    phase5_port_scan_enabled: bool = Field(default=False, description='溯源IP流水线阶段5：启用端口扫描')
+    port_scan_engine: str = Field(default='nmap', description='端口扫描引擎（nmap）')
+    port_scan_nmap_path: str = Field(default='nmap', description='nmap 可执行文件路径')
+    port_scan_timeout: int = Field(default=90, description='单 IP 端口扫描超时秒数')
+    port_scan_port_list: str = Field(default='config/port_scan/top1000.txt', description='端口列表文件路径')
+    port_scan_batch_size: int = Field(default=10, description='端口扫描批次大小（每批处理IP数量）')
 
 
 class IpTaggerSettings(BaseIPSettings):

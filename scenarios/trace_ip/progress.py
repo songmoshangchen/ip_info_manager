@@ -16,12 +16,17 @@ class ProgressManager:
     _PHASE_CONFIG = {
         1: 'trace_phase1.progress',
         3: 'trace_phase3.progress',
+        5: 'trace_phase5.progress',
     }
 
     _PHASE_MARKERS = {
         1: 'trace_phase1_done',
         2: 'trace_phase2_done',
         3: 'trace_phase3_done',
+        4: 'trace_phase4_done',
+        5: 'trace_phase5_done',
+        6: 'trace_phase6_done',
+        7: 'trace_phase7_done',
     }
 
     def __init__(self, output_dir: str, prefix: str):
@@ -82,7 +87,7 @@ class ProgressManager:
                 f.write(datetime.now().isoformat())
 
     def clear_from(self, phase: int):
-        for p in range(phase, 4):
+        for p in range(phase, 8):
             marker = self._get_marker_file(p)
             if marker and os.path.exists(marker):
                 os.remove(marker)
