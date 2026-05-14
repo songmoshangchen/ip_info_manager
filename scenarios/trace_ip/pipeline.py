@@ -3,7 +3,7 @@ import logging
 import os
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor, wait
+from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from datetime import datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -838,6 +838,7 @@ class TraceIPPipeline:
         skipped = total - len(pending_ips)
         
         timeout = trace_settings.port_scan_timeout
+        concurrency = trace_settings.port_scan_concurrency
 
         logger.info("需要端口扫描的IP: %d", total)
         logger.info("已完成: %d", skipped)
@@ -846,60 +847,124 @@ class TraceIPPipeline:
         logger.info("✓ 端口扫描引擎: nmap (%s)", nmap_path)
         logger.info("✓ 端口列表: %s (%d 个端口)", trace_settings.port_scan_port_list, len(top_ports))
         logger.info("✓ 扫描超时: %ds/IP", timeout)
+        if concurrency > 1:
+            logger.info("✓ 并发数: %d", concurrency)
         logger.info("-" * 60)
 
         _p5_start = time.time()
         new_count = 0
 
+        def _scan_one_ip(ip: str) -> tuple:
+            ip_data = self._ip_reader.get_ip_data(ip) or {}
+            historical_ports = extract_historical_ports(ip_data)
+            port_string = build_port_string(historical_ports, top_ports)
+            result = fetch_port_scan(
+                ip=ip,
+                nmap_path=nmap_path,
+                port_string=port_string,
+                timeout=timeout,
+                historical_ports=historical_ports,
+                delay=0,
+            )
+            return ip, result, len(historical_ports)
+
         with self._batch_writer:
-            for idx, ip in enumerate(pending_ips, 1):
-                new_count += 1
+            if concurrency <= 1:
+                for idx, ip in enumerate(pending_ips, 1):
+                    new_count += 1
 
-                ip_data = self._ip_reader.get_ip_data(ip) or {}
-                historical_ports = extract_historical_ports(ip_data)
-                port_string = build_port_string(historical_ports, top_ports)
+                    ip_data = self._ip_reader.get_ip_data(ip) or {}
+                    historical_ports = extract_historical_ports(ip_data)
+                    port_string = build_port_string(historical_ports, top_ports)
 
-                global_idx = skipped + idx
-                logger.info("[%d/%d] 端口扫描: %s (历史端口: %d, Top端口: %d, 合计: %d)",
-                            global_idx, total, ip, len(historical_ports),
-                            len(top_ports), len(set(historical_ports + top_ports)))
+                    global_idx = skipped + idx
+                    logger.info("[%d/%d] 端口扫描: %s (历史端口: %d, Top端口: %d, 合计: %d)",
+                                global_idx, total, ip, len(historical_ports),
+                                len(top_ports), len(set(historical_ports + top_ports)))
 
-                result = fetch_port_scan(
-                    ip=ip,
-                    nmap_path=nmap_path,
-                    port_string=port_string,
-                    timeout=timeout,
-                    historical_ports=historical_ports,
-                    delay=0,
-                )
+                    result = fetch_port_scan(
+                        ip=ip,
+                        nmap_path=nmap_path,
+                        port_string=port_string,
+                        timeout=timeout,
+                        historical_ports=historical_ports,
+                        delay=0,
+                    )
 
-                open_count = result.get('open_count', 0)
-                open_ports_list = result.get('open_ports', [])
-                if 'error' in result:
-                    logger.info("  端口扫描: ❌ %s", result.get('error', 'Unknown'))
-                elif open_count > 0:
-                    port_strs = [str(p.get('port', '')) for p in open_ports_list[:10]]
-                    suffix = '...' if open_count > 10 else ''
-                    logger.info("  端口扫描: ✅ %d 个开放端口 [%s%s]",
-                                open_count, ', '.join(port_strs), suffix)
-                else:
-                    logger.info("  端口扫描: 无开放端口")
+                    open_count = result.get('open_count', 0)
+                    open_ports_list = result.get('open_ports', [])
+                    if 'error' in result:
+                        logger.info("  端口扫描: ❌ %s", result.get('error', 'Unknown'))
+                    elif open_count > 0:
+                        port_strs = [str(p.get('port', '')) for p in open_ports_list[:10]]
+                        suffix = '...' if open_count > 10 else ''
+                        logger.info("  端口扫描: ✅ %d 个开放端口 [%s%s]",
+                                    open_count, ', '.join(port_strs), suffix)
+                    else:
+                        logger.info("  端口扫描: 无开放端口")
 
-                self._batch_writer.add(ip, 'port_scan', result)
-                self._batch_writer.flush_batch()
-                self._progress.record(ip, 5)
-                self._progress.flush()
-                self._pid.update_heartbeat(current_phase=5)
+                    self._batch_writer.add(ip, 'port_scan', result)
+                    self._batch_writer.flush_batch()
+                    self._progress.record(ip, 5)
+                    self._progress.flush()
+                    self._pid.update_heartbeat(current_phase=5)
 
-                if new_count > 0:
-                    elapsed = time.time() - _p5_start
-                    remaining = total - global_idx
-                    if remaining > 0:
-                        avg = elapsed / new_count
-                        eta_s = remaining * avg
-                        eta_m = int(eta_s // 60)
-                        eta_sec = int(eta_s % 60)
-                        logger.info("ETA: ~%dmin%02ds (剩余 %d 个IP)", eta_m, eta_sec, remaining)
+                    if new_count > 0:
+                        elapsed = time.time() - _p5_start
+                        remaining = total - global_idx
+                        if remaining > 0:
+                            avg = elapsed / new_count
+                            eta_s = remaining * avg
+                            eta_m = int(eta_s // 60)
+                            eta_sec = int(eta_s % 60)
+                            logger.info("ETA: ~%dmin%02ds (剩余 %d 个IP)", eta_m, eta_sec, remaining)
+            else:
+                with ThreadPoolExecutor(max_workers=concurrency, thread_name_prefix='PortScan') as executor:
+                    futures = {}
+                    for ip in pending_ips:
+                        future = executor.submit(_scan_one_ip, ip)
+                        futures[future] = ip
+
+                    for future in as_completed(futures):
+                        ip = futures[future]
+                        new_count += 1
+
+                        try:
+                            _, result, hist_count = future.result()
+                        except Exception as e:
+                            logger.error("  端口扫描: ❌ %s 异常: %s", ip, e)
+                            result = {'ip': ip, 'engine': 'nmap', 'error': str(e),
+                                      'host_alive': False, 'open_ports': [], 'open_count': 0}
+                            hist_count = 0
+
+                        logger.info("[%d/%d] 端口扫描完成: %s", skipped + new_count, total, ip)
+
+                        open_count = result.get('open_count', 0)
+                        open_ports_list = result.get('open_ports', [])
+                        if 'error' in result:
+                            logger.info("  端口扫描: ❌ %s", result.get('error', 'Unknown'))
+                        elif open_count > 0:
+                            port_strs = [str(p.get('port', '')) for p in open_ports_list[:10]]
+                            suffix = '...' if open_count > 10 else ''
+                            logger.info("  端口扫描: ✅ %d 个开放端口 [%s%s]",
+                                        open_count, ', '.join(port_strs), suffix)
+                        else:
+                            logger.info("  端口扫描: 无开放端口")
+
+                        self._batch_writer.add(ip, 'port_scan', result)
+                        self._batch_writer.flush_batch()
+                        self._progress.record(ip, 5)
+                        self._progress.flush()
+                        self._pid.update_heartbeat(current_phase=5)
+
+                        elapsed = time.time() - _p5_start
+                        remaining = total - skipped - new_count
+                        if remaining > 0 and new_count > 0:
+                            avg = elapsed / new_count
+                            eta_s = remaining * avg
+                            eta_m = int(eta_s // 60)
+                            eta_sec = int(eta_s % 60)
+                            logger.info("ETA: ~%dmin%02ds (剩余 %d 个IP)", eta_m, eta_sec, remaining)
 
         self._reporter.record_phase(5, {
             'status': 'done',
