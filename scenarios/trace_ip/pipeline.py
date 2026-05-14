@@ -769,25 +769,27 @@ class TraceIPPipeline:
             logger.info("已跳过端口扫描（--no-port-scan）")
             self._reporter.record_phase(5, {
                 'status': 'skipped', 'ips_scanned': 0})
-            self._progress.mark_phase_done(5)
             return
 
         trace_settings = TraceIPSettings()
         if not trace_settings.phase5_port_scan_enabled:
             logger.info("端口扫描: 已禁用（配置项 PHASE5_PORT_SCAN_ENABLED=false）")
-            self._progress.mark_phase_done(5)
+            self._reporter.record_phase(5, {
+                'status': 'disabled', 'ips_scanned': 0})
             return
 
         nmap_path = trace_settings.port_scan_nmap_path
         if not validate_nmap(nmap_path):
             logger.error("端口扫描: nmap 不可用（路径: %s），跳过此阶段", nmap_path)
-            self._progress.mark_phase_done(5)
+            self._reporter.record_phase(5, {
+                'status': 'nmap_unavailable', 'ips_scanned': 0})
             return
 
         top_ports = load_port_list(trace_settings.port_scan_port_list)
         if not top_ports:
             logger.error("端口扫描: 端口列表为空或文件不存在，跳过此阶段")
-            self._progress.mark_phase_done(5)
+            self._reporter.record_phase(5, {
+                'status': 'port_list_empty', 'ips_scanned': 0})
             return
 
         filtered_ips = self._get_filtered_ips()
@@ -896,7 +898,12 @@ class TraceIPPipeline:
                         eta_sec = int(eta_s % 60)
                         logger.info("ETA: ~%dmin%02ds (剩余 %d 个IP)", eta_m, eta_sec, remaining)
 
-        self._progress.mark_phase_done(5)
+        if new_count > 0 or (skipped > 0 and len(pending_ips) == 0):
+            self._progress.mark_phase_done(5)
+            logger.info("阶段5标记为完成")
+        else:
+            logger.warning("阶段5未标记为完成：new_count=%d, skipped=%d, pending=%d",
+                         new_count, skipped, len(pending_ips))
 
         self._reporter.record_phase(5, {
             'status': 'done',
