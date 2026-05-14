@@ -718,7 +718,8 @@ class TraceIPPipeline:
         if not os.path.exists(filtered_file):
             return self._ips
         with open(filtered_file, 'r', encoding='utf-8') as f:
-            return [line.strip() for line in f if line.strip()]
+            ips = [line.strip() for line in f if line.strip()]
+        return ips if ips else self._ips
 
     def _do_dns_verify(self, filtered_ips: list, trace_settings, force_dns_verify: bool = False):
         json_path = os.path.join(self._output_dir, f'{self._prefix}.json')
