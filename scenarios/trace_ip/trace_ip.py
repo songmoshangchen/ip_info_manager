@@ -80,6 +80,9 @@ def main():
         '--no-dns-verify', action='store_true',
         help='跳过 Phase 4 DNS 域名正向验证')
     output_group.add_argument(
+        '--force-dns-verify', action='store_true',
+        help='强制重新验证所有IP的DNS域名（默认跳过已验证的IP）')
+    output_group.add_argument(
         '--no-port-scan', action='store_true',
         help='跳过 Phase 5 端口扫描')
     output_group.add_argument(
@@ -138,6 +141,7 @@ def main():
         'no_custom_rules': args.no_custom_rules,
         'no_deep_query': args.no_deep_query,
         'no_dns_verify': args.no_dns_verify,
+        'force_dns_verify': args.force_dns_verify,
         'no_port_scan': args.no_port_scan,
         'channel_timeout': args.channel_timeout,
         'no_tagger': args.no_tagger,
@@ -161,6 +165,8 @@ def main():
         logger.info("深度查询: 已禁用")
     if args.no_dns_verify:
         logger.info("DNS验证: 已禁用")
+    if args.force_dns_verify:
+        logger.info("DNS验证: 强制重新验证")
     if args.no_port_scan:
         logger.info("端口扫描: 已禁用")
     if args.no_tagger:

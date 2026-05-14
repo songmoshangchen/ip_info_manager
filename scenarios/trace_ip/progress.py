@@ -2,7 +2,6 @@ import atexit
 import json
 import logging
 import os
-from datetime import datetime
 
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -16,17 +15,8 @@ class ProgressManager:
     _PHASE_CONFIG = {
         1: 'trace_phase1.progress',
         3: 'trace_phase3.progress',
+        4: 'trace_phase4.progress',
         5: 'trace_phase5.progress',
-    }
-
-    _PHASE_MARKERS = {
-        1: 'trace_phase1_done',
-        2: 'trace_phase2_done',
-        3: 'trace_phase3_done',
-        4: 'trace_phase4_done',
-        5: 'trace_phase5_done',
-        6: 'trace_phase6_done',
-        7: 'trace_phase7_done',
     }
 
     def __init__(self, output_dir: str, prefix: str):
@@ -76,21 +66,8 @@ class ProgressManager:
             except IOError as e:
                 logger.error("写入进度文件失败: %s", e)
 
-    def is_phase_done(self, phase: int) -> bool:
-        marker = self._get_marker_file(phase)
-        return os.path.exists(marker) if marker else False
-
-    def mark_phase_done(self, phase: int):
-        marker = self._get_marker_file(phase)
-        if marker:
-            with open(marker, 'w', encoding='utf-8') as f:
-                f.write(datetime.now().isoformat())
-
     def clear_from(self, phase: int):
         for p in range(phase, 8):
-            marker = self._get_marker_file(p)
-            if marker and os.path.exists(marker):
-                os.remove(marker)
             progress_file = self._get_progress_file(p)
             if progress_file and os.path.exists(progress_file):
                 os.remove(progress_file)
@@ -99,12 +76,6 @@ class ProgressManager:
 
     def _get_progress_file(self, phase: int) -> str | None:
         suffix = self._PHASE_CONFIG.get(phase)
-        if not suffix:
-            return None
-        return os.path.join(self._output_dir, f'{self._prefix}.{suffix}')
-
-    def _get_marker_file(self, phase: int) -> str | None:
-        suffix = self._PHASE_MARKERS.get(phase)
         if not suffix:
             return None
         return os.path.join(self._output_dir, f'{self._prefix}.{suffix}')

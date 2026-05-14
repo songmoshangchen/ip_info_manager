@@ -190,10 +190,6 @@ class TraceIPPipeline:
     # ── Phase 1: 基础情报采集 ──
 
     def _phase1_collect_basic(self):
-        if self._progress.is_phase_done(1):
-            logger.info("阶段1已完成，跳过")
-            return
-
         processed = self._progress.load_completed(1)
         if processed:
             pct = len(processed) / len(self._ips) * 100 if self._ips else 0
@@ -334,8 +330,6 @@ class TraceIPPipeline:
 
                 time.sleep(max_delay)
 
-        self._progress.mark_phase_done(1)
-
         self._reporter.record_phase(1, {
             'status': 'done',
             'ips_processed': total,
@@ -351,10 +345,6 @@ class TraceIPPipeline:
     # ── Phase 2: 自动分类过滤 ──
 
     def _phase2_classify(self):
-        if self._progress.is_phase_done(2):
-            logger.info("阶段2已完成，跳过")
-            return
-
         if not self._config.get('no_tagger'):
             self._run_ip_tagger()
 
@@ -434,8 +424,6 @@ class TraceIPPipeline:
             for ip in filtered_ips:
                 f.write(ip + '\n')
 
-        self._progress.mark_phase_done(2)
-
         deep_needed = len(filtered_ips)
         deep_skipped = total - deep_needed
 
@@ -468,10 +456,6 @@ class TraceIPPipeline:
                 'status': 'skipped', 'ips_deep_queried': 0})
             return
 
-        if self._progress.is_phase_done(3):
-            logger.info("阶段3已完成，跳过")
-            return
-
         prefix = Settings().trace_ip_project_name
         filtered_file = os.path.join(
             self._output_dir, f'{prefix}.trace_filtered_ips')
@@ -486,7 +470,6 @@ class TraceIPPipeline:
             logger.info("没有需要深度查询的IP")
             self._reporter.record_phase(3, {
                 'status': 'done', 'ips_deep_queried': 0})
-            self._progress.mark_phase_done(3)
             return
 
         processed = self._progress.load_completed(3)
@@ -655,8 +638,6 @@ class TraceIPPipeline:
 
                 time.sleep(max_delay)
 
-        self._progress.mark_phase_done(3)
-
         self._reporter.record_phase(3, {
             'status': 'done',
             'ips_deep_queried': total,
@@ -671,28 +652,62 @@ class TraceIPPipeline:
     # ── Phase 4: DNS 域名正向验证 ──
 
     def _phase4_dns_verify(self):
-        if self._progress.is_phase_done(4):
-            logger.info("阶段4已完成，跳过")
-            return
-
         if self._config.get('no_dns_verify'):
             logger.info("已跳过 DNS 域名验证（--no-dns-verify）")
             self._reporter.record_phase(4, {
                 'status': 'skipped'})
-            self._progress.mark_phase_done(4)
             return
 
         trace_settings = TraceIPSettings()
         if not trace_settings.phase4_dns_verify_enabled:
             logger.info("DNS 域名验证: 已禁用（配置项 PHASE4_DNS_VERIFY_ENABLED=false）")
-            self._progress.mark_phase_done(4)
+            self._reporter.record_phase(4, {
+                'status': 'disabled'})
             return
 
         filtered_ips = self._get_filtered_ips()
 
-        self._do_dns_verify(filtered_ips, trace_settings)
+        force_dns_verify = self._config.get('force_dns_verify', False)
 
-        self._progress.mark_phase_done(4)
+        if not force_dns_verify:
+            processed = self._progress.load_completed(4)
+            if processed:
+                pct = len(processed) / len(filtered_ips) * 100 if filtered_ips else 0
+                logger.info("发现进度文件: 已验证 %d/%d (%.1f%%)，将从断点继续",
+                             len(processed), len(filtered_ips), pct)
+
+            json_ips = self._ip_reader.list_all_ips()
+            processed_from_json = set()
+            for ip in json_ips:
+                if ip not in filtered_ips:
+                    continue
+                ip_data = self._ip_reader.get_ip_data(ip)
+                if ip_data and 'domain_verify' in ip_data:
+                    processed_from_json.add(ip)
+
+            if processed_from_json:
+                new_from_json = processed_from_json - processed
+                if new_from_json:
+                    logger.info("从JSON中发现 %d 个IP已有DNS验证数据（不在进度文件中），自动跳过",
+                                len(new_from_json))
+                processed = processed | processed_from_json
+
+            pending_ips = [ip for ip in filtered_ips if ip not in processed]
+            skipped_count = len(filtered_ips) - len(pending_ips)
+
+            if not pending_ips:
+                logger.info("DNS 域名验证: 所有IP已验证，跳过（使用 --force-dns-verify 强制重新验证）")
+                self._reporter.record_phase(4, {
+                    'status': 'done', 'ips_verified': skipped_count, 'resumed_from': skipped_count, 'newly_verified': 0})
+                return
+
+            logger.info("DNS 域名验证: 总计 %d IP, 已验证 %d, 待验证 %d",
+                         len(filtered_ips), skipped_count, len(pending_ips))
+            filtered_ips = pending_ips
+        else:
+            logger.info("DNS 域名验证: 强制重新验证模式（--force-dns-verify）")
+
+        self._do_dns_verify(filtered_ips, trace_settings, force_dns_verify)
 
         self._reporter.record_phase(4, {'status': 'done'})
 
@@ -705,7 +720,7 @@ class TraceIPPipeline:
         with open(filtered_file, 'r', encoding='utf-8') as f:
             return [line.strip() for line in f if line.strip()]
 
-    def _do_dns_verify(self, filtered_ips: list, trace_settings):
+    def _do_dns_verify(self, filtered_ips: list, trace_settings, force_dns_verify: bool = False):
         json_path = os.path.join(self._output_dir, f'{self._prefix}.json')
         if not os.path.exists(json_path):
             logger.info("DNS 域名验证: 无数据文件，跳过")
@@ -751,7 +766,11 @@ class TraceIPPipeline:
         with self._batch_writer:
             for ip, vd in verify_data.items():
                 self._batch_writer.add(ip, 'domain_verify', vd)
+                if not force_dns_verify:
+                    self._progress.record(ip, 4)
             self._batch_writer.flush_batch()
+            if not force_dns_verify:
+                self._progress.flush()
 
         logger.info("DNS 验证完成: 匹配 %d, 变更 %d, 无法解析 %d, 超时 %d, 错误 %d",
                      verify_stats['matched'], verify_stats['changed'],
@@ -761,10 +780,6 @@ class TraceIPPipeline:
     # ── Phase 5: 端口扫描 ──
 
     def _phase5_port_scan(self):
-        if self._progress.is_phase_done(5):
-            logger.info("阶段5已完成，跳过")
-            return
-
         if self._config.get('no_port_scan'):
             logger.info("已跳过端口扫描（--no-port-scan）")
             self._reporter.record_phase(5, {
@@ -897,13 +912,6 @@ class TraceIPPipeline:
                         eta_m = int(eta_s // 60)
                         eta_sec = int(eta_s % 60)
                         logger.info("ETA: ~%dmin%02ds (剩余 %d 个IP)", eta_m, eta_sec, remaining)
-
-        if new_count > 0 or (skipped > 0 and len(pending_ips) == 0):
-            self._progress.mark_phase_done(5)
-            logger.info("阶段5标记为完成")
-        else:
-            logger.warning("阶段5未标记为完成：new_count=%d, skipped=%d, pending=%d",
-                         new_count, skipped, len(pending_ips))
 
         self._reporter.record_phase(5, {
             'status': 'done',
