@@ -794,9 +794,10 @@ class TraceIPPipeline:
                 'status': 'disabled', 'ips_scanned': 0})
             return
 
-        nmap_path = trace_settings.port_scan_nmap_path
-        if not validate_nmap(nmap_path):
-            logger.error("端口扫描: nmap 不可用（路径: %s），跳过此阶段", nmap_path)
+        nmap_path = validate_nmap(trace_settings.port_scan_nmap_path)
+        if not nmap_path:
+            logger.warning("端口扫描: nmap 不可用（PATH 中未找到，配置路径: %s），跳过此阶段",
+                           trace_settings.port_scan_nmap_path)
             self._reporter.record_phase(5, {
                 'status': 'nmap_unavailable', 'ips_scanned': 0})
             return

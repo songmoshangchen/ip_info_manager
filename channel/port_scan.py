@@ -69,12 +69,13 @@ def build_port_string(historical_ports: list, top_ports: list) -> str:
     return ','.join(str(p) for p in all_ports)
 
 
-def validate_engine(nmap_path: str) -> bool:
+def _try_nmap(nmap_path: str) -> str | None:
     if os.path.isabs(nmap_path):
-        if not os.path.isfile(nmap_path):
-            _logger.error("nmap 路径不存在: %s", nmap_path)
-            return False
-        return True
+        if os.path.isfile(nmap_path):
+            _logger.debug("nmap 绝对路径可用: %s", nmap_path)
+            return nmap_path
+        _logger.debug("nmap 绝对路径不存在: %s", nmap_path)
+        return None
 
     try:
         result = subprocess.run(
@@ -83,17 +84,32 @@ def validate_engine(nmap_path: str) -> bool:
         )
         if result.returncode == 0:
             _logger.debug("nmap 版本: %s", result.stdout.strip().split('\n')[0])
-            return True
-        return False
+            return nmap_path
+        return None
     except FileNotFoundError:
-        _logger.error("找不到 nmap: %s", nmap_path)
-        return False
+        return None
     except subprocess.TimeoutExpired:
-        _logger.error("nmap 版本检测超时")
-        return False
+        _logger.debug("nmap 版本检测超时: %s", nmap_path)
+        return None
     except Exception as e:
-        _logger.error("nmap 检测异常: %s", e)
-        return False
+        _logger.debug("nmap 检测异常: %s, %s", nmap_path, e)
+        return None
+
+
+def validate_engine(nmap_path: str = 'nmap') -> str | None:
+    resolved = _try_nmap('nmap')
+    if resolved:
+        _logger.info("nmap 自动检测成功（PATH）")
+        return resolved
+
+    if nmap_path and nmap_path != 'nmap':
+        resolved = _try_nmap(nmap_path)
+        if resolved:
+            _logger.info("nmap 使用配置路径: %s", nmap_path)
+            return resolved
+
+    _logger.warning("nmap 不可用: PATH 中未找到，配置路径: %s", nmap_path)
+    return None
 
 
 def request_channel(ip: str, nmap_path: str = 'nmap', port_string: str = '',
@@ -251,12 +267,17 @@ def main(ip: str):
     settings = TraceIPSettings()
     ip_writer = IPWriter(settings=settings)
 
+    nmap_path = validate_engine(settings.port_scan_nmap_path)
+    if not nmap_path:
+        print("错误: nmap 不可用（PATH 中未找到，配置路径: %s）" % settings.port_scan_nmap_path)
+        return
+
     top_ports = load_port_list(settings.port_scan_port_list)
     port_string = ','.join(str(p) for p in top_ports) if top_ports else ''
 
     data = fetch_channel(
         ip=ip,
-        nmap_path=settings.port_scan_nmap_path,
+        nmap_path=nmap_path,
         port_string=port_string,
         timeout=settings.port_scan_timeout,
         delay=settings.port_scan_query_delay,
