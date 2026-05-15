@@ -38,6 +38,7 @@
 **chinaz**：IP 反查域名列表 + 绑定时间段 + 归属地 + 运营商
 **zoomeye**：网络空间资产信息（完整 API 原始响应）
 **ssl_cert**：SSL 证书中的域名（Subject CN + SubjectAltName）
+**port_scan**：nmap 端口扫描结果（开放端口、服务指纹、历史端口验证状态）
 
 ## 注意事项
 

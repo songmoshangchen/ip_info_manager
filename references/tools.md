@@ -111,6 +111,8 @@ python tools/status_tool.py cleanup batch
 
 ### 状态说明
 
+流水线共 7 个阶段（Phase 1-7），status_tool 会显示当前执行到的阶段及进度。
+
 | 状态 | 含义 |
 |------|------|
 | 🟢 运行中 | 任务正在执行，心跳正常 |

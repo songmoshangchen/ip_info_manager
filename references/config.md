@@ -92,7 +92,7 @@ python tools/config_tool.py set IP_RDNS_QUERY_TIMEOUT 3.0        # RDNS 超时�
 | IP_CHINAZ_QUERY_DELAY | 2.0 | 站长之家查询间隔（秒） |
 | IP_CHINAZ_QUERY_TIMEOUT | 15.0 | 站长之家查询超时（秒） |
 | IP_CHINAZ_VALIDATE_TIMEOUT | 10.0 | 站长之家凭证验证超时（秒） |
-| IP_ZOOMEYE_QUERY_DELAY | 1.0 | ZoomEye 查询间隔（秒） |
+| IP_ZOOMEYE_QUERY_DELAY | 2.0 | ZoomEye 查询间隔（秒） |
 | IP_SSL_CERT_PORT | 443 | SSL 证书获取端口 |
 | IP_SSL_CERT_TIMEOUT | 5 | SSL 连接超时（秒） |
 | IP_SSL_CERT_OPENSSL_TIMEOUT | 10.0 | SSL 证书 OpenSSL 超时（秒） |
@@ -109,9 +109,20 @@ python tools/config_tool.py set IP_RDNS_QUERY_TIMEOUT 3.0        # RDNS 超时�
 | IP_TRACE_IP_PHASE3_AIZHAN_ENABLED | true | Phase 3：启用爱站网 IP 反查域名 |
 | IP_TRACE_IP_PHASE3_CHINAZ_ENABLED | true | Phase 3：启用站长之家 IP 反查域名 |
 | IP_TRACE_IP_PHASE3_FOFA_HOST_ENABLED | true | Phase 3：启用 Fofa Host 聚合查询 |
-| IP_TRACE_IP_PHASE3_DNS_VERIFY_ENABLED | true | Phase 3：启用 DNS 域名正向验证 |
+| IP_TRACE_IP_PHASE4_DNS_VERIFY_ENABLED | true | Phase 4：DNS 域名正向验证 |
 | IP_TRACE_IP_DNS_VERIFY_TIMEOUT | 3.0 | DNS 域名验证超时（秒） |
 | IP_TRACE_IP_DNS_VERIFY_CONCURRENCY | 10 | DNS 域名验证并发线程数 |
+
+### 端口扫描配置
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| IP_TRACE_IP_PHASE5_PORT_SCAN_ENABLED | false | Phase 5：启用端口扫描（默认关闭） |
+| IP_TRACE_IP_PORT_SCAN_ENGINE | nmap | 端口扫描引擎 |
+| IP_TRACE_IP_PORT_SCAN_NMAP_PATH | nmap | nmap 可执行文件路径 |
+| IP_TRACE_IP_PORT_SCAN_TIMEOUT | 90 | 单 IP 扫描超时（秒） |
+| IP_TRACE_IP_PORT_SCAN_PORT_LIST | config/port_scan/top1000.txt | 端口列表文件路径 |
+| IP_TRACE_IP_PORT_SCAN_CONCURRENCY | 1 | 端口扫描并发数 |
 
 ## IP域名反查流水线渠道配置
 
