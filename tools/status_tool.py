@@ -128,12 +128,14 @@ def status_trace_ip():
         1: '\u57fa\u7840\u60c5\u62a5\u91c7\u96c6',
         2: '\u81ea\u52a8\u5206\u7c7b\u8fc7\u6ee4 + \u6807\u7b7e\u6253\u6807',
         3: '\u6df1\u5ea6\u67e5\u8be2',
-        4: '\u6c47\u603b\u8f93\u51fa',
-        5: '\u751f\u6210\u62a5\u544a\uff08Word + Excel\uff09',
+        4: 'DNS\u57df\u540d\u6b63\u5411\u9a8c\u8bc1',
+        5: '\u7aef\u53e3\u626b\u63cf',
+        6: '\u6c47\u603b\u8f93\u51fa',
+        7: '\u751f\u6210\u62a5\u544a\uff08Word + Excel\uff09',
     }
 
     done_phases = {}
-    for p in range(1, 6):
+    for p in range(1, 8):
         marker = f'trace_phase{p}_done'
         done_phases[p] = (phase_names.get(p, ''), _check_phase_done(output_dir, project_name, marker))
 

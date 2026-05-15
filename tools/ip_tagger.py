@@ -296,7 +296,7 @@ def main():
     parser.add_argument('--mode', choices=['accumulate', 'overwrite'], default='accumulate',
                         help='写入模式: accumulate=累加(默认), overwrite=覆盖')
     parser.add_argument('--level', type=int, choices=[1, 2, 3], default=None,
-                        help='标签级别: 1=快速(5源), 2=正常(13源), 3=全量(27源), 不指定则使用全部')
+                        help='标签级别: 1=快速(21源), 2=正常(31源), 3=全量(35源), 不指定则使用全部')
     parser.add_argument('--output', default=None,
                         help='输出 JSON 文件路径 (默认: 使用 Settings 定位)')
     parser.add_argument('--config-dir', default=None,

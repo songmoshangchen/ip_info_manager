@@ -280,7 +280,7 @@ def main(ip: str):
         nmap_path=nmap_path,
         port_string=port_string,
         timeout=settings.port_scan_timeout,
-        delay=settings.port_scan_query_delay,
+        delay=0,
     )
     ip_writer.add_or_update_ip(ip=ip, channel="port_scan", data=data)
 
