@@ -110,6 +110,7 @@ python -m scenarios.trace_ip ips.txt --exclude-ips traced.txt --generate-report
 python -m scenarios.trace_ip ips.txt --no-tagger            # 跳过 IP 标签打标
 python -m scenarios.trace_ip ips.txt --tagger-level 1       # 快速标签（21源）
 python -m scenarios.trace_ip ips.txt --channel-timeout 30   # 单渠道超时30秒
+python -m scenarios.trace_ip ips.txt --port-scan-concurrency 5   # 临时设置端口扫描并发5
 # Phase 6-7 需单独触发
 ```
 
