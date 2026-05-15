@@ -45,7 +45,7 @@ ip_info_manager/
 ├── writer.py                 # IP 数据写入
 ├── reader.py                 # IP 数据读取（含 Excel 导出）
 ├── exporter.py               # Excel 导出器
-├── channel/                  # 9 个数据采集渠道
+├── channel/                  # 10 个数据采集渠道
 ├── scripts/                  # 10 个批量查询脚本
 ├── scenarios/trace_ip/       # 溯源 IP 流水线（7 阶段）
 ├── scenarios/ip_domain_lookup/ # IP 域名反查流水线（4 阶段）
@@ -60,7 +60,7 @@ ip_info_manager/
 
 **所有命令必须在项目根目录 `ip_info_manager/` 下执行**，否则会找不到模块。AI 启动命令时务必设置 `cwd` 为项目根目录。
 
-- **channel/batch 通用数据**：`data/{IP_STORAGE_DIR}/{IP_STORAGE_NAME}.json`
+- **channel/batch 通用数据**：`data/{IP_STORAGE_DIR}/{IP_STORAGE_NAME}.json`（`IP_STORAGE_DIR` 为空时直接存储在 `data/` 下）
 - **溯源 IP 场景数据**：`data/trace_ip/{IP_TRACE_IP_PROJECT_NAME}/`
 - **IP 域名反查数据**：`data/ip_domain_lookup/{IP_IP_DOMAIN_LOOKUP_PROJECT_NAME}/`
 
@@ -134,11 +134,11 @@ Phase 7 生成 Excel（`.trace_report.xlsx`），P1-P4 四个 sheet，统一 **1
 
 ### Word 报告
 
-Phase 7 生成 Word 报告，**6 个章节**：一、报告概述；二、处理概览；三、溯源优先级；四、AI研判结果；五、端口扫描结果；六、未识别RDNS记录。
+Phase 7 生成 Word 报告，**6 个章节**：一、报告概述；二、处理概览；三、溯源优先级；四、端口扫描结果；五、AI研判结果；六、未识别RDNS记录。
 
 ### 断点续跑
 
-每个阶段完成后写入进度文件 `{prefix}.trace_phase{N}.progress`。使用 `--from-phase N` 跳过已完成阶段。支持 Ctrl+C 安全中断，自动保存进度。
+Phase 1/3/4/5 完成后写入进度文件 `{prefix}.trace_phase{N}.progress`（Phase 2/6/7 无进度文件，因为是全量一次性操作）。使用 `--from-phase N` 跳过已完成阶段。支持 Ctrl+C 安全中断，自动保存进度。
 
 ### 溯源优先级决策树
 
