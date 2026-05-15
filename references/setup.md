@@ -54,6 +54,27 @@ pip install openpyxl python-docx python-whois
 cp .env.example .env
 ```
 
+`.env.example` 是配置模板文件，包含所有可配置项及默认值。复制为 `.env` 后，项目运行时从 `.env` 读取配置。
+
+### .env.example 结构说明
+
+| 配置区 | 包含内容 | 是否需要修改 |
+|--------|---------|-------------|
+| 输出文件配置 | 存储路径、项目名称 | 建议修改项目名称 |
+| API Key / Cookie | 各渠道凭证 | 使用对应渠道时必填 |
+| 查询间隔与超时 | 各渠道请求间隔和超时 | 一般无需修改 |
+| IP域名反查流水线 | 渠道开关 | 一般无需修改 |
+| 溯源IP流水线 - 渠道开关 | Phase 1/3/4 渠道开关 | 一般无需修改 |
+| 溯源IP流水线 - DNS 验证 | Phase 4 DNS 验证配置 | 一般无需修改 |
+| 溯源IP流水线 - 端口扫描 | Phase 5 端口扫描配置 | 使用端口扫描时需启用 |
+
+### 注意事项
+
+- **不要直接编辑 `.env` 文件**，所有配置变更通过 `tools/config_tool.py` 执行
+- `.env.example` 中的凭证值为占位符（如 `your_fofa_api_key_here`），需替换为真实值
+- 端口扫描默认关闭（`IP_TRACE_IP_PHASE5_PORT_SCAN_ENABLED=false`），需显式启用
+- 端口扫描配置项前缀为 `IP_TRACE_IP_PORT_SCAN_*`（非 `IP_PORT_SCAN_*`）
+
 ## 第四步：配置 API 凭证
 
 **所有配置变更必须通过 `tools/config_tool.py` 执行，不要直接编辑 `.env` 文件。**
