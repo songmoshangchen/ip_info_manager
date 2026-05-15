@@ -97,6 +97,11 @@ def main():
         '--exclude-ips', type=str,
         help='排除IP文件路径（每行一个IP，Phase 7 报告生成时排除已溯源IP）')
 
+    scan_group = parser.add_argument_group('扫描控制')
+    scan_group.add_argument(
+        '--port-scan-concurrency', type=int, default=0,
+        help='端口扫描并发数（0=使用配置文件默认值，建议 1-10）')
+
     timeout_group = parser.add_argument_group('超时控制')
     timeout_group.add_argument(
         '--channel-timeout', type=int, default=0,
@@ -147,6 +152,7 @@ def main():
         'no_tagger': args.no_tagger,
         'tagger_level': args.tagger_level,
         'exclude_ips_file': args.exclude_ips,
+        'port_scan_concurrency': args.port_scan_concurrency,
     }
 
     logger.info("=" * 60)
@@ -175,6 +181,8 @@ def main():
         logger.info("标签级别: %d", args.tagger_level)
     if args.channel_timeout:
         logger.info("渠道超时: %ds", args.channel_timeout)
+    if args.port_scan_concurrency:
+        logger.info("端口扫描并发: %d", args.port_scan_concurrency)
     if args.exclude_ips:
         logger.info("排除IP文件: %s", args.exclude_ips)
     logger.info("=" * 60)

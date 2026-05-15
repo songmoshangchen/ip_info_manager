@@ -839,7 +839,8 @@ class TraceIPPipeline:
         skipped = total - len(pending_ips)
         
         timeout = trace_settings.port_scan_timeout
-        concurrency = trace_settings.port_scan_concurrency
+        cli_concurrency = self._config.get('port_scan_concurrency', 0)
+        concurrency = cli_concurrency if cli_concurrency > 0 else trace_settings.port_scan_concurrency
 
         logger.info("需要端口扫描的IP: %d", total)
         logger.info("已完成: %d", skipped)
