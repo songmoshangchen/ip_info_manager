@@ -136,6 +136,19 @@ python tools/status_tool.py cleanup batch
 - Phase 5 必需依赖，未安装时报错退出
 - 排版规范：宋体正文 + 黑体标题 + 三线表 + A4 公文版心
 
+### 可定制参数
+
+`DocxBuilder` 构造函数支持以下参数：
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `report_title` | 必填 | 报告标题，居中显示于封面 |
+| `project_name` | 必填 | 项目名称，显示为 `{project_name} 项目` |
+| `report_date` | 必填 | 报告日期 |
+| `author` | `'XXX'` | 分析人员 |
+| `classification` | `'内部'` | 密级（内部/机密/绝密） |
+| `header_text` | 使用 report_title | 页眉文本 |
+
 ## AI 研判辅助（ai_analysis.py）
 
 从溯源 IP 数据中筛选待 AI 研判的 IP（按分类过滤：other/cloud_provider/residential），批量输出供人工或 AI 分析。研判结果通过 `writer.py` 写入后，Word 报告会自动展示 AI 研判结果章节。

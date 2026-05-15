@@ -45,6 +45,7 @@ python -m scenarios.trace_ip ips.txt --only-phase 2         # 只执行分类阶
 python -m scenarios.trace_ip ips.txt --no-custom-rules      # 不加载外部规则
 python -m scenarios.trace_ip ips.txt --custom-rules my.json # 使用指定规则文件
 python -m scenarios.trace_ip ips.txt --channel-timeout 30   # 单渠道超时30秒
+python -m scenarios.trace_ip ips.txt --port-scan-concurrency 5   # 临时设置端口扫描并发5
 python -m scenarios.trace_ip ips.txt --no-tagger            # 跳过 IP 标签打标
 python -m scenarios.trace_ip ips.txt --tagger-level 1       # 快速标签（21源）
 python -m scenarios.trace_ip ips.txt --tagger-level 3       # 全量标签（35源）
