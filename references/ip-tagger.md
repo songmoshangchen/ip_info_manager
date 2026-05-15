@@ -38,8 +38,8 @@ python tools/ip_tagger.py data/ips.txt
 | 级别 | 标签源数 | 耗时参考 | 说明 |
 |---|---|---|---|
 | `--level 1`（快速） | 21 | ~1s | 核心威胁：银狐、C&C、Tor、SSH、Bot、高危/中危/低危威胁、各类攻击 |
-| `--level 2`（正常） | 31 | ~2s | + Spamhaus、GreenSnow、PHP系列、乌克兰Blocklist、Spam30天 |
-| `--level 3`（全量） | 35 | ~15s | + AbuseIPDB（74万+16万条）、匿名IP全量（190万条） |
+| `--level 2`（正常） | 31 | ~2s | + Spamhaus、ET Spamhaus、GreenSnow、PHP系列、乌克兰Blocklist、Spam30天、Artillery威胁 |
+| `--level 3`（全量） | 35 | ~15s | + AbuseIPDB（74万+16万条）、垃圾Spam日报、匿名IP全量（190万条） |
 | 不指定 | 35 | ~15s | 使用全部标签源 |
 
 ### 使用示例
@@ -209,6 +209,8 @@ config/ip_tagger/
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `IP_TAGGER_CONFIG_DIR` | `config/ip_tagger` | 标签配置文件目录 |
+| `IP_IP_TAGGER_CONFIG_DIR` | `config/ip_tagger` | 标签配置文件目录（⚠️ 实际无效） |
+
+> ⚠️ **注意**：虽然 `config.py` 中 `IpTaggerSettings` 定义了 `ip_tagger_config_dir` 字段（在 `env_prefix='IP_'` 下映射为环境变量 `IP_IP_TAGGER_CONFIG_DIR`），但 `ip_tagger.py` 实际并不使用 `IpTaggerSettings`，而是通过 `--config-dir` 命令行参数硬编码默认值 `config/ip_tagger`。因此该环境变量实际无效，配置目录请通过 `--config-dir` 参数指定。
 
 无需 API Key、超时、延迟等配置。

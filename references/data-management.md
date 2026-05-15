@@ -59,7 +59,22 @@ python reader.py list --start 10 --end 50
 python reader.py list --include-channel fofa_host
 python reader.py list --exclude-channel kimi
 python reader.py list --detail --include-channel fofa_host --output result.txt
+python reader.py list --limit 50
 ```
+
+参数说明：
+
+| 参数 | 说明 |
+|------|------|
+| `--detail` | 显示每个 IP 的渠道详情 |
+| `--start` / `--end` | 分页起始/结束索引 |
+| `--limit N` | 限制返回结果数量 |
+| `--include-channel` | 仅包含指定渠道的 IP（可指定多个，空格分隔） |
+| `--exclude-channel` | 排除含指定渠道的 IP（可指定多个，空格分隔） |
+| `--output` | 将结果输出到文件 |
+| `--export-excel` | 导出为 Excel 文件 |
+
+> `--include-channel` 与 `--exclude-channel` 互斥，不可同时使用。
 
 ### 导出 Excel
 
@@ -69,6 +84,8 @@ python reader.py list --include-channel fofa_host ipinfo_api --export-excel outp
 python reader.py list --exclude-channel kimi --export-excel output.xlsx
 ```
 
+导出前会调用 `confirm_fields()` 交互式列出所有将导出的字段，需输入 y 确认后方可继续；输入 n 则取消导出。
+
 导出的 Excel 包含蓝色表头、自动列宽、按渠道分组的字段展示。
 
 ### 搜索 IP
@@ -77,6 +94,10 @@ python reader.py list --exclude-channel kimi --export-excel output.xlsx
 python reader.py search fofa_host
 python reader.py search fofa_host --key country_name --value "China"
 ```
+
+> search 命令仅支持精确匹配，不支持模糊搜索。
+>
+> `--value` 必须与 `--key` 搭配使用，不可单独指定。
 
 ## 数据格式
 

@@ -37,6 +37,8 @@ python tools/merge_ip_files.py file1.txt file2.txt file3.txt -o merged.txt
 python tools/merge_ip_files.py base.txt source1.txt source2.txt -a
 ```
 
+`--include-invalid` 参数可在输出结果中包含无效 IP（默认仅输出有效 IP）。
+
 支持 IPv4 和 IPv6 格式验证。
 
 ## 进度文件管理（progress_tool.py）
@@ -66,12 +68,18 @@ python tools/progress_tool.py remove data/ip_data.fofa_host.progress --from-file
 ```bash
 python tools/verify_ip_domain.py data/ip_data.json                     # 验证所有渠道域名
 python tools/verify_ip_domain.py data/ip_data.json --channel aizhan    # 仅验证爱站渠道
+python tools/verify_ip_domain.py data/ip_data.json --channel all       # 验证所有渠道域名
+python tools/verify_ip_domain.py data/ip_data.json --timeout 5.0       # DNS解析超时5秒
 python tools/verify_ip_domain.py data/ip_data.json --dry-run           # 仅验证不写回
 python tools/verify_ip_domain.py data/ip_data.json --show-all          # 显示全部结果
 python tools/verify_ip_domain.py data/ip_data.json --concurrency 20    # 20线程并发
 ```
 
-验证结果状态：`matched`（仍指向原 IP）、`changed`（指向其他 IP）、`unresolved`（解析失败）
+`--channel` 可选值：`aizhan`（爱站）、`chinaz`（站长之家）、`all`（所有渠道，默认）。
+
+`--timeout` 参数设置 DNS 解析超时秒数，默认 3.0 秒。
+
+验证结果状态：`matched`（仍指向原 IP）、`changed`（指向其他 IP）、`unresolved`（解析失败）、`timeout`（DNS 解析超时）、`error`（验证过程出错）
 
 验证结果默认写回 JSON 文件的 `domain_verify` 字段，使用 `--dry-run` 可只看结果不写入。
 
@@ -184,3 +192,17 @@ python writer.py add "<IP>" ai_analysis net_type="阿里云ECS" trace_value="高
 | `--size` | 每批读取数量（默认 10） |
 | `--offset` | 偏移量（默认 0） |
 | `--categories` | 筛选分类，逗号分隔（默认 other,cloud_provider,residential） |
+| `--include-analyzed` | 包含已完成研判的 IP（默认仅返回待研判 IP） |
+
+## IP 标签管理（ip_tagger_updater.py）
+
+对 IP 数据批量打标签或更新标签，标签规则由配置文件定义。
+
+```bash
+python tools/ip_tagger_updater.py data/ip_data.json
+python tools/ip_tagger_updater.py data/ip_data.json --config-dir custom/tags/
+```
+
+| 参数 | 说明 |
+|------|------|
+| `--config-dir` | 标签配置文件目录（默认使用内置配置目录） |
