@@ -190,7 +190,14 @@ class TraceIPPipeline:
     # ── Phase 1: 基础情报采集 ──
 
     def _phase1_collect_basic(self):
-        processed = self._progress.load_completed(1)
+        trace_settings = TraceIPSettings()
+        enabled_channels = []
+        if trace_settings.phase1_ipinfo_enabled:
+            enabled_channels.append('ipinfo_api')
+        if trace_settings.phase1_rdns_ptr_enabled:
+            enabled_channels.append('rdns_ptr')
+
+        processed = self._progress.load_completed(1, channels=enabled_channels)
         if processed:
             pct = len(processed) / len(self._ips) * 100 if self._ips else 0
             logger.info("发现进度文件: 已处理 %d/%d (%.1f%%)，将从断点继续",
@@ -307,9 +314,13 @@ class TraceIPPipeline:
 
                 if trace_settings.phase1_ipinfo_enabled:
                     self._batch_writer.add(ip, 'ipinfo_api', ipinfo_data)
+                    if 'raw_error' not in ipinfo_data:
+                        self._progress.record(ip, 1, 'ipinfo_api')
 
                 if trace_settings.phase1_rdns_ptr_enabled:
                     self._batch_writer.add(ip, 'rdns_ptr', rdns_data)
+                    if 'raw_error' not in rdns_data:
+                        self._progress.record(ip, 1, 'rdns_ptr')
 
                 self._batch_writer.flush_batch()
 
@@ -472,7 +483,16 @@ class TraceIPPipeline:
                 'status': 'done', 'ips_deep_queried': 0})
             return
 
-        processed = self._progress.load_completed(3)
+        trace_settings = TraceIPSettings()
+        enabled_channels = []
+        if trace_settings.phase3_aizhan_enabled:
+            enabled_channels.append('aizhan')
+        if trace_settings.phase3_chinaz_enabled:
+            enabled_channels.append('chinaz')
+        if trace_settings.phase3_fofa_host_enabled:
+            enabled_channels.append('fofa_host')
+
+        processed = self._progress.load_completed(3, channels=enabled_channels)
         if processed:
             pct = len(processed) / len(filtered_ips) * 100 if filtered_ips else 0
             logger.info("发现进度文件: 已处理 %d/%d (%.1f%%)，将从断点继续",
@@ -487,7 +507,7 @@ class TraceIPPipeline:
             if not ip_data:
                 continue
             has_phase3_data = False
-            for ch in ('aizhan', 'chinaz', 'fofa_host'):
+            for ch in enabled_channels:
                 if ch in ip_data and 'raw_error' not in ip_data[ch]:
                     has_phase3_data = True
                     break
@@ -504,14 +524,12 @@ class TraceIPPipeline:
         aizhan_settings = AizhanSettings()
         chinaz_settings = ChinazSettings()
         fofa_settings = FofaSettings()
-        trace_settings = TraceIPSettings()
         channel_timeout = self._config.get('channel_timeout', 0)
 
         total = len(filtered_ips)
         skipped = len([ip for ip in filtered_ips if ip in processed])
 
         delays = []
-        enabled_channels = []
 
         logger.info("需要深度查询的IP: %d", total)
         logger.info("已完成: %d", skipped)
@@ -520,21 +538,18 @@ class TraceIPPipeline:
 
         if trace_settings.phase3_aizhan_enabled:
             delays.append(aizhan_settings.aizhan_query_delay)
-            enabled_channels.append('aizhan')
             logger.info("✓ 爱站网 IP 反查域名: 已启用")
         else:
             logger.info("✗ 爱站网 IP 反查域名: 已禁用")
 
         if trace_settings.phase3_chinaz_enabled:
             delays.append(chinaz_settings.chinaz_query_delay)
-            enabled_channels.append('chinaz')
             logger.info("✓ 站长之家 IP 反查域名: 已启用")
         else:
             logger.info("✗ 站长之家 IP 反查域名: 已禁用")
 
         if trace_settings.phase3_fofa_host_enabled:
             delays.append(fofa_settings.fofa_query_delay)
-            enabled_channels.append('fofa_host')
             logger.info("✓ Fofa Host 聚合查询: 已启用")
         else:
             logger.info("✗ Fofa Host 聚合查询: 已禁用")
@@ -612,12 +627,18 @@ class TraceIPPipeline:
 
                 if trace_settings.phase3_aizhan_enabled:
                     self._batch_writer.add(ip, 'aizhan', aizhan_data)
+                    if 'raw_error' not in aizhan_data:
+                        self._progress.record(ip, 3, 'aizhan')
 
                 if trace_settings.phase3_chinaz_enabled:
                     self._batch_writer.add(ip, 'chinaz', chinaz_data)
+                    if 'raw_error' not in chinaz_data:
+                        self._progress.record(ip, 3, 'chinaz')
 
                 if trace_settings.phase3_fofa_host_enabled:
                     self._batch_writer.add(ip, 'fofa_host', fofa_data)
+                    if 'raw_error' not in fofa_data:
+                        self._progress.record(ip, 3, 'fofa_host')
 
                 self._batch_writer.flush_batch()
 
@@ -670,7 +691,7 @@ class TraceIPPipeline:
         force_dns_verify = self._config.get('force_dns_verify', False)
 
         if not force_dns_verify:
-            processed = self._progress.load_completed(4)
+            processed = self._progress.load_completed(4, channels=['domain_verify'])
             if processed:
                 pct = len(processed) / len(filtered_ips) * 100 if filtered_ips else 0
                 logger.info("发现进度文件: 已验证 %d/%d (%.1f%%)，将从断点继续",
@@ -768,6 +789,7 @@ class TraceIPPipeline:
             for ip, vd in verify_data.items():
                 self._batch_writer.add(ip, 'domain_verify', vd)
                 if not force_dns_verify:
+                    self._progress.record(ip, 4, 'domain_verify')
                     self._progress.record(ip, 4)
             self._batch_writer.flush_batch()
             if not force_dns_verify:
@@ -811,7 +833,7 @@ class TraceIPPipeline:
 
         filtered_ips = self._get_filtered_ips()
 
-        processed = self._progress.load_completed(5)
+        processed = self._progress.load_completed(5, channels=['port_scan'])
         if processed:
             pct = len(processed) / len(filtered_ips) * 100 if filtered_ips else 0
             logger.info("发现进度文件: 已处理 %d/%d (%.1f%%)，将从断点继续",
@@ -907,6 +929,8 @@ class TraceIPPipeline:
 
                     self._batch_writer.add(ip, 'port_scan', result)
                     self._batch_writer.flush_batch()
+                    if 'error' not in result:
+                        self._progress.record(ip, 5, 'port_scan')
                     self._progress.record(ip, 5)
                     self._progress.flush()
                     self._pid.update_heartbeat(current_phase=5)
@@ -955,6 +979,8 @@ class TraceIPPipeline:
 
                         self._batch_writer.add(ip, 'port_scan', result)
                         self._batch_writer.flush_batch()
+                        if 'error' not in result:
+                            self._progress.record(ip, 5, 'port_scan')
                         self._progress.record(ip, 5)
                         self._progress.flush()
                         self._pid.update_heartbeat(current_phase=5)
