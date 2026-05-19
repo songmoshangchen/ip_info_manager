@@ -24,10 +24,10 @@
 
 | 指标 | 初始基线 | 当前状态 | 变化 |
 |------|---------|---------|------|
-| 测试文件 | 13 | 15 (+2) | +test_classifier.py, +test_pipeline_exclude.py |
-| 测试用例 | 261 | 311 | +50 |
-| passed | 261 | 311 | +50 |
-| xfailed | 0 | 3 | 3 个已知生产 bug |
+| 测试文件 | 13 | 25 (+12) | +test_classifier, +test_pipeline_exclude, +10 渠道测试 |
+| 测试用例 | 261 | 503 | +242 |
+| passed | 261 | 503 | +242 |
+| xfailed | 0 | 8 | 8 个已知生产 bug |
 | skipped | 0 | 1 | 1 个已知生产 bug |
 | warning | 1 (dateutil) | 1 (dateutil) | 无变化 |
 
@@ -90,8 +90,12 @@
 | 3 | trace_utils.py | `is_china_ip` country_code=None + country=None 时 TypeError | 高 | xfail 记录 |
 | 4 | trace_utils.py | `extract_all_domains` domains 列表含 None 时 AttributeError | 中 | xfail 记录 |
 | 5 | pipeline.py | `_print_report_summary` 导入不存在的 `excel_exporter._trace_priority` | 高 | skip 记录 |
+| 6 | aizhan/chinaz | `ReadTimeout` 的 "Read timed out" 不含 "timeout" 连续子串，超时被误分类为 "查询失败" | 高 | xfail 记录 |
+| 7 | whois_query.py | `parse_response` 对空列表 `[]` 的 truthy 检查跳过字段而非设为 None | 低 | xfail 记录 |
+| 8 | ssl_cert.py | `format_output` 的 issuer_cn 正则 `[^/\n,\s]+` 在空格处截断多词 CN | 中 | xfail 记录 |
+| 9 | port_scan.py | `parse_nmap_xml` 非法 portid (如 "abc") 导致 int() 异常未捕获 | 低 | xfail 记录 |
 
-## 当前任务: T7 渠道内部逻辑测试
+## 当前任务: T7 渠道内部逻辑测试 ✅ 已完成
 
 **目标**: 为 10 个渠道模块编写 parse_response + 网络异常测试
 
@@ -124,14 +128,16 @@
 
 | 任务 | 优先级 | 说明 |
 |------|--------|------|
-| T7-1: fofa_host 测试 | 高 | API 渠道，mock HTTP |
-| T7-2: aizhan 测试 | 高 | 爬虫渠道，mock HTTP |
-| T7-3: chinaz 测试 | 中 | 爬虫渠道 |
-| T7-4: ipinfo_api 测试 | 中 | SDK + HTTP 两种模式 |
-| T7-5: rdns_ptr/whois/ssl_cert/port_scan 测试 | 中 | 各有特殊逻辑 |
-| T7-6: fofa_search/zoomeye 测试 | 中 | API 渠道 |
-| T9: 更新 TESTING.md + MOCK_INVENTORY.md | 中 | 新增 test_classifier.py / test_pipeline_exclude.py / T7 各文件条目 |
-| T10: 最终 pytest 全绿验证 | 高 | 预期 311 + T7 新增 |
+| ~~T7-1: fofa_host 测试~~ | ~~高~~ | ✅ 20 tests |
+| ~~T7-2: aizhan 测试~~ | ~~高~~ | ✅ 30 passed + 1 xfail |
+| ~~T7-3: chinaz 测试~~ | ~~中~~ | ✅ 22 passed + 1 xfail |
+| ~~T7-4: ipinfo_api 测试~~ | ~~中~~ | ✅ 22 tests (SDK+HTTP 分开) |
+| ~~T7-5: rdns_ptr/whois/ssl_cert/port_scan 测试~~ | ~~中~~ | ✅ 14+20+18+18 tests (含 3 xfail) |
+| ~~T7-6: fofa_search/zoomeye 测试~~ | ~~中~~ | ✅ 16+16 tests |
+| ~~T9: 更新 TESTING.md + MOCK_INVENTORY.md~~ | ~~中~~ | ✅ 已更新 |
+| ~~T10: 最终 pytest 全绿验证~~ | ~~高~~ | ✅ 503 passed, 1 skipped, 8 xfailed |
+| T11: 修复已发现的 9 个生产 bug | 高 | 按 xfail/skip 记录逐个修复 |
+| T12: 更新 handoff 文档最终状态 | 中 | 合并回 master 前完成 |
 
 ### 项目关键路径
 
@@ -153,6 +159,16 @@
   test_classifier.py                — T6-1 已创建 (28 tests)
   test_trace_utils.py               — T6-3 已追加 (14 new)
   test_pipeline_exclude.py          — T6-2 已创建 (13 passed + 1 skipped)
+  test_fofa_host.py                 — T7-1 已创建 (20 tests)
+  test_aizhan.py                    — T7-2 已创建 (30 passed + 1 xfail)
+  test_chinaz.py                    — T7-3 已创建 (22 passed + 1 xfail)
+  test_ipinfo_api.py                — T7-4 已创建 (22 tests)
+  test_rdns_ptr.py                  — T7-5 已创建 (14 tests)
+  test_whois_query.py               — T7-5 已创建 (19 passed + 1 xfail)
+  test_ssl_cert.py                  — T7-5 已创建 (17 passed + 1 xfail)
+  test_port_scan.py                 — T7-5 已创建 (17 passed + 1 xfail)
+  test_fofa_search.py               — T7-6 已创建 (16 tests)
+  test_zoomeye.py                   — T7-6 已创建 (16 tests)
 ```
 
 ### 推荐下一步 Skills

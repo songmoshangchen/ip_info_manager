@@ -9,7 +9,7 @@
 | `InMemoryIPWriter` | 纯内存测试替身，实现 `IPDataWriter` + `IPDataReader` | PhaseRunner / Protocol 测试 |
 | `InMemoryIPReader` | 纯内存测试替身，实现 `IPDataReader` | Reader 单元测试 |
 | `InMemoryChannel` | 纯内存测试替身，实现 `ChannelProtocol` | ChannelRegistry / Pipeline 模式测试 |
-| `unittest.mock.patch` | 替换模块级函数 | 渠道适配器的 `validate_channel_key` / `fetch_channel` / `validate_engine` |
+| `unittest.mock.patch` | 替换模块级函数 | 渠道适配器的 `validate_channel_key` / `fetch_channel` / `validate_engine` / `requests.get` / `requests.post` / `requests.Session` / `socket.gethostbyaddr` / `subprocess.run` / `whois_query` |
 | `_DummyWriter` | 内联轻量替身 | BaseBatchQuery.run() 测试 |
 | `_DummyPid` | 内联轻量替身 | BaseBatchQuery.run() PID 管理测试 |
 | `_DummyLogger` | 内联轻量替身 | BaseBatchQuery.run() 日志测试 |
@@ -211,6 +211,234 @@
 
 ---
 
+### test_classifier.py (28 tests)
+
+**Mock：**
+- `tmp_path` — pytest 内置临时目录，用于创建 rules.json
+
+**未 Mock：**
+- `IPClassifier` — 测试目标本身
+- `ClassifyResult` — 数据类
+- `BeautifulSoup` — 不涉及，分类器不解析 HTML
+
+**排查注意：**
+- 1 个 xfail: 规则 JSON 缺少 `type` 字段时 `pattern['type']` KeyError
+- 自定义规则通过 `tmp_path` 临时文件注入
+
+---
+
+### test_pipeline_exclude.py (13+1 tests)
+
+**Mock：**
+- `TraceIPPipeline.__new__` — 跳过 `__init__`，手动设置 `_output_dir`/`_prefix`/`_config`/`_reporter`
+- `patch('pipeline.open', mock_open(...))` — 模拟 exclude IPs 文件
+- `patch('pipeline._print_report_summary')` — 跳过报告打印
+
+**未 Mock：**
+- `_load_exclude_ips` — 测试目标本身
+- 文件读取 — 通过 `mock_open` 模拟
+
+**排查注意：**
+- 1 个 skip: `_print_report_summary` 导入不存在的 `excel_exporter._trace_priority`
+- 使用 `__new__` 模式而非 `__init__` 创建 Pipeline 实例
+
+---
+
+### test_fofa_host.py (20 tests)
+
+**Mock：**
+- `patch('channel.fofa_host.requests.get')` — mock HTTP 请求
+- `patch('channel.fofa_host.Settings')` — mock 配置
+- `patch('channel.fofa_host.validate_channel_key')` — mock 验证
+- `patch('channel.fofa_host.fetch_channel')` — mock 获取
+- `patch('channel.fofa_host.apply_delay')` — mock 延迟
+- `MagicMock` — 模拟 response 对象
+
+**未 Mock：**
+- `request_channel` — 测试目标（除了在 fetch 测试中 mock）
+- `format_output` — 直接测试
+- `FofaHostChannel` — 适配器类
+
+**排查注意：**
+- mock `requests.get` 返回 `MagicMock`，需设置 `json.return_value` 和 `raise_for_status.return_value`
+- 错误场景使用 `side_effect` 注入异常
+
+---
+
+### test_aizhan.py (31 tests)
+
+**Mock：**
+- `patch('channel.aizhan.requests.get')` — mock HTTP 请求
+- `patch('channel.aizhan.Settings')` — mock 配置 (AizhanSettings)
+- `patch('channel.aizhan.validate_channel_key')` — mock 验证
+- `patch('channel.aizhan.fetch_channel')` — mock 获取
+- `patch('channel.aizhan.apply_delay')` — mock 延迟
+
+**未 Mock：**
+- `parse_response` — 直接测试，使用 HTML 字符串
+- `BeautifulSoup` — 真实调用解析 HTML
+
+**排查注意：**
+- 1 个 xfail: `ReadTimeout("Read timed out.")` 的错误消息不含 "timeout" 连续子串
+- HTML 测试数据通过 `_make_html()` 辅助函数构造
+- Cookie 验证测试 302 重定向 → SystemExit
+
+---
+
+### test_chinaz.py (23 tests)
+
+**Mock：**
+- `patch('channel.chinaz.requests.Session')` — mock Session 请求
+- `patch('channel.chinaz.Settings')` — mock 配置 (ChinazSettings)
+- `patch('channel.chinaz.requests.get')` — mock 验证时的 GET
+- `patch('channel.chinaz.request_channel')` — mock 获取
+- `patch('channel.chinaz.apply_delay')` — mock 延迟
+
+**未 Mock：**
+- `parse_response` — 直接测试
+- `BeautifulSoup` — 真实调用
+
+**排查注意：**
+- 1 个 xfail: 同 aizhan 的 ReadTimeout 问题
+- `request_channel` 使用 `requests.Session()`，mock 需替换 `requests.Session`
+- Cookie 验证检查 `toolUserGrade` 和 `chinaz_zxuser` 两个必需字段
+
+---
+
+### test_ipinfo_api.py (22 tests)
+
+**Mock：**
+- `patch('channel.ipinfo_api.requests.get')` — mock HTTP 请求
+- `patch('channel.ipinfo_api.Settings')` — mock 配置 (IpinfoSettings)
+- `patch('channel.ipinfo_api._request_channel_api')` — mock API 模式内部函数
+- `patch('channel.ipinfo_api._request_channel_noapi')` — mock NoAPI 模式内部函数
+- `patch('channel.ipinfo_api.request_channel')` — mock 分发函数
+- `patch('channel.ipinfo_api.apply_delay')` — mock 延迟
+
+**未 Mock：**
+- `_request_channel_api` — 直接测试（通过 mock requests.get）
+- `_request_channel_noapi` — 直接测试（通过 mock requests.get）
+- `request_channel` — 分发逻辑测试
+
+**排查注意：**
+- SDK 模式使用 `api.ipinfo.io/lite` + Bearer token
+- 免费 API 使用 `ipinfo.io/{ip}/json`，无认证
+- `validate_channel_key` 根据 token 是否存在走不同验证路径
+
+---
+
+### test_rdns_ptr.py (14 tests)
+
+**Mock：**
+- `patch('channel.rdns_ptr.socket.gethostbyaddr')` — mock DNS 查询
+- `patch('channel.rdns_ptr.request_channel')` — mock 获取
+- `patch('channel.rdns_ptr.apply_delay')` — mock 延迟
+
+**未 Mock：**
+- `request_channel` — 直接测试（通过 mock socket）
+- `socket.setdefaulttimeout` — 真实调用（无副作用）
+
+**排查注意：**
+- herror = "查不到 PTR 记录"（正常），gaierror = "地址解析失败"
+- timeout = "网络超时，需要重试" — 区分于 herror 的"确实没有记录"
+- 其他异常 (OSError) 标记为 `raw_error=True`
+
+---
+
+### test_whois_query.py (20 tests)
+
+**Mock：**
+- `patch('channel.whois_query.whois_query')` — mock python-whois 库
+- `patch('channel.whois_query.request_channel')` — mock 获取
+- `patch('channel.whois_query.apply_delay')` — mock 延迟
+- `MagicMock` — 模拟 whois 返回对象（含 domain_name/registrar 等属性）
+
+**未 Mock：**
+- `parse_response` — 直接测试
+- `_make_whois_result()` — 辅助函数构造 mock whois 对象
+
+**排查注意：**
+- 1 个 xfail: `parse_response` 对空列表 `[]` 的 truthy 检查跳过字段
+- whois 返回对象的字段可能是 str/list/None，parse_response 需处理所有情况
+- `whois_query is None` 模拟库未安装
+
+---
+
+### test_ssl_cert.py (18 tests)
+
+**Mock：**
+- `patch('channel.ssl_cert._get_ssl_cert_text')` — mock SSL 连接
+- `patch('channel.ssl_cert.request_channel')` — mock 获取
+- `patch('channel.ssl_cert.apply_delay')` — mock 延迟
+
+**未 Mock：**
+- `_parse_domains` — 纯正则解析，直接测试
+- `format_output` — 直接测试
+
+**排查注意：**
+- 1 个 xfail: issuer_cn 正则 `[^/\n,\s]+` 在空格处截断多词 CN
+- SSL 错误类型: no_cert / connection_timeout / connection_refused / ssl_error
+- 证书文本使用 `SAMPLE_CERT_TEXT` 常量
+
+---
+
+### test_port_scan.py (18 tests)
+
+**Mock：**
+- `patch('channel.port_scan.subprocess.run')` — mock nmap 执行
+- `patch('channel.port_scan._try_nmap')` — mock nmap 检测
+- `patch('channel.port_scan.request_channel')` — mock 获取
+- `patch('channel.port_scan.apply_delay')` — mock 延迟
+
+**未 Mock：**
+- `parse_nmap_xml` — 纯 XML 解析，直接测试
+- `format_output` / `format_output_error` — 直接测试
+
+**排查注意：**
+- 1 个 xfail: `parse_nmap_xml` 非法 portid (如 "abc") 导致 int() 异常
+- XML 解析使用 `xml.etree.ElementTree.fromstring`
+- `validate_engine` 先尝试 PATH 中的 "nmap"，再尝试配置路径
+
+---
+
+### test_fofa_search.py (16 tests)
+
+**Mock：**
+- `patch('channel.fofa_search.requests.get')` — mock HTTP 请求
+- `patch('channel.fofa_search.Settings')` — mock 配置 (FofaSettings)
+- `patch('channel.fofa_search.request_channel')` — mock 获取
+- `patch('channel.fofa_search.apply_delay')` — mock 延迟
+
+**未 Mock：**
+- `request_channel` — 直接测试（通过 mock requests.get）
+- `format_output` — 直接测试
+
+**排查注意：**
+- 与 fofa_host 共享 Settings，但使用不同的 API 端点 (`/api/v1/search/all`)
+- 查询使用 base64 编码，`query_suffix` 参数追加到查询字符串
+- `format_output` 额外设置 `fields` 字段（区别于 fofa_host）
+
+---
+
+### test_zoomeye.py (16 tests)
+
+**Mock：**
+- `patch('channel.zoomeye.requests.post')` — mock HTTP POST 请求
+- `patch('channel.zoomeye.Settings')` — mock 配置 (ZoomeyeSettings)
+- `patch('channel.zoomeye.request_channel')` — mock 获取
+- `patch('channel.zoomeye.apply_delay')` — mock 延迟
+
+**未 Mock：**
+- `request_channel` — 直接测试（通过 mock requests.post）
+- `format_output` — 直接测试
+
+**排查注意：**
+- 唯一使用 POST 请求的渠道（其他渠道使用 GET）
+- API-KEY 通过 header 而非参数传递
+- `validate_channel_key` 只检查 key 是否配置，不进行在线验证（避免消耗额度）
+
+---
+
 ## 关键依赖关系
 
 ```
@@ -242,6 +470,18 @@ Pipeline         ──→ 依赖 ChannelRegistry (测试中用 InMemoryChannel)
 | test_config | 否 | `_env_file=None` |
 | test_pipeline_registry | 否 | 纯内存 |
 | test_progress | 是 | `tempfile.mkdtemp()` 创建临时目录 |
+| test_classifier | 是 | `tmp_path` 创建临时 rules.json |
+| test_pipeline_exclude | 否 | `mock_open` 模拟文件 |
+| test_fofa_host | 否 | mock requests.get |
+| test_aizhan | 否 | mock requests.get |
+| test_chinaz | 否 | mock requests.Session |
+| test_ipinfo_api | 否 | mock requests.get |
+| test_rdns_ptr | 否 | mock socket.gethostbyaddr |
+| test_whois_query | 否 | mock whois_query |
+| test_ssl_cert | 否 | mock _get_ssl_cert_text |
+| test_port_scan | 否 | mock subprocess.run |
+| test_fofa_search | 否 | mock requests.get |
+| test_zoomeye | 否 | mock requests.post |
 
 ---
 
@@ -332,3 +572,6 @@ Pipeline         ──→ 依赖 ChannelRegistry (测试中用 InMemoryChannel)
 4. **检查环境变量** — `test_config` 需要 `_env_file=None` 隔离，否则会读取 `.env` 文件
 5. **检查 `create_default_registry()` 导入** — 需要 10 个渠道模块都可导入，如果缺少依赖会导致 `ImportError`
 6. **检查 `__new__` 模式** — `test_batch_run` 和 `test_base_batch` 使用 `__new__` + 手动属性设置，跳过 `__init__`
+7. **检查 HTTP mock 路径** — 渠道测试 mock 的是 `channel.xxx.requests.get/post`，不是 `requests.get/post`；chinaz 使用 `requests.Session`
+8. **检查 xfail 测试** — 当前有 8 个 xfail 测试标记了已知生产 bug，如果这些测试突然通过，说明 bug 已被修复
+9. **检查 Settings mock** — 渠道验证测试需要 mock `channel.xxx.Settings`（各渠道使用不同 Settings 类如 `FofaSettings`/`AizhanSettings` 等）

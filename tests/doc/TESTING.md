@@ -14,10 +14,22 @@
 | `test_channel_protocol.py` | `ChannelProtocol` + 适配器 + InMemoryChannel | 36 |
 | `test_channel_registry.py` | `ChannelRegistry` + `create_default_registry` + 7 适配器 | 46 |
 | `test_batch_run.py` | `BaseBatchQuery.run()` + 9 个迁移验证 | 36 |
-| `test_trace_utils.py` | `scenarios/trace_ip/trace_utils.py` | 26 |
+| `test_trace_utils.py` | `scenarios/trace_ip/trace_utils.py` (含健壮性) | 26 |
 | `test_phase_runner.py` | `scenarios/trace_ip/phase_runner.py` | 10 |
 | `test_config.py` | `config.py` Pydantic V2 迁移 | 25 |
 | `test_pipeline_registry.py` | ChannelRegistry + Pipeline 集成模式 | 8 |
+| `test_classifier.py` | `scenarios/trace_ip/classifier.py` | 28 |
+| `test_pipeline_exclude.py` | `pipeline.py` exclude_ips 逻辑 | 13+1 |
+| `test_fofa_host.py` | `channel/fofa_host.py` request/fetch/validate | 20 |
+| `test_aizhan.py` | `channel/aizhan.py` request/parse/fetch/validate | 31 |
+| `test_chinaz.py` | `channel/chinaz.py` request/parse/fetch/validate | 23 |
+| `test_ipinfo_api.py` | `channel/ipinfo_api.py` SDK+HTTP 双模式 | 22 |
+| `test_rdns_ptr.py` | `channel/rdns_ptr.py` PTR/herror/timeout | 14 |
+| `test_whois_query.py` | `channel/whois_query.py` request/parse/fetch | 20 |
+| `test_ssl_cert.py` | `channel/ssl_cert.py` cert/parse_domains/format | 18 |
+| `test_port_scan.py` | `channel/port_scan.py` nmap/xml_parse/validate | 18 |
+| `test_fofa_search.py` | `channel/fofa_search.py` request/fetch/validate | 16 |
+| `test_zoomeye.py` | `channel/zoomeye.py` request/fetch/validate | 16 |
 
 ## test_in_memory_writer.py
 
@@ -235,6 +247,317 @@ PhaseRunner 通用循环，封装"进度-查询-写入"骨架。
 | 29-30 | ssl_cert 迁移 | 继承/channel_name |
 | 31-32 | whois 迁移 | 继承/channel_name |
 | 33-34 | zoomeye 迁移 | 继承/channel_name |
+
+## test_classifier.py
+
+`IPClassifier` 分类引擎 + `ClassifyResult` 数据类。
+
+| # | 测试名 | 验证的行为 |
+|---|--------|-----------|
+| **TestIPClassifierMatch** | | |
+| 1 | suffix match | 后缀匹配返回 category+label+need_deep_query |
+| 2 | contains match | 包含匹配返回 category |
+| 3 | no match | 无匹配返回 "other" |
+| 4 | multi rule match | 多规则匹配取第一个 |
+| 5 | priority first | 高优先级规则先匹配 |
+| **TestIPClassifierFieldExtraction** | | |
+| 6 | nested field | `rdns_ptr.hostname` 嵌套取值 |
+| 7 | missing top key | 顶层 key 不存在跳过 |
+| 8 | missing nested key | 嵌套 key 不存在跳过 |
+| 9 | null value | 值为 None 跳过 |
+| **TestIPClassifierPatternTypes** | | |
+| 10-12 | suffix/contains/exact | 三种匹配类型 |
+| 13 | case insensitive | contains 忽略大小写 |
+| **TestIPClassifierCustomRules** | | |
+| 14 | custom rules | 自定义规则文件 |
+| 15 | empty patterns | 空规则列表 |
+| 16 | invalid type | 缺少 type 字段 → KeyError (xfail) |
+| **TestClassifyResult** | | |
+| 17-22 | 字段默认值 | category/label/need_deep_query/matched_by |
+| **TestIPClassifierWithBuiltinRules** | | |
+| 23-28 | 内置规则 | 加载项目自带 rules.json |
+
+## test_pipeline_exclude.py
+
+`pipeline.py` 中 `_load_exclude_ips` + `_print_report_summary` + Phase 7 集成。
+
+| # | 测试名 | 验证的行为 |
+|---|--------|-----------|
+| **TestLoadExcludeIps** | | |
+| 1 | file not found | 返回空集合 |
+| 2 | empty file | 返回空集合 |
+| 3 | no matching IPs | 无匹配返回空集合 |
+| 4 | partial match | 部分匹配 |
+| 5 | full match | 全部匹配 |
+| 6 | dedup | 去重 |
+| 7-10 | 边界 | 空行/注释/空白/CIDR |
+| **TestPrintReportSummary** | | |
+| 11 | import error | 导入不存在模块 → skip |
+| **TestPhase7Integration** | | |
+| 12-14 | 集成 | exclude_ips 注入 + 过滤 + 结果验证 |
+
+## test_fofa_host.py
+
+`channel/fofa_host.py` — FOFA Host 聚合 API 渠道。
+
+| # | 测试名 | 验证的行为 |
+|---|--------|-----------|
+| **TestRequestChannel** | | |
+| 1 | normal JSON | 返回解析后的 dict，URL 含 detail=true |
+| 2 | timeout | 返回 `{raw_error: True, error_message}` |
+| 3 | HTTP error | 返回 error dict |
+| 4 | invalid JSON | ValueError → error dict |
+| 5 | connection error | DNS 解析失败 → error dict |
+| 6 | API error | API 返回 error 但不包装（透传） |
+| 7 | empty result | 空 detail 列表正常返回 |
+| **TestFetchChannel** | | |
+| 8-9 | query_time | 正常/错误流程均添加 query_time |
+| 10 | delay | apply_delay 被调用 |
+| 11 | kwargs 传递 | key/timeout 正确传递 |
+| **TestFormatOutput** | | |
+| 12-14 | query_time | 补充/保留/原地修改 |
+| **TestValidateChannelKey** | | |
+| 15-19 | 验证 | 空/空白/无效/网络异常/正常 |
+| **TestFofaHostChannelExtra** | | |
+| 20 | fetch 委托 | kwargs 透传 |
+
+## test_aizhan.py
+
+`channel/aizhan.py` — 爱站网爬虫渠道。
+
+| # | 测试名 | 验证的行为 |
+|---|--------|-----------|
+| **TestRequestChannel** | | |
+| 1 | normal HTML | 返回 response.text |
+| 2 | ReadTimeout | xfail: 被误分类为"查询失败" |
+| 3 | Timeout keyword | 含 "timeout" → "网络超时" |
+| 4 | 403 | "爱站网禁止请求" |
+| 5 | connection error | "网络中断" |
+| 6 | generic error | "查询失败" |
+| **TestParseResponse** | | |
+| 7 | error dict | 直接透传 |
+| 8-10 | 页面缺失 | dns-infos/dns-content/两者缺失 |
+| 11 | 无域名 | "暂无域名解析到该IP" → 空列表 |
+| 12 | 中国地域 | "北京 朝阳 联通" → "中国北京朝阳" |
+| 13 | 外国地域 | 非中国 → 原样保留 |
+| 14 | 域名去重 | 重复域名只保留第一个 |
+| 15 | 域名上限 | 最多 20 个 |
+| 16 | 短域名过滤 | len≤3 或无 "." 被过滤 |
+| 17 | 无 strong 标签 | location/isp 为 None |
+| 18 | 非数字 domain_count | span.red 非数字 → 0 |
+| 19 | 缺少 tbody | 返回 success=False |
+| 20 | 列数不足 | <5 列的行被跳过 |
+| 21 | 无 anchor | 回退到 text 取域名 |
+| **TestFetchChannel** | | |
+| 22-24 | 流程 | 正常/错误均添加 query_time；delay 调用 |
+| **TestValidateChannelKey** | | |
+| 25-30 | 验证 | 空/空白/302重定向/404/网络异常/正常 |
+| **TestAizhanChannelExtra** | | |
+| 31 | fetch 委托 | kwargs 透传 |
+
+## test_chinaz.py
+
+`channel/chinaz.py` — 站长之家爬虫渠道。
+
+| # | 测试名 | 验证的行为 |
+|---|--------|-----------|
+| **TestRequestChannel** | | |
+| 1 | normal HTML | 返回 response.text |
+| 2 | ReadTimeout | xfail: 同 aizhan |
+| 3 | Timeout keyword | "网络超时" |
+| 4 | 403 | "站长之家禁止请求" |
+| 5 | connection error | "网络中断" |
+| **TestParseResponse** | | |
+| 6 | error dict | 直接透传 |
+| 7-8 | 页面缺失 | info section/domain section |
+| 9 | 地域+运营商 | label 解析 |
+| 10 | 域名+日期 | date 拆分 start_time/end_time |
+| 11 | 域名去重 | 重复只保留第一个 |
+| 12 | 域名上限 | 最多 20 |
+| 13 | 短域名过滤 | len≤3 被过滤 |
+| 14 | 暂无结果 | 空域名列表 |
+| 15 | 无 anchor | p 内无 a 标签跳过 |
+| **TestFetchChannel** | | |
+| 16-17 | 流程 | 正常/错误均添加 query_time |
+| **TestValidateChannelKey** | | |
+| 18-22 | 验证 | 空/空白/缺字段/网络异常(不退出)/正常 |
+| **TestChinazChannelExtra** | | |
+| 23 | fetch 委托 | kwargs 透传 |
+
+## test_ipinfo_api.py
+
+`channel/ipinfo_api.py` — IPInfo API 渠道，SDK (`_request_channel_api`) + HTTP (`_request_channel_noapi`) 双模式。
+
+| # | 测试名 | 验证的行为 |
+|---|--------|-----------|
+| **TestRequestChannelApiMode** | | |
+| 1 | normal | api.ipinfo.io/lite + Bearer token |
+| 2 | timeout | 返回 error dict |
+| 3 | HTTP error | 401 → error dict |
+| 4 | invalid JSON | → error dict |
+| **TestRequestChannelNoApiMode** | | |
+| 5 | normal | ipinfo.io/{ip}/json + hostname |
+| 6 | timeout | → error dict |
+| 7 | rate limit | 429 → error dict |
+| 8 | 不同字段 | hostname/loc 等 free API 独有字段 |
+| **TestRequestChannelDispatch** | | |
+| 9-10 | 分发 | use_api=True/False 调用对应函数 |
+| **TestFetchChannel** | | |
+| 11-14 | 流程 | API/NoAPI/错误均添加 query_time；delay |
+| **TestValidateChannelKey** | | |
+| 15-18 | 验证 | 有效token/无效token/无token用免费API/免费API不可达 |
+| **TestIpinfoApiChannelExtra** | | |
+| 19 | fetch 委托 | kwargs 透传 |
+
+## test_rdns_ptr.py
+
+`channel/rdns_ptr.py` — DNS 反向解析渠道 (socket.gethostbyaddr)。
+
+| # | 测试名 | 验证的行为 |
+|---|--------|-----------|
+| **TestRequestChannel** | | |
+| 1 | 单 PTR | hostname + ptr_count=1 |
+| 2 | 多 PTR | aliases + ptr_count=3 |
+| 3 | herror | has_ptr=False, error_type="herror" |
+| 4 | gaierror | has_ptr=False, error_type="gaierror" |
+| 5 | timeout | error_type="timeout"，含超时秒数 |
+| 6 | 其他异常 | raw_error=True, error_type=类名 |
+| 7 | query_ip | 结果包含查询 IP |
+| **TestFetchChannel** | | |
+| 8-10 | 流程 | 正常/错误均添加 query_time；delay |
+| **TestValidateChannelKey** | | |
+| 11-13 | 验证 | 成功/herror仍通过/其他错误退出 |
+| **TestRdnsPtrChannelExtra** | | |
+| 14 | fetch 委托 | kwargs 透传 |
+
+## test_whois_query.py
+
+`channel/whois_query.py` — WHOIS 查询渠道 (python-whois)。
+
+| # | 测试名 | 验证的行为 |
+|---|--------|-----------|
+| **TestRequestChannel** | | |
+| 1 | normal | 返回 whois 结果对象 |
+| 2 | None 结果 | → "未找到 Whois 信息" |
+| 3 | timeout | → "查询超时" |
+| 4 | exception | → error dict |
+| 5 | 未安装 | whois_query=None → "未安装" |
+| **TestParseResponse** | | |
+| 6 | error dict | raw_error 透传 |
+| 7 | normal | domain_name/registrar/country 等字段 |
+| 8 | 列表取首 | domain_name=[a,b] → a |
+| 9 | 空列表 | xfail: [] truthy 检查跳过字段 |
+| 10 | datetime isoformat | creation_date → ISO 格式 |
+| 11 | 日期列表取首 | [date1, date2] → date1 |
+| 12-13 | name_servers | 列表/字符串包裹 |
+| 14 | None 字段 | 不存在的字段不包含在结果中 |
+| **TestFetchChannel** | | |
+| 15-16 | 流程 | 正常/错误 |
+| **TestValidateChannelKey** | | |
+| 17-19 | 验证 | 未安装退出/成功/超时仍通过 |
+| **TestWhoisChannelExtra** | | |
+| 20 | fetch 委托 | kwargs 透传 |
+
+## test_ssl_cert.py
+
+`channel/ssl_cert.py` — SSL 证书获取渠道 (ssl + socket)。
+
+| # | 测试名 | 验证的行为 |
+|---|--------|-----------|
+| **TestRequestChannel** | | |
+| 1 | normal cert | 返回 cert_text |
+| 2 | no cert | → error_message="no_cert" |
+| 3 | timeout | → "connection_timeout" |
+| 4 | refused | → "connection_refused" |
+| 5 | SSL error | → "ssl_error: ..." |
+| 6 | generic | → error dict |
+| **TestParseDomains** | | |
+| 7 | CN+SAN | 提取所有域名 |
+| 8 | CN only | 仅 CN |
+| 9 | SAN only | 仅 SAN |
+| 10 | 无域名 | 返回空列表 |
+| 11 | 去重 | CN 与 SAN 重复去重 |
+| **TestFormatOutput** | | |
+| 12 | error | error + ip + port + query_time |
+| 13 | issuer_cn 空格截断 | xfail: 多词 CN 被截断 |
+| 14 | success basic | subject_cn + san_domains + query_time |
+| **TestFetchChannel** | | |
+| 15-17 | 流程 | 正常/错误/delay |
+| **TestSslCertChannelExtra** | | |
+| 18 | fetch 委托 | kwargs 透传 |
+
+## test_port_scan.py
+
+`channel/port_scan.py` — nmap 端口扫描渠道 (subprocess)。
+
+| # | 测试名 | 验证的行为 |
+|---|--------|-----------|
+| **TestRequestChannel** | | |
+| 1 | normal scan | XML 输出 + returncode + 命令含 -p |
+| 2 | nmap not found | FileNotFoundError → error dict |
+| 3 | nmap timeout | TimeoutExpired → error dict |
+| 4 | nmap exception | OSError → error dict |
+| 5 | empty port string | 命令不含 -p |
+| **TestParseNmapXml** | | |
+| 6 | normal | host_alive + open_ports + service/product |
+| 7 | no host | host_alive=False |
+| 8 | invalid XML | 返回默认空结果 |
+| 9 | historical closed | 已验证/已关闭端口分类 |
+| 10 | empty XML | 空结果 |
+| 11 | no open ports | 全部 closed |
+| 12 | malformed port_id | xfail: int("abc") 异常未捕获 |
+| **TestFetchChannel** | | |
+| 13-15 | 流程 | 正常/错误/nonzero returncode |
+| **TestValidateEngine** | | |
+| 16-19 | 验证 | PATH 中找到/未找到/绝对路径/超时 |
+| **TestPortScanChannelExtra** | | |
+| 20 | fetch 委托 | kwargs 透传 |
+
+## test_fofa_search.py
+
+`channel/fofa_search.py` — FOFA 搜索 API 渠道 (base64 编码查询)。
+
+| # | 测试名 | 验证的行为 |
+|---|--------|-----------|
+| **TestRequestChannel** | | |
+| 1 | normal | results + size |
+| 2 | timeout | → error dict |
+| 3 | HTTP error | → error dict |
+| 4 | invalid JSON | → error dict |
+| 5 | query_suffix | base64 编码含后缀 |
+| 6 | empty results | size=0 正常返回 |
+| **TestFetchChannel** | | |
+| 7-9 | 流程 | 正常/错误/query_time；delay |
+| **TestFormatOutput** | | |
+| 10-11 | query_time+fields | 补充/保留 |
+| **TestValidateChannelKey** | | |
+| 12-14 | 验证 | 空/无效/正常 |
+| **TestFofaSearchChannelExtra** | | |
+| 15 | fetch 委托 | kwargs 透传 |
+
+## test_zoomeye.py
+
+`channel/zoomeye.py` — ZoomEye API 渠道 (POST 请求)。
+
+| # | 测试名 | 验证的行为 |
+|---|--------|-----------|
+| **TestRequestChannel** | | |
+| 1 | normal | total + data + API-KEY header |
+| 2 | API error | message != "success" → error dict |
+| 3 | timeout | → error dict |
+| 4 | HTTP error | → error dict |
+| 5 | connection error | → error dict |
+| 6 | query encoded | base64 编码在 body 中 |
+| 7 | sub_type | sub_type 传递到 POST body |
+| 8 | empty results | total=0 正常返回 |
+| **TestFetchChannel** | | |
+| 9-11 | 流程 | 正常/错误/delay |
+| **TestFormatOutput** | | |
+| 12-13 | query_time | 补充/保留 |
+| **TestValidateChannelKey** | | |
+| 14-16 | 验证 | 空/有效/空白 |
+| **TestZoomeyeChannelExtra** | | |
+| 17 | fetch 委托 | kwargs 透传 |
 
 ## TDD 路线图
 
