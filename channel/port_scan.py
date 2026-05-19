@@ -292,3 +292,17 @@ if __name__ == "__main__":
 
     target_ip = sys.argv[1]
     main(target_ip)
+
+
+class PortScanChannel:
+
+    channel_name = 'port_scan'
+
+    def validate(self) -> bool:
+        try:
+            return validate_engine() is not None
+        except Exception:
+            return False
+
+    def fetch(self, ip: str, **kwargs) -> dict:
+        return fetch_channel(ip, **kwargs)

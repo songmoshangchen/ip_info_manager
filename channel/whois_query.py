@@ -177,3 +177,18 @@ if __name__ == "__main__":
 
     target_ip = sys.argv[1]
     main(target_ip)
+
+
+class WhoisChannel:
+
+    channel_name = 'whois'
+
+    def validate(self) -> bool:
+        try:
+            validate_channel_key()
+            return True
+        except (SystemExit, Exception):
+            return False
+
+    def fetch(self, ip: str, **kwargs) -> dict:
+        return fetch_channel(ip, **kwargs)
