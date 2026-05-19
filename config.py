@@ -1,6 +1,6 @@
 import os
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 CONFIG_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -59,10 +59,11 @@ class BaseIPSettings(BaseSettings):
     def validate_project_name(cls, v: str) -> str:
         return _validate_simple_name(v, '项目名称')
 
-    class Config:
-        env_prefix = 'IP_'
-        env_file = ENV_FILE
-        extra = 'ignore'
+    model_config = SettingsConfigDict(
+        env_prefix='IP_',
+        env_file=ENV_FILE,
+        extra='ignore',
+    )
 
 
 class Settings(BaseIPSettings):

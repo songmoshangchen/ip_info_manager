@@ -8,13 +8,8 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from channel.ipinfo_api import fetch_channel as fetch_ipinfo
-from channel.rdns_ptr import fetch_channel as fetch_rdns_ptr
-from channel.aizhan import fetch_channel as fetch_aizhan
-from channel.chinaz import fetch_channel as fetch_chinaz
-from channel.fofa_host import fetch_channel as fetch_fofa_host
+from protocols import ChannelRegistry, create_default_registry
 from channel.port_scan import (
-    fetch_channel as fetch_port_scan,
     validate_engine as validate_nmap,
     load_port_list, extract_historical_ports, build_port_string,
 )
@@ -97,6 +92,7 @@ class TraceIPPipeline:
         self._progress = ProgressManager(self._output_dir, prefix)
         self._batch_writer = BatchIPWriter(IPWriter(settings=scenario_settings, storage_dir=self._output_dir))
         self._pid = PidManager(self._output_dir, prefix)
+        self._registry = create_default_registry()
 
         if reporter:
             self._reporter = reporter
@@ -281,12 +277,12 @@ class TraceIPPipeline:
 
                 if trace_settings.phase1_ipinfo_enabled:
                     channel_specs.append(
-                        ('ipinfo_api', fetch_ipinfo,
+                        ('ipinfo_api', self._registry.get('ipinfo_api').fetch,
                          {'key': ipinfo_settings.ipinfo_access_token, 'delay': 0}))
 
                 if trace_settings.phase1_rdns_ptr_enabled:
                     channel_specs.append(
-                        ('rdns_ptr', fetch_rdns_ptr,
+                        ('rdns_ptr', self._registry.get('rdns_ptr').fetch,
                          {'timeout': rdns_settings.rdns_query_timeout, 'delay': 0}))
 
                 results = self._query_channels_parallel(ip, channel_specs, channel_timeout)
@@ -577,17 +573,17 @@ class TraceIPPipeline:
 
                 if trace_settings.phase3_aizhan_enabled:
                     channel_specs.append(
-                        ('aizhan', fetch_aizhan,
+                        ('aizhan', self._registry.get('aizhan').fetch,
                          {'cookie': aizhan_settings.aizhan_cookie, 'delay': 0}))
 
                 if trace_settings.phase3_chinaz_enabled:
                     channel_specs.append(
-                        ('chinaz', fetch_chinaz,
+                        ('chinaz', self._registry.get('chinaz').fetch,
                          {'cookie': chinaz_settings.chinaz_cookie, 'delay': 0}))
 
                 if trace_settings.phase3_fofa_host_enabled:
                     channel_specs.append(
-                        ('fofa_host', fetch_fofa_host,
+                        ('fofa_host', self._registry.get('fofa_host').fetch,
                          {'key': fofa_settings.fofa_api_key, 'delay': 0}))
 
                 if not channel_specs:
@@ -882,7 +878,7 @@ class TraceIPPipeline:
             ip_data = self._ip_reader.get_ip_data(ip) or {}
             historical_ports = extract_historical_ports(ip_data)
             port_string = build_port_string(historical_ports, top_ports)
-            result = fetch_port_scan(
+            result = self._registry.get('port_scan').fetch(
                 ip=ip,
                 nmap_path=nmap_path,
                 port_string=port_string,
@@ -906,7 +902,7 @@ class TraceIPPipeline:
                                 global_idx, total, ip, len(historical_ports),
                                 len(top_ports), len(set(historical_ports + top_ports)))
 
-                    result = fetch_port_scan(
+                    result = self._registry.get('port_scan').fetch(
                         ip=ip,
                         nmap_path=nmap_path,
                         port_string=port_string,

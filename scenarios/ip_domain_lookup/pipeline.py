@@ -9,12 +9,7 @@ from urllib.parse import urlparse
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from channel.rdns_ptr import fetch_channel as fetch_rdns_ptr
-from channel.aizhan import fetch_channel as fetch_aizhan
-from channel.chinaz import fetch_channel as fetch_chinaz
-from channel.zoomeye import fetch_channel as fetch_zoomeye
-from channel.fofa_search import fetch_channel as fetch_fofa_search
-from channel.ssl_cert import fetch_channel as fetch_ssl_cert
+from protocols import ChannelRegistry, create_default_registry
 from config import Settings, RdnsSettings, AizhanSettings, ChinazSettings, ZoomeyeSettings, FofaSettings, SslCertSettings, IPDomainLookupSettings
 from reader import IPReader
 from utils.pid_manager import PidManager
@@ -75,6 +70,7 @@ class IPDomainLookupPipeline:
 
         self._batch_writer = BatchIPWriter(IPWriter(settings=scenario_settings, storage_dir=self._output_dir))
         self._pid = PidManager(self._output_dir, prefix)
+        self._registry = create_default_registry()
 
         if reporter:
             self._reporter = reporter
@@ -255,35 +251,35 @@ class IPDomainLookupPipeline:
 
                 if lookup_settings.rdns_ptr_enabled:
                     channel_specs.append(
-                        ('rdns_ptr', fetch_rdns_ptr, {
+                        ('rdns_ptr', self._registry.get('rdns_ptr').fetch, {
                             'timeout': rdns_settings.rdns_query_timeout, 'delay': 0}))
 
                 if lookup_settings.aizhan_enabled:
                     channel_specs.append(
-                        ('aizhan', fetch_aizhan, {
+                        ('aizhan', self._registry.get('aizhan').fetch, {
                             'cookie': aizhan_settings.aizhan_cookie, 'delay': 0}))
 
                 if lookup_settings.chinaz_enabled:
                     channel_specs.append(
-                        ('chinaz', fetch_chinaz, {
+                        ('chinaz', self._registry.get('chinaz').fetch, {
                             'cookie': chinaz_settings.chinaz_cookie, 'delay': 0}))
 
                 if lookup_settings.zoomeye_enabled:
                     if zoomeye_settings.zoomeye_api_key and zoomeye_settings.zoomeye_api_key.strip():
                         channel_specs.append(
-                            ('zoomeye', fetch_zoomeye, {
+                            ('zoomeye', self._registry.get('zoomeye').fetch, {
                                 'key': zoomeye_settings.zoomeye_api_key, 'delay': 0,
                                 'sub_type': 'web'}))
 
                 if lookup_settings.fofa_search_enabled:
                     channel_specs.append(
-                        ('fofa_search', fetch_fofa_search, {
+                        ('fofa_search', self._registry.get('fofa_search').fetch, {
                             'key': fofa_settings.fofa_api_key, 'delay': 0,
                             'query_suffix': ' && is_domain=true'}))
 
                 if lookup_settings.ssl_cert_enabled:
                     channel_specs.append(
-                        ('ssl_cert', fetch_ssl_cert, {
+                        ('ssl_cert', self._registry.get('ssl_cert').fetch, {
                             'port': ssl_cert_settings.ssl_cert_port,
                             'timeout': ssl_cert_settings.ssl_cert_timeout, 'delay': 0}))
 

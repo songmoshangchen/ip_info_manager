@@ -2,6 +2,19 @@ import json
 import logging
 import os
 
+from scenarios.trace_ip.trace_utils import (
+    LABEL_MAP,
+    cat_display,
+    extract_all_domains,
+    extract_fofa_ports,
+    has_domains,
+    has_ports,
+    is_china_ip,
+    sort_key,
+    trace_action,
+    trace_priority,
+)
+
 try:
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
@@ -23,92 +36,21 @@ SHEET_CONFIG = {
     4: {'title': 'P4 暂缓', 'desc': '无域名、无端口、国外IP'},
 }
 
-LABEL_MAP = {
-    'cloud_provider': '云服务商',
-    'cdn': 'CDN/WAF节点',
-    'crawler_scanner': '爬虫/扫描器',
-    'residential': '家用宽带',
-    'other': '其他（需确认）',
-    'invalid_rdns': '无效RDNS',
-    'excluded_domain': '排除域名',
-}
+
+def _extract_domain_names(info):
+    return [d['domain'] for d in extract_all_domains(info)]
 
 
-def _extract_all_domains(info):
-    domains = {}
-    for src_name in ('aizhan', 'chinaz'):
-        src = info.get(src_name, {})
-        if not src.get('success'):
-            continue
-        for d in src.get('domains', []):
-            domain = d.get('domain', '')
-            if domain and domain not in domains:
-                domains[domain] = True
-    return list(domains.keys())
-
-
-def _extract_fofa_ports(info):
-    fofa = info.get('fofa_host', {})
-    if fofa.get('error'):
-        return []
-    ports = []
-    for p in fofa.get('ports', []):
+def _extract_port_strings(info):
+    ports = extract_fofa_ports(info)
+    result = []
+    for p in ports:
         port_str = str(p.get('port', ''))
-        products = ', '.join(
-            pr.get('product', '') for pr in p.get('products', [])
-        )
+        products = p.get('products', '')
         if products:
             port_str = f"{port_str}({products})"
-        ports.append(port_str)
-    return ports
-
-
-def _is_china_ip(info):
-    ipinfo = info.get('ipinfo_api', {})
-    return (ipinfo.get('country_code', '') == 'CN'
-            or 'China' in ipinfo.get('country', ''))
-
-
-def _has_domains(info):
-    return len(_extract_all_domains(info)) > 0
-
-
-def _has_ports(info):
-    return len(_extract_fofa_ports(info)) > 0
-
-
-def _trace_priority(ip, ip_data):
-    is_cn = _is_china_ip(ip_data)
-    has_dom = _has_domains(ip_data)
-    has_pt = _has_ports(ip_data)
-    if has_dom and is_cn:
-        return 1
-    if has_dom or (has_pt and is_cn):
-        return 2
-    if has_pt or is_cn:
-        return 3
-    return 4
-
-
-def _sort_key(ip, ip_data):
-    n_dom = len(_extract_all_domains(ip_data))
-    n_pt = len(_extract_fofa_ports(ip_data))
-    cat_weight = {'cloud_provider': 2, 'residential': 1, 'other': 0}
-    cat = ip_data.get('trace_classify', {}).get('category', 'other')
-    return (-n_dom, -n_pt, -cat_weight.get(cat, 0))
-
-
-def _cat_display(info):
-    classify = info.get('trace_classify', {})
-    category = classify.get('category', '')
-    if category == 'other':
-        return LABEL_MAP.get('other', '其他（需确认）')
-    label = LABEL_MAP.get(category, category)
-    matched_by = classify.get('matched_by', [])
-    if matched_by and matched_by[0].get('note'):
-        note = matched_by[0]['note']
-        return f'{label}（{note}）'
-    return label
+        result.append(port_str)
+    return result
 
 
 def _cat_note(info):
@@ -119,20 +61,8 @@ def _cat_note(info):
     return ''
 
 
-def _trace_action(info):
-    has_dom = _has_domains(info)
-    has_pt = _has_ports(info)
-    is_cn = _is_china_ip(info)
-    actions = []
-    if has_dom:
-        actions.append(
-            'ICP备案/WHOIS查询域名注册信息' if is_cn
-            else 'WHOIS查询域名注册信息')
-    if has_pt:
-        actions.append('排查端口服务泄露信息')
-    if not actions:
-        actions.append('公开信息检索IP历史行为')
-    return '；'.join(actions)
+def _trace_action_compat(info):
+    return trace_action(info)
 
 
 def _format_domain_with_verify(domain, domain_verify):
@@ -166,8 +96,8 @@ def _extract_port_scan_ports(info):
 def _build_row(ip, info):
     country = info.get('ipinfo_api', {}).get('country', '')
     org = info.get('ipinfo_api', {}).get('as_name', '')
-    domains = _extract_all_domains(info)
-    ports = _extract_fofa_ports(info)
+    domains = _extract_domain_names(info)
+    ports = _extract_port_strings(info)
     port_scan_ports = _extract_port_scan_ports(info)
     port_scan_strs = []
     for p in port_scan_ports:
@@ -192,7 +122,7 @@ def _build_row(ip, info):
         org,
         _cat_display(info),
         _cat_note(info),
-        _trace_action(info),
+        _trace_action_compat(info),
         str(len(domains)),
         '\n'.join(formatted_domains),
         str(len(ports)),
@@ -230,11 +160,11 @@ def generate_trace_excel(output_dir, prefix, exclude_info=None):
 
     p_groups = {1: [], 2: [], 3: [], 4: []}
     for ip in deep_ips:
-        lvl = _trace_priority(ip, ip_data[ip])
+        lvl = trace_priority(ip_data[ip])
         p_groups[lvl].append(ip)
 
     for lvl in p_groups:
-        p_groups[lvl].sort(key=lambda ip: _sort_key(ip, ip_data[ip]))
+        p_groups[lvl].sort(key=lambda ip: sort_key(ip_data[ip]))
 
     wb = Workbook()
     wb.remove(wb.active)

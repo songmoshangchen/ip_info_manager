@@ -4,6 +4,20 @@ import os
 from abc import ABC, abstractmethod
 from datetime import datetime
 
+from scenarios.trace_ip.trace_utils import (
+    LABEL_MAP,
+    CAT_WEIGHT,
+    cat_display,
+    extract_all_domains,
+    extract_fofa_ports,
+    has_domains,
+    has_ports,
+    is_china_ip,
+    sort_key,
+    trace_action,
+    trace_priority,
+)
+
 logger = logging.getLogger('ip_info_manager.scenarios.trace_ip')
 
 
@@ -137,46 +151,6 @@ class TextTraceReporter(BaseTraceReporter):
         return 'N/A'
 
     @staticmethod
-    def _extract_all_domains(info):
-        domains = {}
-        for src_name in ('aizhan', 'chinaz'):
-            src = info.get(src_name, {})
-            if not src.get('success'):
-                continue
-            for d in src.get('domains', []):
-                domain = d.get('domain', '')
-                if domain and domain not in domains:
-                    domains[domain] = {'domain': domain, 'source': src_name}
-                    if d.get('title'):
-                        domains[domain]['title'] = d['title']
-                    if d.get('start_time'):
-                        domains[domain]['start_time'] = d['start_time']
-                    if d.get('end_time'):
-                        domains[domain]['end_time'] = d['end_time']
-        return list(domains.values())
-
-    @staticmethod
-    def _extract_fofa_ports(info):
-        fofa = info.get('fofa_host', {})
-        if fofa.get('error'):
-            return []
-        ports = []
-        for p in fofa.get('ports', []):
-            products = ', '.join(pr.get('product', '') for pr in p.get('products', []))
-            ports.append({
-                'port': p.get('port', ''),
-                'protocol': p.get('protocol', ''),
-                'update_time': p.get('update_time', ''),
-                'products': products,
-            })
-        return ports
-
-    @staticmethod
-    def _is_china_ip(info):
-        ipinfo = info.get('ipinfo_api', {})
-        return ipinfo.get('country_code', '') == 'CN' or 'China' in ipinfo.get('country', '')
-
-    @staticmethod
     def _has_deep_data(info):
         az = info.get('aizhan', {})
         cz = info.get('chinaz', {})
@@ -188,16 +162,6 @@ class TextTraceReporter(BaseTraceReporter):
         if ff and not ff.get('error', True):
             return True
         return False
-
-    @staticmethod
-    def _has_domains(info):
-        domains = TextTraceReporter._extract_all_domains(info)
-        return len(domains) > 0
-
-    @staticmethod
-    def _has_ports(info):
-        ports = TextTraceReporter._extract_fofa_ports(info)
-        return len(ports) > 0
 
     @staticmethod
     def _format_verify_status(verify_result):
@@ -227,7 +191,7 @@ class TextTraceReporter(BaseTraceReporter):
         builder.add_heading(ip, 3)
         builder.add_body(f'国家/地区：{country}    ASN/组织：{org}    RDNS：{hostname}    归属地：{location}    运营商：{isp}')
 
-        domains = self._extract_all_domains(info)
+        domains = extract_all_domains(info)
         domain_verify = info.get('domain_verify', {})
         verify_results = {}
         if domain_verify and domain_verify.get('results'):
@@ -260,7 +224,7 @@ class TextTraceReporter(BaseTraceReporter):
         else:
             builder.add_body('未发现关联域名。')
 
-        ports = self._extract_fofa_ports(info)
+        ports = extract_fofa_ports(info)
         if ports:
             builder.add_heading(f'开放端口与服务（共 {len(ports)} 个）', 3)
             builder.table_caption(f'{ip} 开放端口与服务')
@@ -366,15 +330,6 @@ class TextTraceReporter(BaseTraceReporter):
             if classify.get('no_info'):
                 no_info_count += 1
 
-        label_map = {
-            'cloud_provider': '云服务商',
-            'cdn': 'CDN/WAF节点',
-            'crawler_scanner': '爬虫/扫描器',
-            'residential': '家用宽带',
-            'other': '其他（需确认）',
-            'invalid_rdns': '无效RDNS',
-            'excluded_domain': '排除域名',
-        }
         desc_map = {
             'cloud_provider': 'AWS/阿里云/腾讯云等云主机，可能用于部署攻击工具',
             'cdn': '内容分发/防护节点，通常为误报或流量转发',
@@ -483,7 +438,7 @@ class TextTraceReporter(BaseTraceReporter):
                 pct = f'{count / total_ips * 100:.1f}%'
                 deep_flag = '是' if deep_query_map.get(cat, True) else '否（跳过）'
                 class_rows.append([
-                    label_map.get(cat, cat), str(count), pct, deep_flag, desc_map.get(cat, ''),
+                    LABEL_MAP.get(cat, cat), str(count), pct, deep_flag, desc_map.get(cat, ''),
                 ])
             builder.add_table(['类别', '数量', '占比', '深度查询', '说明'], class_rows)
             builder.add_body(
@@ -530,8 +485,8 @@ class TextTraceReporter(BaseTraceReporter):
                 f'对 {len(deep_ips)} 个深度查询IP按情报价值分级，'
                 f'国内IP在同等数据条件下价值和优先级更高。'
             )
-            high_total = sum(1 for ip in deep_ips if self._has_deep_data(ip_data[ip]) and self._is_china_ip(ip_data[ip]))
-            mid_total = sum(1 for ip in deep_ips if self._has_deep_data(ip_data[ip]) and not self._is_china_ip(ip_data[ip]))
+            high_total = sum(1 for ip in deep_ips if self._has_deep_data(ip_data[ip]) and is_china_ip(ip_data[ip]))
+            mid_total = sum(1 for ip in deep_ips if self._has_deep_data(ip_data[ip]) and not is_china_ip(ip_data[ip]))
             low_total = len(deep_ips) - high_total - mid_total
             builder.table_caption('价值分级概览')
             builder.add_table(
@@ -544,43 +499,10 @@ class TextTraceReporter(BaseTraceReporter):
             )
 
         # ── 三、溯源优先级 ──
-        cat_weight = {'cloud_provider': 2, 'residential': 1, 'other': 0}
-
-        def _cat_display(info):
-            classify = info.get('trace_classify', {})
-            category = classify.get('category', '')
-            if category == 'other':
-                return label_map.get('other', '其他（需确认）')
-            label = label_map.get(category, category)
-            matched_by = classify.get('matched_by', [])
-            if matched_by and matched_by[0].get('note'):
-                note = matched_by[0]['note']
-                return f'{label}（{note}）'
-            return label
-
-        def _trace_priority(ip):
-            info = ip_data[ip]
-            is_cn = self._is_china_ip(info)
-            has_dom = self._has_domains(info)
-            has_pt = self._has_ports(info)
-            if has_dom and is_cn:
-                return 1
-            if has_dom or (has_pt and is_cn):
-                return 2
-            if has_pt or is_cn:
-                return 3
-            return 4
-
-        def _sort_key(ip):
-            info = ip_data[ip]
-            n_dom = len(self._extract_all_domains(info))
-            n_pt = len(self._extract_fofa_ports(info))
-            cat = info.get('trace_classify', {}).get('category', 'other')
-            return (-n_dom, -n_pt, -cat_weight.get(cat, 0))
 
         p1_ips, p2_ips, p3_ips, p4_ips = [], [], [], []
         for ip in deep_ips:
-            lvl = _trace_priority(ip)
+            lvl = trace_priority(ip_data[ip])
             if lvl == 1:
                 p1_ips.append(ip)
             elif lvl == 2:
@@ -590,24 +512,10 @@ class TextTraceReporter(BaseTraceReporter):
             else:
                 p4_ips.append(ip)
 
-        p1_ips.sort(key=_sort_key)
-        p2_ips.sort(key=_sort_key)
-        p3_ips.sort(key=_sort_key)
-        p4_ips.sort(key=_sort_key)
-
-        def _trace_action(ip):
-            info = ip_data[ip]
-            has_dom = self._has_domains(info)
-            has_pt = self._has_ports(info)
-            is_cn = self._is_china_ip(info)
-            actions = []
-            if has_dom:
-                actions.append('ICP备案/WHOIS查询域名注册信息' if is_cn else 'WHOIS查询域名注册信息')
-            if has_pt:
-                actions.append('排查端口服务泄露信息')
-            if not actions:
-                actions.append('公开信息检索IP历史行为')
-            return '；'.join(actions)
+        p1_ips.sort(key=lambda ip: sort_key(ip_data[ip]))
+        p2_ips.sort(key=lambda ip: sort_key(ip_data[ip]))
+        p3_ips.sort(key=lambda ip: sort_key(ip_data[ip]))
+        p4_ips.sort(key=lambda ip: sort_key(ip_data[ip]))
 
         def _count_domains(info):
             n = 0
@@ -669,10 +577,10 @@ class TextTraceReporter(BaseTraceReporter):
                 for ip in p1_ips:
                     info = ip_data[ip]
                     n_dom = _count_domains(info)
-                    n_pt = len(self._extract_fofa_ports(info))
-                    cat = _cat_display(info)
+                    n_pt = len(extract_fofa_ports(info))
+                    cat = cat_display(info)
                     org = info.get('ipinfo_api', {}).get('as_name', 'N/A')
-                    p1_rows.append([ip, org, cat, str(n_dom), str(n_pt), _trace_action(ip)])
+                    p1_rows.append([ip, org, cat, str(n_dom), str(n_pt), trace_action(ip_data[ip])])
                 builder.add_table(['IP', '组织', '分类', '域名数', '端口数', '建议溯源路径'], p1_rows)
 
             if p2_ips:
@@ -683,11 +591,11 @@ class TextTraceReporter(BaseTraceReporter):
                 for ip in p2_ips:
                     info = ip_data[ip]
                     n_dom = _count_domains(info)
-                    n_pt = len(self._extract_fofa_ports(info))
-                    cat = _cat_display(info)
+                    n_pt = len(extract_fofa_ports(info))
+                    cat = cat_display(info)
                     country = info.get('ipinfo_api', {}).get('country', 'N/A')
                     org = info.get('ipinfo_api', {}).get('as_name', 'N/A')
-                    p2_rows.append([ip, country, org, cat, str(n_dom), str(n_pt), _trace_action(ip)])
+                    p2_rows.append([ip, country, org, cat, str(n_dom), str(n_pt), trace_action(ip_data[ip])])
                 builder.add_table(['IP', '国家', '组织', '分类', '域名数', '端口数', '建议溯源路径'], p2_rows)
 
             if p3_ips:
@@ -698,11 +606,11 @@ class TextTraceReporter(BaseTraceReporter):
                 for ip in p3_ips:
                     info = ip_data[ip]
                     n_dom = _count_domains(info)
-                    n_pt = len(self._extract_fofa_ports(info))
-                    cat = _cat_display(info)
+                    n_pt = len(extract_fofa_ports(info))
+                    cat = cat_display(info)
                     country = info.get('ipinfo_api', {}).get('country', 'N/A')
                     org = info.get('ipinfo_api', {}).get('as_name', 'N/A')
-                    p3_rows.append([ip, country, org, cat, str(n_dom), str(n_pt), _trace_action(ip)])
+                    p3_rows.append([ip, country, org, cat, str(n_dom), str(n_pt), trace_action(ip_data[ip])])
                 builder.add_table(['IP', '国家', '组织', '分类', '域名数', '端口数', '建议溯源路径'], p3_rows)
 
             if p4_ips:
@@ -712,7 +620,7 @@ class TextTraceReporter(BaseTraceReporter):
                 p4_rows = []
                 for ip in p4_ips:
                     info = ip_data[ip]
-                    cat = _cat_display(info)
+                    cat = cat_display(info)
                     country = info.get('ipinfo_api', {}).get('country', 'N/A')
                     org = info.get('ipinfo_api', {}).get('as_name', 'N/A')
                     p4_rows.append([ip, country, org, cat])
