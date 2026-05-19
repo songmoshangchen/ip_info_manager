@@ -3,8 +3,22 @@
 ## 当前状态
 
 项目路径: `e:\12_trae_skills\ip_info_manager`
-计划文件: `e:\12_trae_skills\ip_info_manager-test-audit-plan.md`
-待办文件: `e:\12_trae_skills\ip_info_manager\docs\backlog.md`
+当前分支: `test-audit-refactor`（从 master 创建，待核查完成后合并回 master）
+运行命令: `python -m pytest tests/ -v -p no:dash`
+
+### 关联文档索引
+
+| 文档 | 路径 | 内容说明 |
+|------|------|---------|
+| **本文档** | `docs/handoff-test-audit.md` | 上下文交接、已完成任务、当前任务、待做清单 |
+| 核查计划 | `docs/test-audit-plan.md` | 完整的 T1-T10 计划 + 各阶段审查报告（覆盖差距表、mock 审查、业务意义审查、bug 分析），是本文档的详细版 |
+| 待办清单 | `docs/backlog.md` | 非当前任务优先级的待办（ChannelFetcher 清理、未迁移脚本、容错等） |
+| 测试文档 | `tests/doc/TESTING.md` | 测试文件索引 + 逐条测试说明（需在 T9 更新） |
+| Mock 清单 | `tests/doc/MOCK_INVENTORY.md` | Mock 策略 + 排查指南（需在 T9 更新） |
+| 项目上下文 | `CONTEXT.md` | 项目架构、技术栈、目录结构、编码约定 |
+| ADR | `docs/adr/007~009` | ChannelProtocol / ChannelRegistry / BaseBatchQuery 架构决策 |
+
+> **新会话建议**：先读本文件了解全局，需要深入细节时按上表索引读取对应文档。
 
 ### 基线与当前
 
