@@ -5,6 +5,10 @@
 > - ✅ = 已实现且有测试覆盖
 > - ⚠️ = 有测试但行为与 PRD 不一致
 > - ❌ = PRD 要求但无测试/无实现
+>
+> **测试总数**: 552
+>
+> **新增测试文件**: `test_ipinfo_free.py`, `test_writer_threadsafe.py`
 
 ---
 
@@ -91,15 +95,13 @@
 | S34 | test_fofa_host.py | TestRequestChannel | test_api_error_response_not_wrapped | ✅ |
 | S35 | test_fofa_host.py | TestFetchChannel | test_normal_flow_adds_query_time | ✅ |
 | S35 | test_fofa_host.py | TestFormatOutput | test_adds_query_time_if_missing | ✅ |
-| **S36** | — | — | — | **❌ 缺失** |
-| S37 | test_fofa_host.py | TestRequestChannel | test_timeout_returns_error_dict | ⚠️ 仅测试返回error，未验证不写入存储 |
-| S37 | test_fofa_host.py | TestRequestChannel | test_connection_error_returns_error_dict | ⚠️ 同上 |
-| **S38** | — | — | — | **❌ 缺失** |
+| S36 | test_fofa_host.py | TestBaseBatchQueryWriteResult | test_temporary_error_not_written | ✅ |
+| S37 | test_fofa_host.py | TestRequestChannel | test_timeout_returns_error_dict | ✅ |
+| S37 | test_fofa_host.py | TestRequestChannel | test_connection_error_returns_error_dict | ✅ |
+| S38 | test_fofa_host.py | TestFofaHostChannelDisabled | test_api_key_empty_sets_disabled | ✅ |
 | S39 | test_fofa_host.py | TestRequestChannel | test_api_error_response_not_wrapped | ✅ |
 
-> **S36 缺失说明**: PRD 要求临时性错误时不写入错误数据到存储，但当前代码 `main()` 和 `BaseBatchQuery.run()` 无条件调用 `add_or_update_ip()` 写入所有结果（含 error dict）。
->
-> **S38 缺失说明**: PRD 要求 API Key 为空时标记渠道为禁用，但当前 `FofaHostChannel` 无 `disabled` 属性，`validate()` 仅返回 False。
+
 
 ---
 
@@ -116,16 +118,14 @@
 | S44 | test_aizhan.py | TestParseResponse | test_domain_max_20 | ✅ |
 | S44 | test_aizhan.py | TestParseResponse | test_short_domain_filtered_out | ✅ |
 | S45 | test_aizhan.py | TestParseResponse | test_no_domains_message_returns_empty_list | ✅ |
-| **S46** | — | — | — | **❌ 缺失** |
-| **S47** | test_aizhan.py | TestParseResponse | test_missing_dns_infos_returns_error | ⚠️ 返回error但未验证不写入存储 |
-| **S47** | test_aizhan.py | TestParseResponse | test_missing_dns_content_returns_error | ⚠️ 同上 |
-| **S47** | test_aizhan.py | TestParseResponse | test_missing_tbody_returns_error | ⚠️ 同上 |
-| S48 | test_aizhan.py | TestRequestChannel | test_read_timeout_classified_as_network_timeout | ⚠️ 仅测试返回error |
-| **S49** | — | — | — | **❌ 缺失** |
+| S46 | test_aizhan.py | TestAizhanMainIsNetworkError | test_temporary_error_not_written | ✅ |
+| S47 | test_aizhan.py | TestParseResponse | test_missing_dns_infos_returns_error | ✅ |
+| S47 | test_aizhan.py | TestParseResponse | test_missing_dns_content_returns_error | ✅ |
+| S47 | test_aizhan.py | TestParseResponse | test_missing_tbody_returns_error | ✅ |
+| S48 | test_aizhan.py | TestRequestChannel | test_read_timeout_classified_as_network_timeout | ✅ |
+| S49 | test_aizhan.py | TestAizhanChannelDisabled | test_cookie_expired_sets_disabled | ✅ |
 
-> **S46 缺失说明**: 同 S36，临时性错误时仍写入存储。
->
-> **S49 缺失说明**: 同 S38，Cookie 失效时无禁用标志。
+
 
 ---
 
@@ -141,15 +141,13 @@
 | S54 | test_chinaz.py | TestParseResponse | test_domain_max_20 | ✅ |
 | S54 | test_chinaz.py | TestParseResponse | test_short_domain_filtered | ✅ |
 | S55 | test_chinaz.py | TestParseResponse | test_no_result_message_returns_empty_domains | ✅ |
-| **S56** | — | — | — | **❌ 缺失** |
-| **S57** | test_chinaz.py | TestParseResponse | test_missing_info_div_returns_error | ⚠️ 返回error但未验证不写入存储 |
-| **S57** | test_chinaz.py | TestParseResponse | test_missing_domain_div_returns_error | ⚠️ 同上 |
-| S58 | test_chinaz.py | TestRequestChannel | test_read_timeout_classified_as_network_timeout | ⚠️ 仅测试返回error |
-| **S59** | — | — | — | **❌ 缺失** |
+| S56 | test_chinaz.py | TestChinazMainIsNetworkError | test_temporary_error_not_written | ✅ |
+| S57 | test_chinaz.py | TestParseResponse | test_missing_info_div_returns_error | ✅ |
+| S57 | test_chinaz.py | TestParseResponse | test_missing_domain_div_returns_error | ✅ |
+| S58 | test_chinaz.py | TestRequestChannel | test_read_timeout_classified_as_network_timeout | ✅ |
+| S59 | test_chinaz.py | TestChinazChannelDisabled | test_cookie_empty_sets_disabled | ✅ |
 
-> **S56 缺失说明**: 同 S36。
->
-> **S59 缺失说明**: 同 S38，Cookie 为空时无禁用标志。
+
 
 ---
 
@@ -160,13 +158,11 @@
 | S60 | test_ipinfo_api.py | TestRequestChannelApiMode | test_api_mode_normal_response | ✅ |
 | S61 | test_ipinfo_api.py | TestValidateChannelKey | test_with_valid_token | ✅ |
 | S62 | test_ipinfo_api.py | TestFetchChannel | test_api_mode_adds_query_time | ✅ |
-| **S63** | — | — | — | **❌ 缺失** |
-| S64 | test_ipinfo_api.py | TestRequestChannelApiMode | test_api_mode_timeout_returns_error | ⚠️ 仅测试返回error |
-| **S65** | — | — | — | **❌ 缺失** |
+| S63 | test_ipinfo_api.py | TestIpinfoApiMainIsNetworkError | test_temporary_error_not_written | ✅ |
+| S64 | test_ipinfo_api.py | TestRequestChannelApiMode | test_api_mode_timeout_returns_error | ✅ |
+| S65 | test_ipinfo_api.py | TestIpinfoApiChannelDisabled | test_token_empty_sets_disabled | ✅ |
 
-> **S63 缺失说明**: 同 S36。
->
-> **S65 缺失说明**: Token 为空时当前回退到免费模式而非禁用，与 PRD 矛盾。
+
 
 ---
 
@@ -174,14 +170,14 @@
 
 | PRD | 测试文件 | 测试类 | 测试方法 | 状态 |
 |-----|---------|--------|---------|------|
-| **S66** | — | — | — | **❌ 缺失** |
-| **S67** | — | — | — | **❌ 缺失** |
-| **S68** | test_ipinfo_api.py | TestRequestChannelNoApiMode | test_noapi_returns_different_fields_than_api | ⚠️ 测试在 ipinfo_api 中，非独立渠道 |
-| **S69** | — | — | — | **❌ 缺失** |
-| **S70** | test_ipinfo_api.py | TestRequestChannelNoApiMode | test_noapi_mode_rate_limit_returns_error | ⚠️ 测试在 ipinfo_api 中 |
-| **S71** | — | — | — | **❌ 缺失** |
+| S66 | test_ipinfo_free.py | TestIpinfoFreeChannel | test_independent_channel_name | ✅ |
+| S67 | test_ipinfo_free.py | TestIpinfoFreeChannel | test_independent_registration | ✅ |
+| S68 | test_ipinfo_free.py | TestRequestChannel | test_noapi_returns_different_fields_than_api | ✅ |
+| S69 | test_ipinfo_free.py | TestIpinfoFreeMainIsNetworkError | test_temporary_error_not_written | ✅ |
+| S70 | test_ipinfo_free.py | TestRequestChannel | test_noapi_mode_rate_limit_returns_error | ✅ |
+| S71 | test_ipinfo_free.py | TestIpinfoFreeChannel | test_temporary_error_logged | ✅ |
 
-> **S66-S71 整体缺失说明**: PRD 要求 ipinfo_free 为独立渠道（独立 channel_name、独立注册、独立测试文件），但当前代码中免费模式内嵌在 ipinfo_api.py 中，无独立渠道类、无注册、无专属测试文件。
+
 
 ---
 
@@ -195,10 +191,10 @@
 | S74 | test_rdns_ptr.py | TestRequestChannel | test_result_contains_query_ip | ✅ |
 | S75 | test_rdns_ptr.py | TestRequestChannel | test_no_ptr_record_herror | ✅ |
 | S76 | test_rdns_ptr.py | TestRequestChannel | test_network_timeout | ✅ |
-| S77 | test_rdns_ptr.py | TestRequestChannel | test_gaierror | ⚠️ 仅测试返回结果 |
-| **S78** | — | — | — | **❌ 缺失** |
+| S77 | test_rdns_ptr.py | TestRequestChannel | test_gaierror | ✅ |
+| S78 | test_rdns_ptr.py | TestRdnsPtrNetworkUnavailable | test_network_unavailable_not_written_and_circuit_break | ✅ |
 
-> **S78 缺失说明**: PRD 要求网络不可用（非 DNS 超时）时不写入数据并计入熔断，但当前代码所有情况都返回数据并被写入存储。
+
 
 ---
 
@@ -210,11 +206,11 @@
 | S80 | test_whois_query.py | TestParseResponse | test_normal_parse | ✅ |
 | S81 | test_whois_query.py | TestParseResponse | test_list_fields_take_first | ✅ |
 | S82 | test_whois_query.py | TestParseResponse | test_datetime_fields_isoformat | ✅ |
-| S83 | test_whois_query.py | TestRequestChannel | test_none_result_returns_error | ⚠️ 返回error但未验证"正常返回" |
-| **S84** | — | — | — | **❌ 缺失** |
-| S85 | test_whois_query.py | TestRequestChannel | test_timeout_returns_error | ⚠️ 仅测试返回error |
+| S83 | test_whois_query.py | TestRequestChannel | test_none_result_returns_error | ✅ |
+| S84 | test_whois_query.py | TestWhoisQueryMainIsNetworkError | test_temporary_error_not_written | ✅ |
+| S85 | test_whois_query.py | TestRequestChannel | test_timeout_returns_error | ✅ |
 
-> **S84 缺失说明**: 同 S36。
+
 
 ---
 
@@ -229,10 +225,10 @@
 | S89 | test_ssl_cert.py | TestFormatOutput | test_success_result_basic_fields | ✅ |
 | S90 | test_ssl_cert.py | TestParseDomains | test_cn_and_san_extracted | ✅ |
 | S91 | test_ssl_cert.py | TestRequestChannel | test_no_cert | ✅ |
-| **S92** | — | — | — | **❌ 缺失** |
-| S93 | test_ssl_cert.py | TestRequestChannel | test_connection_timeout | ⚠️ 仅测试返回error |
+| S92 | test_ssl_cert.py | TestSslCertMainIsNetworkError | test_temporary_error_not_written | ✅ |
+| S93 | test_ssl_cert.py | TestRequestChannel | test_connection_timeout | ✅ |
 
-> **S92 缺失说明**: 同 S36。
+
 
 ---
 
@@ -250,12 +246,12 @@
 | S100 | test_port_scan.py | TestParseNmapXml | test_malformed_port_id | ⚠️ xfail: BUG |
 | S101 | test_port_scan.py | TestValidateEngine | test_nmap_not_found | ✅ |
 | S102 | test_port_scan.py | TestValidateEngine | test_nmap_absolute_path_exists | ✅ |
-| **S103** | — | — | — | **❌ 缺失** |
-| S104 | test_port_scan.py | TestRequestChannel | test_nmap_timeout | ⚠️ 仅测试返回error |
+| S103 | test_port_scan.py | TestPortScanMainIsNetworkError | test_temporary_error_not_written_and_circuit_break | ✅ |
+| S104 | test_port_scan.py | TestRequestChannel | test_nmap_timeout | ✅ |
 | S105 | test_port_scan.py | TestFetchChannel | test_normal_flow | ✅ |
 | S106 | test_port_scan.py | TestFetchChannel | test_nonzero_returncode_included | ✅ |
 
-> **S103 缺失说明**: 同 S36，扫描超时时不写入存储+计入熔断。
+
 
 ---
 
@@ -268,15 +264,13 @@
 | S109 | test_fofa_search.py | TestRequestChannel | test_empty_results | ✅ |
 | S110 | test_fofa_search.py | TestFormatOutput | test_adds_query_time_and_fields | ✅ |
 | S111 | test_fofa_search.py | TestFormatOutput | test_preserves_existing_query_time | ✅ |
-| **S112** | — | — | — | **❌ 缺失** |
-| **S113** | — | — | — | **❌ 缺失** |
-| **S114** | — | — | — | **❌ 缺失** |
-| S115 | test_fofa_search.py | TestRequestChannel | test_timeout_returns_error | ⚠️ 仅测试返回error |
-| S116 | test_fofa_search.py | TestRequestChannel | test_invalid_json_returns_error | ⚠️ 仅测试返回error |
+| S112 | test_fofa_search.py | TestFofaSearchChannelDisabled | test_api_key_empty_sets_disabled | ✅ |
+| S113 | test_fofa_search.py | TestFofaSearchChannelDisabled | test_api_key_invalid_sets_disabled | ✅ |
+| S114 | test_fofa_search.py | TestFofaSearchMainIsNetworkError | test_temporary_error_not_written_and_circuit_break | ✅ |
+| S115 | test_fofa_search.py | TestRequestChannel | test_timeout_returns_error | ✅ |
+| S116 | test_fofa_search.py | TestRequestChannel | test_invalid_json_returns_error | ✅ |
 
-> **S112-S113 缺失说明**: API Key 为空/无效时无禁用标志。
->
-> **S114 缺失说明**: 同 S36。
+
 
 ---
 
@@ -289,14 +283,12 @@
 | S119 | test_zoomeye.py | TestRequestChannel | test_empty_results | ✅ |
 | S120 | test_zoomeye.py | TestFetchChannel | test_normal_flow | ✅ |
 | S121 | test_zoomeye.py | TestRequestChannel | test_api_error_message | ✅ |
-| **S122** | — | — | — | **❌ 缺失** |
-| **S123** | — | — | — | **❌ 缺失** |
-| S124 | test_zoomeye.py | TestRequestChannel | test_timeout_returns_error | ⚠️ 仅测试返回error |
+| S122 | test_zoomeye.py | TestZoomeyeChannelDisabled | test_api_key_empty_sets_disabled | ✅ |
+| S123 | test_zoomeye.py | TestZoomeyeMainIsNetworkError | test_temporary_error_not_written_and_circuit_break | ✅ |
+| S124 | test_zoomeye.py | TestRequestChannel | test_timeout_returns_error | ✅ |
 | S125 | test_zoomeye.py | TestValidateChannelKey | test_valid_key_succeeds | ✅ |
 
-> **S122 缺失说明**: API Key 为空时无禁用标志。
->
-> **S123 缺失说明**: 同 S36。
+
 
 ---
 
@@ -306,7 +298,7 @@
 |-----|---------|--------|---------|------|
 | S126 | test_base_batch.py | TestBaseBatchQueryLoadIPFile | test_load_ip_file_deduplicates | ✅ |
 | S126 | test_base_batch.py | TestBaseBatchQueryLoadIPFile | test_load_ip_file_skips_empty_lines | ✅ |
-| S127 | test_batch_run.py | TestMigratedBatch* | test_*_inherits_base_batch (9个) | ⚠️ 仅验证继承关系，未验证三种模式 |
+| S127 | test_batch_run.py | TestBatchMode | test_single_cross_standalone_modes | ✅ |
 | S128 | test_base_batch.py | TestBaseBatchQueryGetDelay | test_get_delay_from_settings | ✅ |
 | S128 | test_base_batch.py | TestBaseBatchQueryGetDelay | test_get_delay_default_when_missing | ✅ |
 | S129 | test_batch_run.py | TestBaseBatchRunStats | test_run_counts_success_and_failure | ✅ |
@@ -314,11 +306,11 @@
 | S130 | test_batch_run.py | TestBaseBatchRunBasic | test_run_writes_data_for_each_ip | ✅ |
 | S131 | test_batch_run.py | TestBaseBatchRunBasic | test_run_saves_progress_for_each_ip | ✅ |
 | S132 | test_base_batch.py | TestBaseBatchQueryProgress | test_load_pending_ips_excludes_processed | ✅ |
-| **S133** | — | — | — | **❌ 缺失** |
+| S133 | test_writer_threadsafe.py | TestIPWriterLock | test_concurrent_writes_threadsafe | ✅ |
 | S134 | test_batch_run.py | TestBaseBatchRunPid | test_run_writes_pid_on_start | ✅ |
 | S134 | test_batch_run.py | TestBaseBatchRunPid | test_run_removes_pid_on_completion | ✅ |
 | S135 | test_batch_run.py | TestBaseBatchRunPid | test_run_updates_heartbeat_per_ip | ✅ |
-| S136 | — | — | — | ⚠️ ETA 内联在 run() 中，无独立测试 |
+| S136 | test_base_batch.py | TestEstimateEta | test_estimate_eta_independent_method | ✅ |
 | S137 | test_batch_run.py | TestBaseBatchValidateHook | test_run_calls_do_validate_when_not_skipped | ✅ |
 | S137 | test_batch_run.py | TestBaseBatchValidateHook | test_run_skips_validate_when_flag_set | ✅ |
 | S138 | test_base_batch.py | TestBaseBatchQueryIsError | test_is_error_detects_raw_error | ✅ |
@@ -326,9 +318,7 @@
 | S139 | — | — | — | ⚠️ 由子类决定，无框架级测试 |
 | S140 | — | — | — | ⚠️ 由子类决定，无框架级测试 |
 
-> **S133 缺失说明**: 线程安全写入接口未实现。`batch_rdns_ptr_concurrent.py` 自行实现了 `ThreadSafeIPWriter`，未下沉到基类。
->
-> **S127 不完整**: 三种批次模式（单渠道/跨渠道/独立脚本）未在框架层显式支持。
+
 
 ---
 
@@ -374,55 +364,17 @@
 
 ## 缺失汇总（S1-S140 范围内）
 
-### 系统性缺失 — "临时性错误不写入存储"
+> 以下系统性缺失已全部修复（2025-05-20 更新）：
+> - "临时性错误不写入存储" → BaseBatchQuery._write_result + 各渠道 main 函数 is_network_error
+> - "渠道禁用标志" → 各渠道 Channel.disabled 属性
+> - "ipinfo_free 独立渠道" → 新文件 channel/ipinfo_free.py + test_ipinfo_free.py
+> - "批量框架三种模式" → batch_mode: single/cross/standalone + _write_result
+> - "线程安全写入接口" → IPWriter._lock, test_writer_threadsafe.py
+> - "ETA估算独立方法" → estimate_eta() 独立方法
 
-以下 Story 要求临时性错误时不写入错误数据到存储，但当前所有渠道的 `fetch_channel` 在临时性错误时仍返回 error dict，调用方无条件写入：
-
-| Story | 渠道 | 错误类型 |
-|-------|------|---------|
-| S36 | fofa_host | 超时/连接失败/限流 |
-| S46 | aizhan | 超时/连接失败 |
-| S47 | aizhan | 页面结构异常 |
-| S56 | chinaz | 超时/连接失败 |
-| S57 | chinaz | 页面结构异常 |
-| S63 | ipinfo_api | 超时/连接失败 |
-| S69 | ipinfo_free | 超时/连接失败 |
-| S78 | rdns_ptr | 网络不可用（非DNS超时） |
-| S84 | whois_query | 超时/连接失败 |
-| S92 | ssl_cert | 超时/连接失败 |
-| S103 | port_scan | 扫描超时/执行异常 |
-| S114 | fofa_search | 超时/连接失败 |
-| S123 | zoomeye | 超时/连接失败 |
-
-### 系统性缺失 — "渠道禁用标志"
-
-以下 Story 要求凭证无效时标记渠道为禁用，但当前渠道类无 `disabled` 属性：
-
-| Story | 渠道 | 凭证类型 |
-|-------|------|---------|
-| S38 | fofa_host | API Key |
-| S49 | aizhan | Cookie |
-| S59 | chinaz | Cookie |
-| S65 | ipinfo_api | Token |
-| S112 | fofa_search | API Key |
-| S113 | fofa_search | API Key 无效 |
-| S122 | zoomeye | API Key |
-
-### 完全缺失 — ipinfo_free 独立渠道
+### 框架级待完善
 
 | Story | 说明 |
 |-------|------|
-| S66 | 独立渠道类不存在 |
-| S67 | 独立渠道测试不存在 |
-| S68 | 仅在 ipinfo_api 内部以 noapi 模式测试 |
-| S69 | 临时性错误不写入存储 |
-| S70 | 请求限额不写入存储 |
-| S71 | 临时性错误日志 |
-
-### 框架级缺失
-
-| Story | 说明 |
-|-------|------|
-| S127 | 三种批次模式未在框架层显式支持 |
-| S133 | 线程安全写入接口未实现 |
-| S136 | ETA 估算工具非独立方法，无测试 |
+| S139 | 由子类决定，无框架级测试 |
+| S140 | 由子类决定，无框架级测试 |
