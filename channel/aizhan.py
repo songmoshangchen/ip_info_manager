@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from config import AizhanSettings as Settings
 from writer import IPWriter
 from utils.logger_utils import get_channel_logger
+from channel.base import is_network_error
 
 _logger = get_channel_logger('aizhan')
 
@@ -216,7 +217,8 @@ def main(ip: str):
         delay=settings.aizhan_query_delay,
         timeout=settings.aizhan_query_timeout,
     )
-    ip_writer.add_or_update_ip(ip=ip, channel="aizhan", data=data)
+    if not is_network_error(data):
+        ip_writer.add_or_update_ip(ip=ip, channel="aizhan", data=data)
 
     if data.get("success"):
         domain_count = data.get("domain_count", 0)

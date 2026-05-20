@@ -97,3 +97,34 @@ class TestChannelBaseFormatOutput:
         data = {'country': 'CN'}
         format_output(data)
         assert 'query_time' not in data
+
+
+class TestIsNetworkError:
+
+    def test_timeout_is_network_error(self):
+        from channel.base import is_network_error
+        assert is_network_error({'raw_error': True, 'error_message': 'ConnectionError: timeout'}) is True
+
+    def test_connection_refused_is_network_error(self):
+        from channel.base import is_network_error
+        assert is_network_error({'raw_error': True, 'error_message': 'Connection refused'}) is True
+
+    def test_api_error_is_not_network_error(self):
+        from channel.base import is_network_error
+        assert is_network_error({'raw_error': True, 'error_message': 'API error: invalid key'}) is False
+
+    def test_success_is_not_network_error(self):
+        from channel.base import is_network_error
+        assert is_network_error({'country': 'CN'}) is False
+
+    def test_non_dict_is_not_network_error(self):
+        from channel.base import is_network_error
+        assert is_network_error(None) is False
+
+    def test_error_field_network_error(self):
+        from channel.base import is_network_error
+        assert is_network_error({'error': True, 'error_message': '网络超时'}) is True
+
+    def test_rate_limit_is_network_error(self):
+        from channel.base import is_network_error
+        assert is_network_error({'raw_error': True, 'error_message': 'rate limit exceeded'}) is True

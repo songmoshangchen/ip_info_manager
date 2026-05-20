@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from config import ChinazSettings as Settings
 from writer import IPWriter
 from utils.logger_utils import get_channel_logger
+from channel.base import is_network_error
 
 _logger = get_channel_logger('chinaz')
 
@@ -211,7 +212,8 @@ def main(ip: str):
         delay=settings.chinaz_query_delay,
         timeout=settings.chinaz_query_timeout,
     )
-    ip_writer.add_or_update_ip(ip=ip, channel="chinaz", data=data)
+    if not is_network_error(data):
+        ip_writer.add_or_update_ip(ip=ip, channel="chinaz", data=data)
 
     if data.get("success"):
         domain_count = len(data.get("domains", []))
