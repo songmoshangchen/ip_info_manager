@@ -1,12 +1,14 @@
 import json
 import os
 import argparse
+import threading
 from config import Settings
 
 
 class IPWriter:
     def __init__(self, settings=None, storage_dir: str = None):
         self.settings = settings or Settings()
+        self._lock = threading.Lock()
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
         if storage_dir:
@@ -42,29 +44,30 @@ class IPWriter:
             json.dump(data, f, ensure_ascii=False, indent=2)
     
     def add_or_update_ip(self, ip, channel, data):
-        all_data = self._load_data()
-        
-        if ip not in all_data:
-            all_data[ip] = {"ip": ip}
-        
-        all_data[ip][channel] = data
-        self._save_data(all_data)
+        with self._lock:
+            all_data = self._load_data()
+            if ip not in all_data:
+                all_data[ip] = {"ip": ip}
+            all_data[ip][channel] = data
+            self._save_data(all_data)
         return True
-    
+
     def delete_ip(self, ip):
-        all_data = self._load_data()
-        if ip in all_data:
-            del all_data[ip]
-            self._save_data(all_data)
-            return True
+        with self._lock:
+            all_data = self._load_data()
+            if ip in all_data:
+                del all_data[ip]
+                self._save_data(all_data)
+                return True
         return False
-    
+
     def delete_channel(self, ip, channel):
-        all_data = self._load_data()
-        if ip in all_data and channel in all_data[ip]:
-            del all_data[ip][channel]
-            self._save_data(all_data)
-            return True
+        with self._lock:
+            all_data = self._load_data()
+            if ip in all_data and channel in all_data[ip]:
+                del all_data[ip][channel]
+                self._save_data(all_data)
+                return True
         return False
 
 
