@@ -1,5 +1,6 @@
 import time
 from datetime import datetime
+from typing import Any
 
 
 def apply_delay(delay: float):
@@ -19,7 +20,7 @@ _NETWORK_ERROR_KEYWORDS = [
 ]
 
 
-def is_network_error(data) -> bool:
+def is_network_error(data: Any) -> bool:
     if not isinstance(data, dict):
         return False
     if not (data.get('raw_error') or data.get('error')):

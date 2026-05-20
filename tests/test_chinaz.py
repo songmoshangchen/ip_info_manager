@@ -52,7 +52,6 @@ class TestRequestChannel:
 
         assert result == html
 
-    @pytest.mark.xfail(reason="BUG: ReadTimeout 'Read timed out' 不含 'timeout' 连续子串, 被误分类为 '查询失败'")
     def test_read_timeout_classified_as_network_timeout(self):
         import requests as req
         with patch('channel.chinaz.requests.Session') as MockSession:

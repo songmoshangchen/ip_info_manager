@@ -52,7 +52,6 @@ class TestRequestChannel:
         assert "dns.aizhan.com/1.2.3.4/" in call_args[0][0]
         assert call_args[1]["headers"]["Cookie"] == "test_cookie"
 
-    @pytest.mark.xfail(reason="BUG: ReadTimeout 错误消息 'Read timed out' 不含 'timeout' 连续子串, 被误分类为 '查询失败'")
     def test_read_timeout_classified_as_network_timeout(self):
         import requests as req
         with patch('channel.aizhan.requests.get', side_effect=req.exceptions.ReadTimeout("Read timed out.")):
