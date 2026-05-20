@@ -16,3 +16,6 @@ debug_*.py
 .trae/
 custom_rules.json
 .last_update
+*.egg-info/
+.pytest_cache/
+.pytest_cache2/
