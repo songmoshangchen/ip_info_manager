@@ -258,3 +258,67 @@ class TestChannelProtocolIntegration:
         ch_bad = InMemoryChannel(name='bad', validate_result=False)
         result = query_channel(ch_bad, '1.2.3.4')
         assert result['raw_error'] is True
+
+
+class TestChannelDisabledFlag:
+
+    def test_fofa_host_validate_failure_sets_disabled(self):
+        from channel.fofa_host import FofaHostChannel
+        ch = FofaHostChannel()
+        with patch('channel.fofa_host.validate_channel_key', side_effect=SystemExit(1)):
+            result = ch.validate()
+        assert result is False
+        assert ch.disabled is True
+
+    def test_fofa_host_validate_success_does_not_disable(self):
+        from channel.fofa_host import FofaHostChannel
+        ch = FofaHostChannel()
+        with patch('channel.fofa_host.validate_channel_key'):
+            result = ch.validate()
+        assert result is True
+        assert ch.disabled is False
+
+    def test_aizhan_validate_failure_sets_disabled(self):
+        from channel.aizhan import AizhanChannel
+        ch = AizhanChannel()
+        with patch('channel.aizhan.validate_channel_key', side_effect=SystemExit(1)):
+            result = ch.validate()
+        assert result is False
+        assert ch.disabled is True
+
+    def test_chinaz_validate_failure_sets_disabled(self):
+        from channel.chinaz import ChinazChannel
+        ch = ChinazChannel()
+        with patch('channel.chinaz.validate_channel_key', side_effect=SystemExit(1)):
+            result = ch.validate()
+        assert result is False
+        assert ch.disabled is True
+
+    def test_ipinfo_api_validate_failure_sets_disabled(self):
+        from channel.ipinfo_api import IpinfoApiChannel
+        ch = IpinfoApiChannel()
+        with patch('channel.ipinfo_api.validate_channel_key', side_effect=SystemExit(1)):
+            result = ch.validate()
+        assert result is False
+        assert ch.disabled is True
+
+    def test_fofa_search_validate_failure_sets_disabled(self):
+        from channel.fofa_search import FofaSearchChannel
+        ch = FofaSearchChannel()
+        with patch('channel.fofa_search.validate_channel_key', side_effect=SystemExit(1)):
+            result = ch.validate()
+        assert result is False
+        assert ch.disabled is True
+
+    def test_zoomeye_validate_failure_sets_disabled(self):
+        from channel.zoomeye import ZoomeyeChannel
+        ch = ZoomeyeChannel()
+        with patch('channel.zoomeye.validate_channel_key', side_effect=SystemExit(1)):
+            result = ch.validate()
+        assert result is False
+        assert ch.disabled is True
+
+    def test_disabled_default_is_false(self):
+        from channel.fofa_host import FofaHostChannel
+        ch = FofaHostChannel()
+        assert ch.disabled is False

@@ -65,7 +65,7 @@ def request_channel(ip: str, cookie: str = '', timeout: float = 15.0, **kwargs):
 
     except requests.exceptions.RequestException as e:
         error_msg = str(e)
-        if "timeout" in error_msg.lower():
+        if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
             error_type = "网络超时"
         elif "403" in error_msg or "429" in error_msg or "forbidden" in error_msg.lower():
             error_type = "爱站网禁止请求"
@@ -238,12 +238,15 @@ if __name__ == "__main__":
 class AizhanChannel:
 
     channel_name = 'aizhan'
+    disabled = False
 
     def validate(self) -> bool:
         try:
             validate_channel_key()
+            self.disabled = False
             return True
         except (SystemExit, Exception):
+            self.disabled = True
             return False
 
     def fetch(self, ip: str, **kwargs) -> dict:

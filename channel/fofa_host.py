@@ -102,12 +102,15 @@ if __name__ == "__main__":
 class FofaHostChannel:
 
     channel_name = 'fofa_host'
+    disabled = False
 
     def validate(self) -> bool:
         try:
             validate_channel_key()
+            self.disabled = False
             return True
         except (SystemExit, Exception):
+            self.disabled = True
             return False
 
     def fetch(self, ip: str, **kwargs) -> dict:
