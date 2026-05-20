@@ -75,6 +75,7 @@ def _build_batch(tmp_path, ips_text, results=None, pending_ips=None, load_stats=
     batch.no_validate = True
     batch._results = results or {}
     batch._printed = []
+    batch._dependency_available = True
     batch.load_stats = load_stats or {
         'raw_count': len(ips_text.strip().split('\n')) if ips_text.strip() else 0,
         'unique_count': len(ips_text.strip().split('\n')) if ips_text.strip() else 0,
@@ -348,3 +349,110 @@ class TestMigratedBatchZoomeye:
     def test_channel_name(self):
         from scripts.batch_zoomeye import BatchZoomeyeQuery
         assert BatchZoomeyeQuery.channel_name == 'zoomeye'
+
+
+class TestCircuitBreaking:
+
+    def test_skips_remaining_after_5_consecutive_network_failures(self, tmp_path):
+        ips = '\n'.join([f'1.1.1.{i}' for i in range(1, 8)])
+        results = {f'1.1.1.{i}': {'raw_error': True, 'error_message': 'ConnectionError: timeout'} for i in range(1, 8)}
+        batch = _build_batch(tmp_path, ips,
+                             pending_ips=[f'1.1.1.{i}' for i in range(1, 8)],
+                             results=results)
+        batch.run()
+        assert len(batch._writer.writes) == 5
+
+    def test_success_resets_consecutive_failure_counter(self, tmp_path):
+        results = {
+            '1.1.1.1': {'raw_error': True, 'error_message': 'timeout'},
+            '1.1.1.2': {'raw_error': True, 'error_message': 'ConnectionError'},
+            '1.1.1.3': {'ok': True},
+            '1.1.1.4': {'raw_error': True, 'error_message': 'timeout'},
+            '1.1.1.5': {'raw_error': True, 'error_message': 'ConnectionError'},
+            '1.1.1.6': {'raw_error': True, 'error_message': 'timeout'},
+            '1.1.1.7': {'raw_error': True, 'error_message': 'ConnectionError'},
+            '1.1.1.8': {'ok': True},
+        }
+        batch = _build_batch(tmp_path, '\n'.join(results.keys()),
+                             pending_ips=list(results.keys()),
+                             results=results)
+        batch.run()
+        assert len(batch._writer.writes) == 8
+
+    def test_non_network_error_does_not_count_towards_circuit_breaker(self, tmp_path):
+        results = {
+            '1.1.1.1': {'raw_error': True, 'error_message': 'API error'},
+            '1.1.1.2': {'raw_error': True, 'error_message': 'invalid key'},
+            '1.1.1.3': {'raw_error': True, 'error_message': 'forbidden'},
+            '1.1.1.4': {'raw_error': True, 'error_message': 'rate limit'},
+            '1.1.1.5': {'raw_error': True, 'error_message': 'bad request'},
+            '1.1.1.6': {'ok': True},
+        }
+        batch = _build_batch(tmp_path, '\n'.join(results.keys()),
+                             pending_ips=list(results.keys()),
+                             results=results)
+        batch.run()
+        assert len(batch._writer.writes) == 6
+
+    def test_circuit_breaker_logs_warning_when_triggered(self, tmp_path):
+        ips = '\n'.join([f'1.1.1.{i}' for i in range(1, 7)])
+        results = {f'1.1.1.{i}': {'raw_error': True, 'error_message': 'ConnectionError: timeout'} for i in range(1, 7)}
+        batch = _build_batch(tmp_path, ips,
+                             pending_ips=[f'1.1.1.{i}' for i in range(1, 7)],
+                             results=results)
+        batch.run()
+        warning_msgs = [m for lvl, m in batch._test_logger.messages if lvl == 'warning']
+        assert any('熔断' in m or '跳过' in m or 'circuit' in m.lower() for m in warning_msgs)
+
+    def test_counter_resets_on_new_run(self, tmp_path):
+        ips = '1.1.1.1\n1.1.1.2\n1.1.1.3\n'
+        results = {
+            '1.1.1.1': {'raw_error': True, 'error_message': 'timeout'},
+            '1.1.1.2': {'raw_error': True, 'error_message': 'ConnectionError'},
+            '1.1.1.3': {'ok': True},
+        }
+        batch = _build_batch(tmp_path, ips,
+                             pending_ips=['1.1.1.1', '1.1.1.2', '1.1.1.3'],
+                             results=results)
+        batch.run()
+        assert len(batch._writer.writes) == 3
+
+
+class TestDependencyCheck:
+
+    def test_skips_all_queries_when_dependency_unavailable(self, tmp_path):
+        batch = _build_batch(tmp_path, "1.1.1.1\n2.2.2.2\n",
+                             pending_ips=['1.1.1.1', '2.2.2.2'])
+        batch._dependency_available = False
+        batch.run()
+        assert len(batch._writer.writes) == 0
+
+    def test_logs_warning_when_dependency_unavailable(self, tmp_path):
+        batch = _build_batch(tmp_path, "1.1.1.1\n",
+                             pending_ips=['1.1.1.1'])
+        batch._dependency_available = False
+        batch.run()
+        warning_msgs = [m for lvl, m in batch._test_logger.messages if lvl == 'warning']
+        assert any('依赖' in m or 'dependency' in m.lower() or '不可用' in m for m in warning_msgs)
+
+    def test_dependency_rechecked_on_new_instance(self, tmp_path):
+        batch1 = _build_batch(tmp_path, "1.1.1.1\n",
+                              pending_ips=['1.1.1.1'],
+                              results={'1.1.1.1': {'ok': True}})
+        batch1._dependency_available = True
+        batch1.run()
+        assert len(batch1._writer.writes) == 1
+
+        batch2 = _build_batch(tmp_path, "2.2.2.2\n",
+                              pending_ips=['2.2.2.2'],
+                              results={'2.2.2.2': {'ok': True}})
+        batch2._dependency_available = True
+        batch2.run()
+        assert len(batch2._writer.writes) == 1
+
+    def test_dependency_check_defaults_to_available(self, tmp_path):
+        batch = _build_batch(tmp_path, "1.1.1.1\n",
+                             pending_ips=['1.1.1.1'],
+                             results={'1.1.1.1': {'ok': True}})
+        batch.run()
+        assert len(batch._writer.writes) == 1

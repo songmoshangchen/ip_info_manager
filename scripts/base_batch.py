@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 class BaseBatchQuery(ABC):
 
     channel_name: str = ''
+    MAX_CONSECUTIVE_NETWORK_FAILURES = 5
 
     def __init__(self, ip_file, channel_name=None, no_validate=False):
         self.ip_file = ip_file
@@ -14,6 +15,7 @@ class BaseBatchQuery(ABC):
             self.channel_name = channel_name
         self.no_validate = no_validate
         self.load_stats = {}
+        self._dependency_available = True
         self.pending_ips = self._load_pending_ips()
 
     @property
@@ -69,12 +71,28 @@ class BaseBatchQuery(ABC):
             return False
         return bool(data.get('raw_error') or data.get('error'))
 
+    def _is_network_error(self, data):
+        if not self._is_error(data):
+            return False
+        msg = data.get('error_message', '').lower()
+        network_keywords = ['timeout', 'timed out', 'connectionerror', '连接', '网络', 'connection refused', 'network']
+        return any(kw in msg for kw in network_keywords)
+
     def _do_validate(self):
         pass
 
     def run(self):
         if not self.no_validate:
             self._do_validate()
+
+        if not self._dependency_available:
+            self.logger.warning(f"[{self.channel_name}] 依赖不可用，跳过所有查询")
+            self.run_stats = {
+                'success_count': 0,
+                'fail_count': 0,
+                'total_elapsed': 0,
+            }
+            return
 
         delay = self._get_delay()
         total_count = self.load_stats.get('unique_count', 0)
@@ -90,6 +108,7 @@ class BaseBatchQuery(ABC):
         fail_count = 0
         start_time = time.time()
         new_count = 0
+        consecutive_network_failures = 0
 
         try:
             for ip in self.pending_ips:
@@ -101,14 +120,26 @@ class BaseBatchQuery(ABC):
                 if self._is_error(data):
                     self._print_result(ip, data)
                     fail_count += 1
+                    if self._is_network_error(data):
+                        consecutive_network_failures += 1
+                    else:
+                        consecutive_network_failures = 0
                 else:
                     self._print_result(ip, data)
                     success_count += 1
+                    consecutive_network_failures = 0
 
                 self.ip_writer.add_or_update_ip(ip, self.channel_name, data)
                 self._save_progress(ip)
                 if hasattr(self, '_pid_mgr'):
                     self._pid_mgr.update_heartbeat(current_phase=1)
+
+                if consecutive_network_failures >= self.MAX_CONSECUTIVE_NETWORK_FAILURES:
+                    remaining = len(self.pending_ips) - new_count
+                    self.logger.warning(
+                        f"[{self.channel_name}] 连续 {consecutive_network_failures} 次网络失败，触发熔断，跳过剩余 {remaining} 个IP"
+                    )
+                    break
 
                 if new_count > 0:
                     elapsed = time.time() - start_time
