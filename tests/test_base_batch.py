@@ -209,3 +209,31 @@ class TestBaseBatchQueryAbstractMethods:
 
         with pytest.raises(TypeError):
             IncompleteBatch(ip_file="test.txt")
+
+
+class TestBaseBatchQueryEstimateEta:
+
+    def _make_batch(self):
+        from scripts.base_batch import BaseBatchQuery
+
+        class DummyBatch(BaseBatchQuery):
+            channel_name = 'test'
+            def _query_ip(self, ip): return {}
+            def _print_result(self, ip, data): pass
+
+        return DummyBatch.__new__(DummyBatch)
+
+    def test_returns_formatted_string(self):
+        batch = self._make_batch()
+        result = batch.estimate_eta(elapsed=10.0, processed=5, remaining=10, total=20)
+        assert 'ETA' in result or '~' in result
+
+    def test_zero_remaining_returns_none(self):
+        batch = self._make_batch()
+        result = batch.estimate_eta(elapsed=10.0, processed=20, remaining=0, total=20)
+        assert result is None
+
+    def test_zero_processed_returns_none(self):
+        batch = self._make_batch()
+        result = batch.estimate_eta(elapsed=0.0, processed=0, remaining=10, total=10)
+        assert result is None

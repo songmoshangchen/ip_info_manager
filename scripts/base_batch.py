@@ -66,6 +66,15 @@ class BaseBatchQuery(ABC):
         attr = f'{self.channel_name}_query_delay'
         return getattr(self.settings, attr, 1.0)
 
+    def estimate_eta(self, elapsed: float, processed: int, remaining: int, total: int) -> str | None:
+        if processed <= 0 or remaining <= 0:
+            return None
+        avg = elapsed / processed
+        eta_s = remaining * avg
+        eta_m = int(eta_s // 60)
+        eta_sec = int(eta_s % 60)
+        return f"ETA: ~{eta_m}min{eta_sec:02d}s (剩余 {remaining} 个IP)"
+
     def _is_error(self, data):
         if not isinstance(data, dict):
             return False
@@ -145,12 +154,9 @@ class BaseBatchQuery(ABC):
                 if new_count > 0:
                     elapsed = time.time() - start_time
                     remaining = total_count - current_count
-                    if remaining > 0:
-                        avg = elapsed / new_count
-                        eta_s = remaining * avg
-                        eta_m = int(eta_s // 60)
-                        eta_sec = int(eta_s % 60)
-                        self.logger.info(f"  ETA: ~{eta_m}min{eta_sec:02d}s (剩余 {remaining} 个IP)")
+                    eta_msg = self.estimate_eta(elapsed, new_count, remaining, total_count)
+                    if eta_msg:
+                        self.logger.info(f"  {eta_msg}")
 
                 time.sleep(delay)
 
