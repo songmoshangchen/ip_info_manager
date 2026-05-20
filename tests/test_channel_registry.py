@@ -192,7 +192,7 @@ class TestCreateDefaultRegistry:
         expected = [
             'fofa_host', 'fofa_search', 'aizhan', 'chinaz',
             'zoomeye', 'rdns_ptr', 'whois', 'ssl_cert',
-            'ipinfo_api', 'port_scan',
+            'ipinfo_api', 'ipinfo_free', 'port_scan',
         ]
         for name in expected:
             assert name in names, f"missing channel: {name}"
@@ -210,10 +210,16 @@ class TestCreateDefaultRegistry:
             got = reg.get(ch.channel_name)
             assert got is ch
 
-    def test_registry_has_ten_channels(self):
+    def test_registry_contains_no_extra_channels(self):
         from protocols import create_default_registry
         reg = create_default_registry()
-        assert len(reg.list_names()) == 10
+        expected = {
+            'fofa_host', 'fofa_search', 'aizhan', 'chinaz',
+            'zoomeye', 'rdns_ptr', 'whois', 'ssl_cert',
+            'ipinfo_api', 'ipinfo_free', 'port_scan',
+        }
+        actual = set(reg.list_names())
+        assert actual == expected, f"unexpected channels: {actual - expected}, missing: {expected - actual}"
 
 
 class TestRemainingAdapters:

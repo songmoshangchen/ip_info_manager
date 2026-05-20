@@ -193,6 +193,7 @@ def create_default_registry() -> ChannelRegistry:
     from channel.whois_query import WhoisChannel
     from channel.ssl_cert import SslCertChannel
     from channel.ipinfo_api import IpinfoApiChannel
+    from channel.ipinfo_free import IpinfoFreeChannel
     from channel.port_scan import PortScanChannel
 
     reg = ChannelRegistry()
@@ -205,5 +206,6 @@ def create_default_registry() -> ChannelRegistry:
     reg.register(WhoisChannel())
     reg.register(SslCertChannel())
     reg.register(IpinfoApiChannel())
+    reg.register(IpinfoFreeChannel())
     reg.register(PortScanChannel())
     return reg
