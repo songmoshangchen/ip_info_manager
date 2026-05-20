@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 class BaseBatchQuery(ABC):
 
     channel_name: str = ''
+    batch_mode: str = 'single'  # 'single', 'cross', 'standalone'
     MAX_CONSECUTIVE_NETWORK_FAILURES = 5
 
     def __init__(self, ip_file, channel_name=None, no_validate=False):
@@ -87,6 +88,13 @@ class BaseBatchQuery(ABC):
         network_keywords = ['timeout', 'timed out', 'connectionerror', '连接', '网络', 'connection refused', 'network']
         return any(kw in msg for kw in network_keywords)
 
+    def _write_result(self, ip, data):
+        if self._is_network_error(data):
+            return
+        channels = getattr(self, '_cross_channels', [self.channel_name]) if self.batch_mode == 'cross' else [self.channel_name]
+        for ch in channels:
+            self.ip_writer.add_or_update_ip(ip, ch, data)
+
     def _do_validate(self):
         pass
 
@@ -131,15 +139,14 @@ class BaseBatchQuery(ABC):
                     fail_count += 1
                     if self._is_network_error(data):
                         consecutive_network_failures += 1
-                        # S36: 临时性网络错误不写入存储，因为重试可能成功
                     else:
                         consecutive_network_failures = 0
-                        self.ip_writer.add_or_update_ip(ip, self.channel_name, data)
+                        self._write_result(ip, data)
                 else:
                     self._print_result(ip, data)
                     success_count += 1
                     consecutive_network_failures = 0
-                    self.ip_writer.add_or_update_ip(ip, self.channel_name, data)
+                    self._write_result(ip, data)
                 self._save_progress(ip)
                 if hasattr(self, '_pid_mgr'):
                     self._pid_mgr.update_heartbeat(current_phase=1)

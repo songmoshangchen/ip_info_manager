@@ -468,3 +468,45 @@ class TestDependencyCheck:
                              results={'1.1.1.1': {'ok': True}})
         batch.run()
         assert len(batch._writer.writes) == 1
+
+
+class TestBatchMode:
+
+    def test_single_channel_mode(self, tmp_path):
+        batch = _build_batch(tmp_path, "1.1.1.1\n",
+                             pending_ips=['1.1.1.1'],
+                             results={'1.1.1.1': {'country': 'CN'}},
+                             channel_name='aizhan')
+        batch.batch_mode = 'single'
+        batch.run()
+        assert len(batch._writer.writes) == 1
+        assert batch._writer.writes[0][1] == 'aizhan'
+
+    def test_cross_channel_mode_writes_multiple_channels(self, tmp_path):
+        batch = _build_batch(tmp_path, "1.1.1.1\n",
+                             pending_ips=['1.1.1.1'],
+                             results={'1.1.1.1': {'country': 'CN'}},
+                             channel_name='multi')
+        batch.batch_mode = 'cross'
+        batch._cross_channels = ['aizhan', 'chinaz']
+        batch._query_ip = lambda ip: {'country': 'CN'}
+        batch.run()
+        assert len(batch._writer.writes) == 2
+        written_channels = {w[1] for w in batch._writer.writes}
+        assert 'aizhan' in written_channels
+        assert 'chinaz' in written_channels
+
+    def test_standalone_mode_no_channel_name(self, tmp_path):
+        batch = _build_batch(tmp_path, "1.1.1.1\n",
+                             pending_ips=['1.1.1.1'],
+                             results={'1.1.1.1': {'processed': True}},
+                             channel_name='')
+        batch.batch_mode = 'standalone'
+        batch.run()
+        assert len(batch._writer.writes) == 1
+
+    def test_default_mode_is_single(self, tmp_path):
+        batch = _build_batch(tmp_path, "1.1.1.1\n",
+                             pending_ips=['1.1.1.1'],
+                             results={'1.1.1.1': {'ok': True}})
+        assert getattr(batch, 'batch_mode', 'single') == 'single'
