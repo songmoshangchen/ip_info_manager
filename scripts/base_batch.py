@@ -122,14 +122,15 @@ class BaseBatchQuery(ABC):
                     fail_count += 1
                     if self._is_network_error(data):
                         consecutive_network_failures += 1
+                        # S36: 临时性网络错误不写入存储，因为重试可能成功
                     else:
                         consecutive_network_failures = 0
+                        self.ip_writer.add_or_update_ip(ip, self.channel_name, data)
                 else:
                     self._print_result(ip, data)
                     success_count += 1
                     consecutive_network_failures = 0
-
-                self.ip_writer.add_or_update_ip(ip, self.channel_name, data)
+                    self.ip_writer.add_or_update_ip(ip, self.channel_name, data)
                 self._save_progress(ip)
                 if hasattr(self, '_pid_mgr'):
                     self._pid_mgr.update_heartbeat(current_phase=1)

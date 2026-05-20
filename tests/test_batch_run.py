@@ -127,13 +127,20 @@ class TestBaseBatchRunBasic:
         progress = batch._load_progress()
         assert progress == {'1.1.1.1', '2.2.2.2'}
 
-    def test_run_handles_error_response(self, tmp_path):
+    def test_run_handles_non_network_error_response(self, tmp_path):
         batch = _build_batch(tmp_path, "1.1.1.1\n",
                              pending_ips=['1.1.1.1'],
-                             results={'1.1.1.1': {'raw_error': True, 'error_message': 'timeout'}})
+                             results={'1.1.1.1': {'raw_error': True, 'error_message': 'API error: invalid key'}})
         batch.run()
         assert len(batch._writer.writes) == 1
         assert batch._writer.writes[0][2]['raw_error'] is True
+
+    def test_run_skips_write_on_network_error(self, tmp_path):
+        batch = _build_batch(tmp_path, "1.1.1.1\n",
+                             pending_ips=['1.1.1.1'],
+                             results={'1.1.1.1': {'raw_error': True, 'error_message': 'ConnectionError: timeout'}})
+        batch.run()
+        assert len(batch._writer.writes) == 0
 
     def test_run_prints_result_on_success(self, tmp_path):
         batch = _build_batch(tmp_path, "1.1.1.1\n",
@@ -360,7 +367,10 @@ class TestCircuitBreaking:
                              pending_ips=[f'1.1.1.{i}' for i in range(1, 8)],
                              results=results)
         batch.run()
-        assert len(batch._writer.writes) == 5
+        # 网络错误不写入存储，所以写入数为 0
+        assert len(batch._writer.writes) == 0
+        # 但仍然处理了 5 个 IP 后触发熔断
+        assert len(batch._printed) == 5
 
     def test_success_resets_consecutive_failure_counter(self, tmp_path):
         results = {
@@ -377,7 +387,8 @@ class TestCircuitBreaking:
                              pending_ips=list(results.keys()),
                              results=results)
         batch.run()
-        assert len(batch._writer.writes) == 8
+        # 只有成功结果写入存储（网络错误不写入）
+        assert len(batch._writer.writes) == 2
 
     def test_non_network_error_does_not_count_towards_circuit_breaker(self, tmp_path):
         results = {
@@ -415,7 +426,8 @@ class TestCircuitBreaking:
                              pending_ips=['1.1.1.1', '1.1.1.2', '1.1.1.3'],
                              results=results)
         batch.run()
-        assert len(batch._writer.writes) == 3
+        # 只有成功结果写入存储
+        assert len(batch._writer.writes) == 1
 
 
 class TestDependencyCheck:
