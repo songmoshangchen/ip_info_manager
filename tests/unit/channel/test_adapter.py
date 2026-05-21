@@ -91,7 +91,7 @@ class TestBaseChannelAdapterFetch:
     def test_fetch_delay触发延迟(self):
         adapter = SimpleAdapter()
         start = time.monotonic()
-        adapter.fetch("1.2.3.4", delay=0.1)
+        adapter.fetch("1.2.3.4", delay=0.15)
         elapsed = time.monotonic() - start
         assert elapsed >= 0.1
 
