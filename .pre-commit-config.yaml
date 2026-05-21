@@ -1,0 +1,17 @@
+exclude: ^(legacy/|data/)
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.8
+    hooks:
+      - id: ruff-format
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+  - repo: local
+    hooks:
+      - id: pytest-unit-store
+        name: pytest (unit/store)
+        entry: python -m pytest tests/unit/store/ -q
+        language: system
+        pass_filenames: false
+        always_run: true
