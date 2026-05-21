@@ -62,12 +62,12 @@ class TestIpinfoApiRequest:
             with pytest.raises(ChannelPermanentError, match="IPInfo API Token 无效"):
                 channel._request("8.8.8.8")
 
-    def test_请求限流_HTTP429_抛ChannelPermanentError(self):
+    def test_请求限流_HTTP429_抛ChannelError(self):
         channel = IpinfoApiChannel(token="valid_token")
         mock_response = MagicMock()
         mock_response.status_code = 429
         with patch("ip_info.channel.ipinfo_api.requests.get", return_value=mock_response):
-            with pytest.raises(ChannelPermanentError, match="IPInfo API 请求限流"):
+            with pytest.raises(ChannelError, match="IPInfo API 请求限流"):
                 channel._request("8.8.8.8")
 
     def test_网络超时_抛ChannelError(self):

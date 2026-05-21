@@ -42,7 +42,7 @@ class IpinfoApiChannel(BaseChannelAdapter):
         if response.status_code in (401, 403):
             raise ChannelPermanentError(f"IPInfo API Token 无效: {ip}")
         if response.status_code == 429:
-            raise ChannelPermanentError(f"IPInfo API 请求限流: {ip}")
+            raise ChannelError(f"IPInfo API 请求限流: {ip}")
 
         try:
             response.raise_for_status()

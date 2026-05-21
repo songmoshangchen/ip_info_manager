@@ -1,7 +1,7 @@
 import requests
 
 from ip_info.channel.adapter import BaseChannelAdapter
-from ip_info.channel.errors import ChannelError, ChannelPermanentError
+from ip_info.channel.errors import ChannelError
 
 
 class IpinfoFreeChannel(BaseChannelAdapter):
@@ -23,7 +23,7 @@ class IpinfoFreeChannel(BaseChannelAdapter):
             raise ChannelError(f"IPInfo 免费查询错误: {ip} - {e}") from e
 
         if response.status_code == 429:
-            raise ChannelPermanentError(f"IPInfo 免费请求限流: {ip}")
+            raise ChannelError(f"IPInfo 免费请求限流: {ip}")
 
         try:
             response.raise_for_status()

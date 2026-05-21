@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
-from ip_info.channel.errors import ChannelError, ChannelPermanentError
+from ip_info.channel.errors import ChannelError
 from ip_info.channel.ipinfo_free import IpinfoFreeChannel
 from ip_info.channel.protocols import ChannelProtocol
 
@@ -42,12 +42,12 @@ class TestIpinfoFreeRequest:
             with pytest.raises(ChannelError, match="连接失败.*8.8.8.8"):
                 channel._request("8.8.8.8")
 
-    def test_请求限流_HTTP429_抛ChannelPermanentError(self):
+    def test_请求限流_HTTP429_抛ChannelError(self):
         channel = IpinfoFreeChannel()
         mock_response = MagicMock()
         mock_response.status_code = 429
         with patch("ip_info.channel.ipinfo_free.requests.get", return_value=mock_response):
-            with pytest.raises(ChannelPermanentError, match="限流.*8.8.8.8"):
+            with pytest.raises(ChannelError, match="限流.*8.8.8.8"):
                 channel._request("8.8.8.8")
 
     def test_其他HTTP错误_HTTP500_抛ChannelError(self):
@@ -99,18 +99,18 @@ class TestIpinfoFreeFetch:
 
         assert channel.disabled is False
 
-    def test_fetch限流时设disabled为True(self):
+    def test_fetch限流时不改变disabled(self):
         channel = IpinfoFreeChannel()
         assert channel.disabled is False
         with patch.object(
             channel,
             "_request",
-            side_effect=ChannelPermanentError("IPInfo 免费请求限流: 8.8.8.8"),
+            side_effect=ChannelError("IPInfo 免费请求限流: 8.8.8.8"),
         ):
-            with pytest.raises(ChannelPermanentError, match="限流"):
+            with pytest.raises(ChannelError, match="限流"):
                 channel.fetch("8.8.8.8")
 
-        assert channel.disabled is True
+        assert channel.disabled is False
 
 
 class TestIpinfoFreeProtocol:
