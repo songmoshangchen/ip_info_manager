@@ -1,0 +1,48 @@
+import socket
+
+from ip_info.channel.adapter import BaseChannelAdapter
+from ip_info.channel.errors import ChannelError
+
+
+class RdnsPtrChannel(BaseChannelAdapter):
+    channel_name = "rdns_ptr"
+
+    def __init__(self, timeout: float = 3.0):
+        self.timeout = timeout
+
+    def _request(self, ip: str, **kwargs) -> dict:
+        timeout = kwargs.get("timeout", self.timeout)
+        socket.setdefaulttimeout(timeout)
+        try:
+            ptr_records = socket.gethostbyaddr(ip)
+            return {
+                "query_ip": ip,
+                "hostname": ptr_records[0],
+                "aliases": ptr_records[1],
+                "ip_addresses": ptr_records[2],
+                "ptr_count": len(ptr_records[1]) + 1,
+                "has_ptr": True,
+            }
+        except socket.herror as e:
+            return {
+                "query_ip": ip,
+                "has_ptr": False,
+                "error_type": "herror",
+                "error_message": str(e),
+            }
+        except socket.gaierror as e:
+            return {
+                "query_ip": ip,
+                "has_ptr": False,
+                "error_type": "gaierror",
+                "error_message": str(e),
+            }
+        except socket.timeout:
+            return {
+                "query_ip": ip,
+                "has_ptr": False,
+                "error_type": "timeout",
+                "error_message": f"查询超时（超过 {timeout} 秒）",
+            }
+        except Exception as e:
+            raise ChannelError(f"RDNS 查询网络错误: {ip} - {e}") from e
