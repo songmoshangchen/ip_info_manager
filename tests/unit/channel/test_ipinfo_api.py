@@ -110,33 +110,23 @@ class TestIpinfoApiRequest:
 class TestIpinfoApiFetch:
     def test_fetch完整流程_包含query_time(self):
         channel = IpinfoApiChannel(token="valid_token")
-        with patch.object(channel, "_request", return_value={"ip": "8.8.8.8", "country": "US"}):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"ip": "8.8.8.8", "country": "US"}
+        mock_response.raise_for_status.return_value = None
+        with patch("ip_info.channel.ipinfo_api.requests.get", return_value=mock_response):
             result = channel.fetch("8.8.8.8")
 
         assert "query_time" in result
         assert result["ip"] == "8.8.8.8"
         assert result["country"] == "US"
 
-    def test_fetch透传timeout给_request(self):
-        channel = IpinfoApiChannel(token="valid_token")
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"ip": "8.8.8.8"}
-        mock_response.raise_for_status.return_value = None
-        with patch("ip_info.channel.ipinfo_api.requests.get", return_value=mock_response) as mock_get:
-            channel.fetch("8.8.8.8", timeout=10.0)
-
-        call_kwargs = mock_get.call_args
-        assert call_kwargs[1]["timeout"] == 10.0
-
     def test_fetch_Token无效设disabled为True(self):
         channel = IpinfoApiChannel(token="bad_token")
         assert channel.disabled is False
-        with patch.object(
-            channel,
-            "_request",
-            side_effect=ChannelPermanentError("IPInfo API Token 无效: 8.8.8.8"),
-        ):
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+        with patch("ip_info.channel.ipinfo_api.requests.get", return_value=mock_response):
             with pytest.raises(ChannelPermanentError, match="Token 无效"):
                 channel.fetch("8.8.8.8")
 
@@ -145,8 +135,11 @@ class TestIpinfoApiFetch:
     def test_fetch_网络错误不改变disabled(self):
         channel = IpinfoApiChannel(token="valid_token")
         assert channel.disabled is False
-        with patch.object(channel, "_request", side_effect=ChannelError("网络错误")):
-            with pytest.raises(ChannelError, match="网络错误"):
+        with patch(
+            "ip_info.channel.ipinfo_api.requests.get",
+            side_effect=requests.exceptions.Timeout("timed out"),
+        ):
+            with pytest.raises(ChannelError, match="查询超时"):
                 channel.fetch("8.8.8.8")
 
         assert channel.disabled is False

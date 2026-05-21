@@ -118,20 +118,24 @@ class TestFofaHostRequest:
 class TestFofaHostFetch:
     def test_fetch完整流程_包含query_time(self):
         channel = FofaHostChannel(key="valid_key")
-        with patch.object(channel, "_request", return_value={"ip": "8.8.8.8", "host": "8.8.8.8"}):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"error": False, "host": "8.8.8.8"}
+        mock_response.raise_for_status.return_value = None
+        with patch("ip_info.channel.fofa_host.requests.get", return_value=mock_response):
             result = channel.fetch("8.8.8.8")
 
         assert "query_time" in result
-        assert result["ip"] == "8.8.8.8"
+        assert result["host"] == "8.8.8.8"
 
     def test_fetch_Key无效设disabled为True(self):
         channel = FofaHostChannel(key="bad_key")
         assert channel.disabled is False
-        with patch.object(
-            channel,
-            "_request",
-            side_effect=ChannelPermanentError("FOFA API Key 无效: [-700] Account Invalid"),
-        ):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"error": True, "errmsg": "[-700] Account Invalid"}
+        mock_response.raise_for_status.return_value = None
+        with patch("ip_info.channel.fofa_host.requests.get", return_value=mock_response):
             with pytest.raises(ChannelPermanentError, match="FOFA API Key 无效"):
                 channel.fetch("8.8.8.8")
 
@@ -140,8 +144,11 @@ class TestFofaHostFetch:
     def test_fetch_网络错误不改变disabled(self):
         channel = FofaHostChannel(key="valid_key")
         assert channel.disabled is False
-        with patch.object(channel, "_request", side_effect=ChannelError("网络错误")):
-            with pytest.raises(ChannelError, match="网络错误"):
+        with patch(
+            "ip_info.channel.fofa_host.requests.get",
+            side_effect=requests.exceptions.Timeout("timed out"),
+        ):
+            with pytest.raises(ChannelError, match="查询超时"):
                 channel.fetch("8.8.8.8")
 
         assert channel.disabled is False

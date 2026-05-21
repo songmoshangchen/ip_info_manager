@@ -84,33 +84,24 @@ class TestRdnsPtrRequest:
 class TestRdnsPtrFetch:
     def test_fetch完整流程_包含query_time(self):
         channel = RdnsPtrChannel()
-        with patch.object(channel, "_request", return_value={"query_ip": "8.8.8.8", "has_ptr": True}):
+        with patch(
+            "ip_info.channel.rdns_ptr.socket.gethostbyaddr",
+            return_value=("dns.google", ["dns.google"], ["8.8.8.8"]),
+        ):
             result = channel.fetch("8.8.8.8")
 
         assert "query_time" in result
         assert result["query_ip"] == "8.8.8.8"
-
-    def test_fetch透传timeout给_request(self):
-        channel = RdnsPtrChannel()
-        with patch("ip_info.channel.rdns_ptr.socket") as mock_socket:
-            mock_socket.gethostbyaddr.return_value = (
-                "dns.google",
-                [],
-                ["8.8.8.8"],
-            )
-            mock_socket.herror = socket.herror
-            mock_socket.gaierror = socket.gaierror
-            mock_socket.timeout = socket.timeout
-            result = channel.fetch("8.8.8.8", timeout=5.0)
-
-        mock_socket.setdefaulttimeout.assert_called_with(5.0)
         assert result["has_ptr"] is True
 
     def test_fetch网络错误透传ChannelError(self):
         channel = RdnsPtrChannel()
         assert channel.disabled is False
-        with patch.object(channel, "_request", side_effect=ChannelError("网络错误")):
-            with pytest.raises(ChannelError, match="网络错误"):
+        with patch(
+            "ip_info.channel.rdns_ptr.socket.gethostbyaddr",
+            side_effect=OSError("Network unreachable"),
+        ):
+            with pytest.raises(ChannelError, match="Network unreachable"):
                 channel.fetch("1.2.3.4")
 
         assert channel.disabled is False

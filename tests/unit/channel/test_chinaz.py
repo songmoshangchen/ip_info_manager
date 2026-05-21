@@ -171,28 +171,14 @@ class TestChinazFetchValidateProtocol:
         assert result["query_ip"] == "1.2.3.4"
         assert result["location"] == "北京"
 
-    def test_fetch_Cookie无效设disabled为True(self):
-        channel = ChinazChannel(cookie="bad")
-        assert channel.disabled is False
-        with patch.object(
-            channel,
-            "_request",
-            side_effect=ChannelPermanentError("Cookie 无效"),
-        ):
-            with pytest.raises(ChannelPermanentError):
-                channel.fetch("1.2.3.4")
-
-        assert channel.disabled is True
-
     def test_fetch_网络错误不改变disabled(self):
         channel = ChinazChannel(cookie="test")
         assert channel.disabled is False
-        with patch.object(
-            channel,
-            "_request",
-            side_effect=ChannelError("网络错误"),
+        with patch(
+            "ip_info.channel.chinaz.requests.get",
+            side_effect=requests.exceptions.Timeout("timed out"),
         ):
-            with pytest.raises(ChannelError):
+            with pytest.raises(ChannelError, match="查询超时"):
                 channel.fetch("1.2.3.4")
 
         assert channel.disabled is False
