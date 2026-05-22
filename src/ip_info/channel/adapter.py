@@ -10,6 +10,7 @@ class BaseChannelAdapter(ABC):
 
     channel_name: str = ""
     disabled: bool = False
+    default_delay: float = 0
 
     @abstractmethod
     def _request(self, ip: str, **kwargs) -> dict | str:
