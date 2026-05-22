@@ -64,13 +64,6 @@ class TestSslCertRequest:
             with pytest.raises(ChannelError, match="SSL 证书获取失败"):
                 channel._request("1.2.3.4")
 
-    def test_端口从kwargs获取并存入last_port(self):
-        channel = SslCertChannel()
-        with patch("ip_info.channel.ssl_cert._get_ssl_cert_text", return_value=SAMPLE_CERT_TEXT):
-            channel._request("example.com", port=8443)
-
-        assert channel._last_port == 8443
-
 
 class TestSslCertFetch:
     def test_fetch完整流程_有证书(self):
@@ -80,6 +73,7 @@ class TestSslCertFetch:
 
         assert result["query_target"] == "example.com"
         assert result["has_cert"] is True
+        assert result["port"] == 443
         assert result["subject_cn"] == "example.com"
         assert result["issuer_cn"] == "TestCA"
         assert result["not_before"] == "Jan  1 00:00:00 2024 GMT"
@@ -96,6 +90,7 @@ class TestSslCertFetch:
 
         assert result["query_target"] == "0.0.0.0"
         assert result["has_cert"] is False
+        assert result["port"] == 443
         assert "query_time" in result
 
     def test_fetch_CN和SAN合并去重(self):
@@ -139,16 +134,16 @@ class TestSslCertFetch:
     def test_fetch_port参数透传(self):
         channel = SslCertChannel()
         with patch("ip_info.channel.ssl_cert._get_ssl_cert_text", return_value=SAMPLE_CERT_TEXT):
-            channel.fetch("example.com", port=8443)
+            result = channel.fetch("example.com", port=8443)
 
-        assert channel._last_port == 8443
+        assert result["port"] == 8443
 
     def test_fetch_使用默认port(self):
         channel = SslCertChannel()
         with patch("ip_info.channel.ssl_cert._get_ssl_cert_text", return_value=SAMPLE_CERT_TEXT):
-            channel.fetch("example.com")
+            result = channel.fetch("example.com")
 
-        assert channel._last_port == 443
+        assert result["port"] == 443
 
 
 class TestSslCertProtocol:

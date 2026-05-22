@@ -141,9 +141,12 @@ class TestPortScanFetch:
         mock_nm = MagicMock()
         mock_nm.scan.side_effect = nmap.PortScannerError("nmap not found")
         channel = PortScanChannel()
+        assert channel.disabled is False
         with patch("ip_info.channel.port_scan.nmap.PortScanner", return_value=mock_nm):
             with pytest.raises(ChannelError):
                 channel.fetch("1.2.3.4")
+
+        assert channel.disabled is False
 
     def test_port_string参数传递(self):
         mock_nm = _make_mock_nm(
@@ -208,3 +211,7 @@ class TestPortScanProtocol:
     def test_channel_name(self):
         channel = PortScanChannel()
         assert channel.channel_name == "port_scan"
+
+    def test_disabled默认False(self):
+        channel = PortScanChannel()
+        assert channel.disabled is False

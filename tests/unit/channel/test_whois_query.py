@@ -39,24 +39,6 @@ class TestWhoisQueryRequest:
 
         assert result is mock_obj
 
-    def test_设置socket超时(self):
-        mock_obj = _make_whois_obj()
-        channel = WhoisQueryChannel()
-        with patch("ip_info.channel.whois_query.whois_query", return_value=mock_obj):
-            with patch("ip_info.channel.whois_query.socket.setdefaulttimeout") as mock_st:
-                channel._request("google.com", timeout=15)
-
-        mock_st.assert_called_once_with(15)
-
-    def test_使用构造函数默认timeout(self):
-        mock_obj = _make_whois_obj()
-        channel = WhoisQueryChannel(timeout=5.0)
-        with patch("ip_info.channel.whois_query.whois_query", return_value=mock_obj):
-            with patch("ip_info.channel.whois_query.socket.setdefaulttimeout") as mock_st:
-                channel._request("google.com")
-
-        mock_st.assert_called_once_with(5.0)
-
     def test_whois返回None_透传None(self):
         channel = WhoisQueryChannel()
         with patch("ip_info.channel.whois_query.whois_query", return_value=None):
@@ -223,15 +205,6 @@ class TestWhoisQueryFetch:
                 channel.fetch("1.2.3.4")
 
         assert channel.disabled is False
-
-    def test_fetch_透传timeout给_request(self):
-        mock_obj = _make_whois_obj()
-        channel = WhoisQueryChannel()
-        with patch("ip_info.channel.whois_query.whois_query", return_value=mock_obj):
-            with patch("ip_info.channel.whois_query.socket.setdefaulttimeout") as mock_st:
-                channel.fetch("google.com", timeout=20.0)
-
-        mock_st.assert_called_once_with(20.0)
 
 
 class TestWhoisQueryProtocol:

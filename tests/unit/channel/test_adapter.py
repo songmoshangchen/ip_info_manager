@@ -1,4 +1,4 @@
-import time
+from unittest.mock import patch
 
 import pytest
 
@@ -90,10 +90,28 @@ class TestBaseChannelAdapterFetch:
 
     def test_fetch_delay触发延迟(self):
         adapter = SimpleAdapter()
-        start = time.monotonic()
-        adapter.fetch("1.2.3.4", delay=0.15)
-        elapsed = time.monotonic() - start
-        assert elapsed >= 0.1
+        with patch("ip_info.channel.adapter.time.sleep") as mock_sleep:
+            adapter.fetch("1.2.3.4", delay=0.15)
+        mock_sleep.assert_called_once_with(0.15)
+
+    def test_fetch_delay为0不调用sleep(self):
+        adapter = SimpleAdapter()
+        with patch("ip_info.channel.adapter.time.sleep") as mock_sleep:
+            adapter.fetch("1.2.3.4", delay=0)
+        mock_sleep.assert_not_called()
+
+    def test_fetch无delay参数不调用sleep(self):
+        adapter = SimpleAdapter()
+        with patch("ip_info.channel.adapter.time.sleep") as mock_sleep:
+            adapter.fetch("1.2.3.4")
+        mock_sleep.assert_not_called()
+
+    def test_fetch_delay为负数不调用sleep(self):
+        adapter = SimpleAdapter()
+        with patch("ip_info.channel.adapter.time.sleep") as mock_sleep:
+            result = adapter.fetch("1.2.3.4", delay=-1)
+        mock_sleep.assert_not_called()
+        assert result["ip"] == "1.2.3.4"
 
     def test_fetch_调用_parse覆盖(self):
         adapter = HtmlParseAdapter()
