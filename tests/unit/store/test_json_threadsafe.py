@@ -1,12 +1,9 @@
 import threading
 
-import pytest
-
 from ip_info.store.json_store import IPWriter
 
 
 class TestIPWriterThreadSafe:
-
     def test_has_lock_attribute(self, tmp_path):
         writer = IPWriter(storage_file=str(tmp_path / "lock_test.json"))
         assert hasattr(writer, "_lock")

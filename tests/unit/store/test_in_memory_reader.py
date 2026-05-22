@@ -1,6 +1,6 @@
 import pytest
 
-from ip_info.store.in_memory import InMemoryIPWriter, InMemoryIPReader
+from ip_info.store.in_memory import InMemoryIPReader, InMemoryIPWriter
 from ip_info.store.protocols import IPDataReader
 
 
@@ -21,7 +21,6 @@ def empty_reader():
 
 
 class TestInMemoryIPReaderGetIPData:
-
     def test_returns_full_record(self, populated_reader):
         record = populated_reader.get_ip_data("1.2.3.4")
         assert record is not None
@@ -37,7 +36,6 @@ class TestInMemoryIPReaderGetIPData:
 
 
 class TestInMemoryIPReaderGetChannelData:
-
     def test_returns_channel_dict(self, populated_reader):
         data = populated_reader.get_channel_data("1.2.3.4", "ipinfo")
         assert data == {"country": "CN", "org": "ISP-A"}
@@ -50,7 +48,6 @@ class TestInMemoryIPReaderGetChannelData:
 
 
 class TestInMemoryIPReaderListAllIPs:
-
     def test_returns_all_keys(self, populated_reader):
         ips = populated_reader.list_all_ips()
         assert set(ips) == {"1.2.3.4", "5.6.7.8", "10.0.0.1"}
@@ -60,7 +57,6 @@ class TestInMemoryIPReaderListAllIPs:
 
 
 class TestInMemoryIPReaderListIPChannels:
-
     def test_excludes_ip_key(self, populated_reader):
         channels = populated_reader.list_ip_channels("1.2.3.4")
         assert set(channels) == {"ipinfo", "rdns"}
@@ -75,7 +71,6 @@ class TestInMemoryIPReaderListIPChannels:
 
 
 class TestInMemoryIPReaderSearchByChannel:
-
     def test_returns_matching_ips(self, populated_reader):
         results = populated_reader.search_ips_by_channel("ipinfo")
         assert set(results) == {"1.2.3.4", "5.6.7.8"}
@@ -102,7 +97,6 @@ class TestInMemoryIPReaderSearchByChannel:
 
 
 class TestInMemoryIPReaderGetIPsData:
-
     def test_returns_data_for_existing_ips(self, populated_reader):
         result = populated_reader.get_ips_data(["1.2.3.4", "5.6.7.8"])
         assert "1.2.3.4" in result
@@ -119,7 +113,6 @@ class TestInMemoryIPReaderGetIPsData:
 
 
 class TestInMemoryIPReaderListAllIPsData:
-
     def test_returns_all_data(self, populated_reader):
         result = populated_reader.list_all_ips_data()
         assert len(result) == 3

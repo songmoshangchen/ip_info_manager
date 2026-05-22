@@ -1,4 +1,4 @@
-from ip_info.store.protocols import IPDataWriter, IPDataReader
+from ip_info.store.protocols import IPDataReader, IPDataWriter
 
 
 class StubWriter:

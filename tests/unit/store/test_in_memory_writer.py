@@ -5,7 +5,6 @@ from ip_info.store.protocols import IPDataWriter
 
 
 class TestInMemoryIPWriter:
-
     @pytest.fixture
     def writer(self):
         return InMemoryIPWriter()
@@ -14,7 +13,7 @@ class TestInMemoryIPWriter:
         assert isinstance(writer, IPDataWriter)
 
     def test_add_or_update_ip_creates_new_ip_record(self, writer):
-        result = writer.add_or_update_ip("1.2.3.4", "ipinfo", {"country": "CN"})
+        writer.add_or_update_ip("1.2.3.4", "ipinfo", {"country": "CN"})
         store = writer.get_all()
 
         assert "1.2.3.4" in store

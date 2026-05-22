@@ -1,10 +1,8 @@
-import json
-import os
 from unittest.mock import patch
 
 import pytest
 
-from ip_info.store.json_store import IPWriter, IPReader
+from ip_info.store.json_store import IPReader, IPWriter
 from ip_info.store.protocols import IPDataReader
 
 
@@ -34,13 +32,11 @@ def _populate_writer(writer):
 
 
 class TestIPReaderProtocol:
-
     def test_满足_IPDataReader_协议(self, file_reader):
         assert isinstance(file_reader, IPDataReader)
 
 
 class TestIPReaderGetIPData:
-
     def test_get_ip_data_returns_record(self, file_writer, file_reader):
         _populate_writer(file_writer)
         record = file_reader.get_ip_data("1.2.3.4")
@@ -54,7 +50,6 @@ class TestIPReaderGetIPData:
 
 
 class TestIPReaderGetChannelData:
-
     def test_get_channel_data_returns_dict(self, file_writer, file_reader):
         _populate_writer(file_writer)
         data = file_reader.get_channel_data("1.2.3.4", "ipinfo")
@@ -62,7 +57,6 @@ class TestIPReaderGetChannelData:
 
 
 class TestIPReaderListAllIPs:
-
     def test_list_all_ips_returns_keys(self, file_writer, file_reader):
         _populate_writer(file_writer)
         ips = file_reader.list_all_ips()
@@ -70,7 +64,6 @@ class TestIPReaderListAllIPs:
 
 
 class TestIPReaderFileNotExist:
-
     def test_file_not_exist_returns_empty(self, tmp_path):
         storage_file = str(tmp_path / "nonexistent" / "missing.json")
         reader = IPReader(storage_file=storage_file)
@@ -79,7 +72,6 @@ class TestIPReaderFileNotExist:
 
 
 class TestIPReaderEndToEnd:
-
     def test_end_to_end_write_read(self, storage_dir):
         storage_file = str(storage_dir / "e2e.json")
         writer = IPWriter(storage_file=storage_file)
@@ -113,7 +105,6 @@ class TestIPReaderEndToEnd:
 
 
 class TestIPReaderIOError:
-
     def test_io_error_on_read_propagates(self, file_reader):
         with patch("builtins.open", side_effect=PermissionError("拒绝访问")):
             with pytest.raises(PermissionError, match="拒绝访问"):

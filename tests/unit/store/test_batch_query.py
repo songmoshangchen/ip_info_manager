@@ -1,6 +1,6 @@
 import pytest
 
-from ip_info.store.in_memory import InMemoryIPWriter, InMemoryIPReader
+from ip_info.store.in_memory import InMemoryIPReader, InMemoryIPWriter
 
 
 @pytest.fixture
@@ -14,7 +14,6 @@ def populated_store():
 
 
 class TestGetIPsData:
-
     def test_get_ips_data_returns_matching_records(self, populated_store):
         """批量获取多个 IP，不存在的 IP 不在结果中"""
         result = populated_store.get_ips_data(["1.2.3.4", "5.6.7.8", "99.99.99.99"])
@@ -30,7 +29,6 @@ class TestGetIPsData:
 
 
 class TestListAllIPsData:
-
     def test_list_all_ips_data_no_exclude(self, populated_store):
         """不排除时返回全部"""
         result = populated_store.list_all_ips_data()
