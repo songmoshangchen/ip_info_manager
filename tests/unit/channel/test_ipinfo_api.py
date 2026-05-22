@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
+from ip_info.channel.config import IpInfoApiConfig
 from ip_info.channel.errors import ChannelError, ChannelPermanentError
 from ip_info.channel.ipinfo_api import IpinfoApiChannel
 from ip_info.channel.protocols import ChannelProtocol
@@ -18,7 +19,7 @@ class TestIpinfoApiValidateKey:
             channel._validate_key()
 
     def test_Token为空_抛ChannelPermanentError(self):
-        channel = IpinfoApiChannel(token="")
+        channel = IpinfoApiChannel(token="", config=IpInfoApiConfig(ipinfo_access_token="", _env_file=None))
         with pytest.raises(ChannelPermanentError, match="IPInfo API Token 未配置"):
             channel._validate_key()
 

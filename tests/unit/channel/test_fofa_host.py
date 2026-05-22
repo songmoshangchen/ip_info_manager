@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
+from ip_info.channel.config import FofaHostConfig
 from ip_info.channel.errors import ChannelError, ChannelPermanentError
 from ip_info.channel.fofa_host import FofaHostChannel
 from ip_info.channel.protocols import ChannelProtocol
@@ -19,7 +20,7 @@ class TestFofaHostValidateKey:
             channel._validate_key()
 
     def test_Key为空_抛ChannelPermanentError(self):
-        channel = FofaHostChannel(key="")
+        channel = FofaHostChannel(key="", config=FofaHostConfig(fofa_api_key="", _env_file=None))
         with pytest.raises(ChannelPermanentError, match="FOFA API Key 未配置"):
             channel._validate_key()
 

@@ -57,7 +57,7 @@ class TestRdnsPtrRequest:
         assert result["error_type"] == "gaierror"
 
     def test_DNS查询超时_timeout(self):
-        channel = RdnsPtrChannel()
+        channel = RdnsPtrChannel(timeout=3.0)
         with patch("ip_info.channel.rdns_ptr.socket") as mock_socket:
             mock_socket.gethostbyaddr.side_effect = socket.timeout()
             mock_socket.herror = socket.herror

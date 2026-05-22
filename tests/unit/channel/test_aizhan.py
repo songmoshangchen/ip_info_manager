@@ -4,6 +4,7 @@ import pytest
 import requests
 
 from ip_info.channel.aizhan import AizhanChannel
+from ip_info.channel.config import AizhanConfig
 from ip_info.channel.errors import ChannelError, ChannelPermanentError
 from ip_info.channel.protocols import ChannelProtocol
 
@@ -28,7 +29,7 @@ class TestAizhanValidateKey:
             channel._validate_key()
 
     def test_Cookie为空_抛ChannelPermanentError(self):
-        channel = AizhanChannel(cookie="")
+        channel = AizhanChannel(cookie="", config=AizhanConfig(aizhan_cookie="", _env_file=None))
         with pytest.raises(ChannelPermanentError, match="Cookie 未配置"):
             channel._validate_key()
 
@@ -219,7 +220,7 @@ class TestAizhanFetchValidateProtocol:
         assert channel.disabled is False
 
     def test_validate失败_返回False(self):
-        channel = AizhanChannel(cookie="")
+        channel = AizhanChannel(cookie="", config=AizhanConfig(aizhan_cookie="", _env_file=None))
         assert channel.validate() is False
         assert channel.disabled is True
 

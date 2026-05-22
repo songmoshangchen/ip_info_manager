@@ -4,6 +4,7 @@ import pytest
 import requests
 
 from ip_info.channel.chinaz import ChinazChannel
+from ip_info.channel.config import ChinazConfig
 from ip_info.channel.errors import ChannelError, ChannelPermanentError
 from ip_info.channel.protocols import ChannelProtocol
 
@@ -28,7 +29,7 @@ class TestChinazValidateKey:
             channel._validate_key()
 
     def test_Cookie为空_抛ChannelPermanentError(self):
-        channel = ChinazChannel(cookie="")
+        channel = ChinazChannel(cookie="", config=ChinazConfig(_env_file=None))
         with pytest.raises(ChannelPermanentError, match="Cookie 未配置"):
             channel._validate_key()
 
@@ -193,7 +194,7 @@ class TestChinazFetchValidateProtocol:
         assert channel.disabled is False
 
     def test_validate失败_返回False(self):
-        channel = ChinazChannel(cookie="")
+        channel = ChinazChannel(cookie="", config=ChinazConfig(_env_file=None))
         assert channel.validate() is False
         assert channel.disabled is True
 
