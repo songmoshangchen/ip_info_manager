@@ -1,15 +1,18 @@
 import requests
 
 from ip_info.channel.adapter import BaseChannelAdapter
+from ip_info.channel.config import IpInfoApiConfig
 from ip_info.channel.errors import ChannelError, ChannelPermanentError
 
 
 class IpinfoApiChannel(BaseChannelAdapter):
     channel_name = "ipinfo_api"
+    default_delay = 1.2
 
-    def __init__(self, token: str, timeout: float = 30.0):
-        self.token = token
-        self.timeout = timeout
+    def __init__(self, token: str | None = None, timeout: float | None = None, config: IpInfoApiConfig | None = None):
+        _config = config or IpInfoApiConfig()
+        self.token = token or _config.ipinfo_access_token
+        self.timeout = timeout if timeout is not None else _config.ipinfo_query_timeout
 
     def _validate_key(self) -> None:
         if not self.token or not self.token.strip():

@@ -3,17 +3,20 @@ import base64
 import requests
 
 from ip_info.channel.adapter import BaseChannelAdapter
+from ip_info.channel.config import FofaSearchConfig
 from ip_info.channel.errors import ChannelError, ChannelPermanentError
 
 
 class FofaSearchChannel(BaseChannelAdapter):
     channel_name = "fofa_search"
+    default_delay = 2.0
 
     FIELDS = "host,ip,port,domain,protocol,title,server,os,country,country_name,region,city,asn,org,link,lastupdatetime"
 
-    def __init__(self, key: str, timeout: float = 30.0):
-        self.key = key
-        self.timeout = timeout
+    def __init__(self, key: str | None = None, timeout: float | None = None, config: FofaSearchConfig | None = None):
+        _config = config or FofaSearchConfig()
+        self.key = key or _config.fofa_api_key
+        self.timeout = timeout if timeout is not None else _config.fofa_query_timeout
 
     def _validate_key(self) -> None:
         if not self.key or not self.key.strip():

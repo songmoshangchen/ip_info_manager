@@ -1,15 +1,18 @@
 import requests
 
 from ip_info.channel.adapter import BaseChannelAdapter
+from ip_info.channel.config import FofaHostConfig
 from ip_info.channel.errors import ChannelError, ChannelPermanentError
 
 
 class FofaHostChannel(BaseChannelAdapter):
     channel_name = "fofa_host"
+    default_delay = 2.0
 
-    def __init__(self, key: str, timeout: float = 30.0):
-        self.key = key
-        self.timeout = timeout
+    def __init__(self, key: str | None = None, timeout: float | None = None, config: FofaHostConfig | None = None):
+        _config = config or FofaHostConfig()
+        self.key = key or _config.fofa_api_key
+        self.timeout = timeout if timeout is not None else _config.fofa_query_timeout
 
     def _validate_key(self) -> None:
         if not self.key or not self.key.strip():

@@ -1,6 +1,7 @@
 import socket
 
 from ip_info.channel.adapter import BaseChannelAdapter
+from ip_info.channel.config import WhoisConfig
 from ip_info.channel.errors import ChannelError
 
 try:
@@ -34,9 +35,11 @@ def _ensure_list(value):
 
 class WhoisQueryChannel(BaseChannelAdapter):
     channel_name = "whois_query"
+    default_delay = 0.5
 
-    def __init__(self, timeout: float = 10.0):
-        self.timeout = timeout
+    def __init__(self, timeout: float | None = None, config: WhoisConfig | None = None):
+        _config = config or WhoisConfig()
+        self.timeout = timeout if timeout is not None else _config.whois_query_timeout
 
     def _request(self, ip: str, **kwargs):
         timeout = kwargs.get("timeout", self.timeout)

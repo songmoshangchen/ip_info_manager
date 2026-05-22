@@ -2,16 +2,19 @@ import requests
 from bs4 import BeautifulSoup
 
 from ip_info.channel.adapter import BaseChannelAdapter
+from ip_info.channel.config import ChinazConfig
 from ip_info.channel.errors import ChannelError, ChannelPermanentError
 
 
 class ChinazChannel(BaseChannelAdapter):
     channel_name = "chinaz"
+    default_delay = 2.0
     REQUIRED_COOKIE_KEYS = ["toolUserGrade", "chinaz_zxuser"]
 
-    def __init__(self, cookie: str, timeout: float = 15.0):
-        self.cookie = cookie
-        self.timeout = timeout
+    def __init__(self, cookie: str | None = None, timeout: float | None = None, config: ChinazConfig | None = None):
+        _config = config or ChinazConfig()
+        self.cookie = cookie or _config.chinaz_cookie
+        self.timeout = timeout if timeout is not None else _config.chinaz_query_timeout
 
     def _validate_key(self) -> None:
         if not self.cookie or not self.cookie.strip():

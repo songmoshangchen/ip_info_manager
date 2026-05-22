@@ -1,15 +1,20 @@
 import nmap
 
 from ip_info.channel.adapter import BaseChannelAdapter
+from ip_info.channel.config import PortScanConfig
 from ip_info.channel.errors import ChannelError, ChannelPermanentError
 
 
 class PortScanChannel(BaseChannelAdapter):
     channel_name = "port_scan"
+    default_delay = 0
 
-    def __init__(self, nmap_path: str = "nmap", timeout: float = 30.0):
-        self.nmap_path = nmap_path
-        self.timeout = timeout
+    def __init__(
+        self, nmap_path: str | None = None, timeout: float | None = None, config: PortScanConfig | None = None
+    ):
+        _config = config or PortScanConfig()
+        self.nmap_path = nmap_path or _config.port_scan_nmap_path
+        self.timeout = timeout if timeout is not None else float(_config.port_scan_timeout)
         self._historical_ports = []
 
     def _validate_key(self) -> None:

@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 
 from ip_info.channel.adapter import BaseChannelAdapter
+from ip_info.channel.config import SslCertConfig
 from ip_info.channel.errors import ChannelError
 
 
@@ -71,12 +72,20 @@ def _parse_domains(cert_text):
 
 class SslCertChannel(BaseChannelAdapter):
     channel_name = "ssl_cert"
+    default_delay = 0.5
 
-    def __init__(self, port: int = 443, timeout: float = 5.0, openssl_timeout: float = 10.0):
-        self.port = port
-        self.timeout = timeout
-        self.openssl_timeout = openssl_timeout
-        self._last_port = port
+    def __init__(
+        self,
+        port: int | None = None,
+        timeout: float | None = None,
+        openssl_timeout: float | None = None,
+        config: SslCertConfig | None = None,
+    ):
+        _config = config or SslCertConfig()
+        self.port = port if port is not None else _config.ssl_cert_port
+        self.timeout = timeout if timeout is not None else _config.ssl_cert_timeout
+        self.openssl_timeout = openssl_timeout if openssl_timeout is not None else _config.ssl_cert_openssl_timeout
+        self._last_port = self.port
 
     def _request(self, ip: str, **kwargs):
         port = kwargs.get("port", self.port)

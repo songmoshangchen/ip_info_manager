@@ -1,14 +1,17 @@
 import requests
 
 from ip_info.channel.adapter import BaseChannelAdapter
+from ip_info.channel.config import IpInfoFreeConfig
 from ip_info.channel.errors import ChannelError
 
 
 class IpinfoFreeChannel(BaseChannelAdapter):
     channel_name = "ipinfo_free"
+    default_delay = 1.2
 
-    def __init__(self, timeout: float = 30.0):
-        self.timeout = timeout
+    def __init__(self, timeout: float | None = None, config: IpInfoFreeConfig | None = None):
+        _config = config or IpInfoFreeConfig()
+        self.timeout = timeout if timeout is not None else _config.ipinfo_query_timeout
 
     def _request(self, ip: str, **kwargs) -> dict:
         timeout = kwargs.get("timeout", self.timeout)

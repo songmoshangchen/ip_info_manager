@@ -2,6 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from ip_info.channel.adapter import BaseChannelAdapter
+from ip_info.channel.config import AizhanConfig
 from ip_info.channel.errors import ChannelError, ChannelPermanentError
 
 CHINA_PROVINCES = [
@@ -44,10 +45,12 @@ CHINA_PROVINCES = [
 
 class AizhanChannel(BaseChannelAdapter):
     channel_name = "aizhan"
+    default_delay = 2.0
 
-    def __init__(self, cookie: str, timeout: float = 15.0):
-        self.cookie = cookie
-        self.timeout = timeout
+    def __init__(self, cookie: str | None = None, timeout: float | None = None, config: AizhanConfig | None = None):
+        _config = config or AizhanConfig()
+        self.cookie = cookie or _config.aizhan_cookie
+        self.timeout = timeout if timeout is not None else _config.aizhan_query_timeout
 
     def _validate_key(self) -> None:
         if not self.cookie or not self.cookie.strip():
