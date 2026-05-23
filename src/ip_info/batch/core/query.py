@@ -77,22 +77,48 @@ class BaseBatchQuery:
             total_elapsed = time.time() - start_time
             return BatchResult(total_elapsed=total_elapsed)
 
-        for ip in self._pending_ips:
+        for idx, ip in enumerate(self._pending_ips, start=1):
+            total = len(self._pending_ips)
+            logger.info(
+                "[%s] 开始查询 %s (%d/%d)",
+                self._channel_name,
+                ip,
+                idx,
+                total,
+            )
             try:
                 data = self._channel.fetch(ip, delay=self._delay)
-            except ChannelPermanentError:
+            except ChannelPermanentError as e:
                 fail_count += 1
+                logger.warning(
+                    "[%s] 查询失败(永久错误): %s - %s",
+                    self._channel_name,
+                    ip,
+                    e,
+                )
                 break
-            except ChannelError:
+            except ChannelError as e:
                 fail_count += 1
                 consecutive_failures += 1
+                logger.warning(
+                    "[%s] 查询失败: %s - %s",
+                    self._channel_name,
+                    ip,
+                    e,
+                )
                 if consecutive_failures >= self._max_failures:
+                    logger.warning(
+                        "[%s] 连续 %d 次失败，触发熔断",
+                        self._channel_name,
+                        consecutive_failures,
+                    )
                     break
                 continue
 
             self._writer.add_or_update_ip(ip, self._channel_name, data)
             success_count += 1
             consecutive_failures = 0
+            logger.info("[%s] 查询成功: %s", self._channel_name, ip)
             if self._progress_tracker is not None:
                 self._progress_tracker.mark_processed(ip)
 

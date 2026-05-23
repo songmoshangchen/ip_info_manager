@@ -106,11 +106,28 @@ def run_concurrent(
                         channel.disabled = True
                         stop_event.set()
                         stop_reason = "permanent_error"
+                        logger.warning(
+                            "[%s] 查询失败(永久错误): %s - %s",
+                            channel_name,
+                            ip,
+                            error,
+                        )
                     else:
                         consecutive_failures += 1
+                        logger.warning(
+                            "[%s] 查询失败: %s - %s",
+                            channel_name,
+                            ip,
+                            error,
+                        )
                         if consecutive_failures >= max_consecutive_network_failures:
                             stop_event.set()
                             stop_reason = "circuit_break"
+                            logger.warning(
+                                "[%s] 连续 %d 次失败，触发熔断",
+                                channel_name,
+                                consecutive_failures,
+                            )
                 continue
 
             if data is None:
@@ -121,6 +138,7 @@ def run_concurrent(
             with lock:
                 success_count += 1
                 consecutive_failures = 0
+            logger.info("[%s] 查询成功: %s", channel_name, ip)
             if progress_tracker is not None:
                 progress_tracker.mark_processed(ip)
 
