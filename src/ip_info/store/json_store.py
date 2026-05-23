@@ -2,8 +2,7 @@ import json
 import os
 import threading
 
-from ip_info.batch.progress import FileProgressTracker
-from ip_info.batch.protocols import ProgressTracker
+from ip_info.utils.progress import FileProgressTracker, ProgressTracker
 
 
 class IPWriter:

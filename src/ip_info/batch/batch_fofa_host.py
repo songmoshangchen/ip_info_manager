@@ -4,10 +4,11 @@ import os
 import sys
 
 from ip_info.batch import BaseBatchQuery
-from ip_info.channel.ipinfo_free import IpinfoFreeChannel
+from ip_info.channel.fofa_host import FofaHostChannel
 from ip_info.store import IPWriter
+from ip_info.utils import load_ips
 
-CHANNEL_NAME = "ipinfo_free"
+CHANNEL_NAME = "fofa_host"
 DEFAULT_STORAGE = "data/ip_data.json"
 logger = logging.getLogger(__name__)
 
@@ -34,12 +35,11 @@ def main():
         ],
     )
 
-    with open(args.ip_file, encoding="utf-8") as f:
-        ips = [line.strip() for line in f if line.strip()]
+    ips = load_ips(args.ip_file)
 
     logger.info("加载 %d 个 IP，渠道: %s", len(ips), CHANNEL_NAME)
 
-    channel = IpinfoFreeChannel()
+    channel = FofaHostChannel()
     writer = IPWriter(args.storage_file)
     tracker = writer.progress_tracker(CHANNEL_NAME)
 

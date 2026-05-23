@@ -1,8 +1,8 @@
 """测试 IPWriter.progress_tracker() 方法"""
 
-from ip_info.batch.progress import FileProgressTracker, InMemoryProgressTracker
 from ip_info.store.in_memory import InMemoryIPWriter
 from ip_info.store.json_store import IPWriter
+from ip_info.utils.progress import FileProgressTracker, InMemoryProgressTracker
 
 
 class TestIPWriterProgressTracker:

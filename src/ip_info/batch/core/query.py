@@ -2,10 +2,10 @@ import logging
 import time
 from dataclasses import dataclass
 
-from ip_info.batch.protocols import ProgressTracker
 from ip_info.channel.adapter import BaseChannelAdapter
 from ip_info.channel.errors import ChannelError, ChannelPermanentError
 from ip_info.store.protocols import IPDataWriter
+from ip_info.utils.progress import ProgressTracker
 
 logger = logging.getLogger(__name__)
 

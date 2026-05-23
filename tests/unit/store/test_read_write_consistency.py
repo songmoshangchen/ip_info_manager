@@ -15,7 +15,6 @@ def writer():
 
 
 class TestWriterReaderConsistency:
-
     def test_writer_implements_reader_protocol(self):
         """InMemoryIPWriter 满足 IPDataReader 协议"""
         writer = InMemoryIPWriter()

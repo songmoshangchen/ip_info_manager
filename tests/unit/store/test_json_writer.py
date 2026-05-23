@@ -20,13 +20,11 @@ def writer(storage_dir):
 
 
 class TestIPWriterProtocol:
-
     def test_满足_IPDataWriter_协议(self, writer):
         assert isinstance(writer, IPDataWriter)
 
 
 class TestIPWriterFileCreation:
-
     def test_creates_file_and_dir_when_not_exist(self, tmp_path):
         storage_file = str(tmp_path / "deep" / "nested" / "data.json")
         IPWriter(storage_file=storage_file)
@@ -36,7 +34,6 @@ class TestIPWriterFileCreation:
 
 
 class TestIPWriterAddOrUpdate:
-
     def test_add_or_update_ip_writes_to_file(self, writer, storage_dir):
         writer.add_or_update_ip("1.2.3.4", "ipinfo", {"country": "CN"})
 
@@ -72,7 +69,6 @@ class TestIPWriterAddOrUpdate:
 
 
 class TestIPWriterDeleteIP:
-
     def test_delete_ip_removes_from_file(self, writer, storage_dir):
         writer.add_or_update_ip("1.2.3.4", "ipinfo", {"country": "CN"})
         writer.add_or_update_ip("5.6.7.8", "rdns", {"ptr": "other.example.com"})
@@ -92,7 +88,6 @@ class TestIPWriterDeleteIP:
 
 
 class TestIPWriterDeleteChannel:
-
     def test_delete_channel_removes_from_file(self, writer, storage_dir):
         writer.add_or_update_ip("1.2.3.4", "ipinfo", {"country": "CN"})
         writer.add_or_update_ip("1.2.3.4", "rdns", {"ptr": "host.example.com"})
@@ -113,7 +108,6 @@ class TestIPWriterDeleteChannel:
 
 
 class TestIPWriterIOError:
-
     def test_io_error_on_write_propagates(self, writer):
         with patch("builtins.open", side_effect=PermissionError("拒绝访问")):
             with pytest.raises(PermissionError, match="拒绝访问"):

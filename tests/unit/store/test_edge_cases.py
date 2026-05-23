@@ -13,7 +13,6 @@ def writer_with_data():
 
 
 class TestEdgeCases:
-
     def test_delete_nonexistent_ip_returns_false(self, writer_with_data):
         """删除不存在的 IP 返回 False"""
         assert writer_with_data.delete_ip("99.99.99.99") is False

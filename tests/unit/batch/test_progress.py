@@ -1,7 +1,6 @@
 import pathlib
 
-from ip_info.batch.progress import FileProgressTracker, InMemoryProgressTracker
-from ip_info.batch.protocols import ProgressTracker
+from ip_info.utils.progress import FileProgressTracker, InMemoryProgressTracker, ProgressTracker
 
 
 class TestInMemoryProgressTracker:

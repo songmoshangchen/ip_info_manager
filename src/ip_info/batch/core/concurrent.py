@@ -3,11 +3,11 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from ip_info.batch.protocols import ProgressTracker
-from ip_info.batch.query import BatchResult
+from ip_info.batch.core.query import BatchResult
 from ip_info.channel.adapter import BaseChannelAdapter
 from ip_info.channel.errors import ChannelError, ChannelPermanentError
 from ip_info.store.protocols import IPDataWriter
+from ip_info.utils.progress import ProgressTracker
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,7 @@ def run_concurrent(
 
     # 单线程退化
     if workers <= 1:
-        from ip_info.batch.query import BaseBatchQuery
+        from ip_info.batch.core.query import BaseBatchQuery
 
         query = BaseBatchQuery(
             channel_name=channel_name,

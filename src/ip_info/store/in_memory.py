@@ -1,5 +1,4 @@
-from ip_info.batch.progress import InMemoryProgressTracker
-from ip_info.batch.protocols import ProgressTracker
+from ip_info.utils.progress import InMemoryProgressTracker, ProgressTracker
 
 
 class InMemoryIPWriter:

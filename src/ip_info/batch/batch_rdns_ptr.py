@@ -6,6 +6,7 @@ import sys
 from ip_info.batch import run_concurrent
 from ip_info.channel.rdns_ptr import RdnsPtrChannel
 from ip_info.store import IPWriter
+from ip_info.utils import load_ips
 
 CHANNEL_NAME = "rdns_ptr"
 DEFAULT_STORAGE = "data/ip_data.json"
@@ -35,8 +36,7 @@ def main():
         ],
     )
 
-    with open(args.ip_file, encoding="utf-8") as f:
-        ips = [line.strip() for line in f if line.strip()]
+    ips = load_ips(args.ip_file)
 
     logger.info("加载 %d 个 IP，渠道: %s, 并发: %d", len(ips), CHANNEL_NAME, args.workers)
 

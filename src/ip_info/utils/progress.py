@@ -1,3 +1,19 @@
+"""进度跟踪工具。
+
+提供 ProgressTracker 协议和 File/InMemory 两种实现。
+"""
+
+from __future__ import annotations
+
+from typing import Protocol, runtime_checkable
+
+
+@runtime_checkable
+class ProgressTracker(Protocol):
+    def is_processed(self, ip: str) -> bool: ...
+    def mark_processed(self, ip: str) -> None: ...
+
+
 class InMemoryProgressTracker:
     def __init__(self):
         self._processed: set[str] = set()

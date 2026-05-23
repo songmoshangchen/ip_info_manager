@@ -4,11 +4,11 @@ import threading
 
 import pytest
 
-from ip_info.batch.concurrent import run_concurrent
-from ip_info.batch.progress import InMemoryProgressTracker
-from ip_info.batch.query import BatchResult
+from ip_info.batch.core.concurrent import run_concurrent
+from ip_info.batch.core.query import BatchResult
 from ip_info.channel.adapter import BaseChannelAdapter
 from ip_info.channel.errors import ChannelError, ChannelPermanentError
+from ip_info.utils.progress import InMemoryProgressTracker
 
 
 class _FakeChannel(BaseChannelAdapter):
