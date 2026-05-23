@@ -294,22 +294,26 @@ class TestRunCircuitBreaking:
 
 
 class TestRunDependencyCheck:
-    def test_run_disabled_skips_all(self):
+    def test_run_disabled_skips_all(self, caplog):
         ch = _FakeChannel()
         ch.disabled = True
         q, _, writer = _make_query(["1.1.1.1", "2.2.2.2"], channel=ch, no_validate=True)
-        result = q.run()
+        with caplog.at_level("WARNING"):
+            result = q.run()
         assert result.success_count == 0
         assert result.fail_count == 0
         assert len(writer.writes) == 0
+        assert "渠道已禁用" in caplog.text
 
-    def test_run_validate_failure_skips_all_queries(self):
+    def test_run_validate_failure_skips_all_queries(self, caplog):
         ch = _FakeChannel()
         ch._validate_should_fail = True
         q, _, writer = _make_query(["1.1.1.1"], channel=ch, no_validate=False)
-        result = q.run()
+        with caplog.at_level("WARNING"):
+            result = q.run()
         assert result.success_count == 0
         assert len(writer.writes) == 0
+        assert "渠道已禁用" in caplog.text
 
     def test_run_no_validate_true_allows_disabled_channel(self):
         ch = _FakeChannel()

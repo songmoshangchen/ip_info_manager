@@ -70,6 +70,10 @@ class BaseBatchQuery:
             self._channel.validate()
 
         if self._channel.disabled:
+            logger.warning(
+                "[%s] 渠道已禁用，跳过查询。可能原因：验证失败或凭证无效",
+                self._channel_name,
+            )
             total_elapsed = time.time() - start_time
             return BatchResult(total_elapsed=total_elapsed)
 

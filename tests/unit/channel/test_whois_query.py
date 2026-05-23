@@ -160,13 +160,13 @@ class TestWhoisQueryFetch:
 
         assert result["whois_data"]["status"] == ["active"]
 
-    def test_fetch_status为None_返回空列表(self):
+    def test_fetch_status为None_不包含该字段(self):
         mock_obj = _make_whois_obj(status=None)
         channel = WhoisQueryChannel()
         with patch("ip_info.channel.whois_query.whois_query", return_value=mock_obj):
             result = channel.fetch("example.com")
 
-        assert result["whois_data"]["status"] == []
+        assert "status" not in result["whois_data"]
 
     def test_fetch_字段为None时不包含(self):
         mock_obj = _make_whois_obj(org=None, city=None, state=None, address=None)
@@ -188,14 +188,14 @@ class TestWhoisQueryFetch:
 
         assert result["whois_data"]["dnssec"] == "signed"
 
-    def test_fetch_dnssec不存在_返回None(self):
+    def test_fetch_dnssec不存在_不包含该字段(self):
         mock_obj = _make_whois_obj()
         del mock_obj.dnssec
         channel = WhoisQueryChannel()
         with patch("ip_info.channel.whois_query.whois_query", return_value=mock_obj):
             result = channel.fetch("example.com")
 
-        assert result["whois_data"]["dnssec"] is None
+        assert "dnssec" not in result["whois_data"]
 
     def test_fetch网络错误透传ChannelError(self):
         channel = WhoisQueryChannel()

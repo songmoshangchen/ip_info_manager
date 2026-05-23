@@ -95,9 +95,12 @@ class WhoisQueryChannel(BaseChannelAdapter):
             whois_data["name_servers"] = _ensure_list(name_servers)
 
         status = getattr(w, "status", None)
-        whois_data["status"] = _ensure_list(status)
+        if status:
+            whois_data["status"] = _ensure_list(status)
 
-        whois_data["dnssec"] = getattr(w, "dnssec", None)
+        dnssec = getattr(w, "dnssec", None)
+        if dnssec:
+            whois_data["dnssec"] = dnssec
 
         return {
             "query_target": ip,

@@ -47,6 +47,10 @@ def run_concurrent(
         channel.validate()
 
     if channel.disabled:
+        logger.warning(
+            "[%s] 渠道已禁用，跳过查询。可能原因：验证失败或凭证无效",
+            channel_name,
+        )
         return BatchResult()
 
     # 单线程退化

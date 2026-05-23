@@ -241,17 +241,19 @@ class TestRunConcurrentCircuitBreaking:
 
 
 class TestRunConcurrentDependencyCheck:
-    def test_disabled_channel_returns_empty(self):
+    def test_disabled_channel_returns_empty(self, caplog):
         ch = _FakeChannel()
         ch.disabled = True
-        result, _, writer = _run(
-            ["1.1.1.1", "2.2.2.2"],
-            workers=2,
-            channel=ch,
-            no_validate=True,
-        )
+        with caplog.at_level("WARNING"):
+            result, _, writer = _run(
+                ["1.1.1.1", "2.2.2.2"],
+                workers=2,
+                channel=ch,
+                no_validate=True,
+            )
         assert result.success_count == 0
         assert len(writer.writes) == 0
+        assert "渠道已禁用" in caplog.text
 
     def test_validate_failure_skips_queries(self):
         ch = _FakeChannel()
