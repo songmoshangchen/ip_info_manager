@@ -55,6 +55,22 @@ class TestIpinfoApiRequest:
         call_kwargs = mock_get.call_args
         assert call_kwargs[1]["headers"]["Authorization"] == "Bearer valid_token"
 
+    def test_过滤readme字段(self):
+        channel = IpinfoApiChannel(token="valid_token")
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "ip": "8.8.8.8",
+            "country": "US",
+            "readme": "https://ipinfo.io/missingauth",
+        }
+        mock_response.raise_for_status.return_value = None
+        with patch("ip_info.channel.ipinfo_api.requests.get", return_value=mock_response):
+            result = channel._request("8.8.8.8")
+
+        assert "readme" not in result
+        assert result["country"] == "US"
+
     def test_Token无效_HTTP401_抛ChannelPermanentError(self):
         channel = IpinfoApiChannel(token="bad_token")
         mock_response = MagicMock()

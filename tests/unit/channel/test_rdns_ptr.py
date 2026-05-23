@@ -24,10 +24,10 @@ class TestRdnsPtrRequest:
 
         assert result["query_ip"] == "8.8.8.8"
         assert result["hostname"] == "dns.google"
-        assert result["aliases"] == ["dns.google"]
-        assert result["ip_addresses"] == ["8.8.8.8"]
-        assert result["ptr_count"] == 2
         assert result["has_ptr"] is True
+        assert "aliases" not in result
+        assert "ip_addresses" not in result
+        assert "ptr_count" not in result
 
     def test_无PTR记录_herror(self):
         channel = RdnsPtrChannel()

@@ -21,9 +21,6 @@ class RdnsPtrChannel(BaseChannelAdapter):
             return {
                 "query_ip": ip,
                 "hostname": ptr_records[0],
-                "aliases": ptr_records[1],
-                "ip_addresses": ptr_records[2],
-                "ptr_count": len(ptr_records[1]) + 1,
                 "has_ptr": True,
             }
         except socket.herror as e:

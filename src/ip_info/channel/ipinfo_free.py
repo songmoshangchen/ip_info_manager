@@ -33,4 +33,6 @@ class IpinfoFreeChannel(BaseChannelAdapter):
         except requests.exceptions.HTTPError:
             raise ChannelError(f"IPInfo 免费查询失败: {ip} - HTTP {response.status_code}")
 
-        return response.json()
+        data = response.json()
+        data.pop("readme", None)
+        return data
