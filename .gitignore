@@ -14,7 +14,7 @@ debug_*.py
 *.old
 *~
 *.swp
-.trae/
+.trae/skills/
 custom_rules.json
 .last_update
 *.egg-info/

@@ -1,0 +1,13 @@
+- [ ] load_ip_file 去重加载：raw_count/unique_count/duplicate_count 统计正确
+- [ ] load_ip_file 跳过空行
+- [ ] load_ip_file 文件不存在抛 FileNotFoundError
+- [ ] setup_batch_logging 配置控制台+文件 handler
+- [ ] setup_batch_logging 重复调用不重复添加 handler
+- [ ] default_progress_file 生成正确路径
+- [ ] 每个 CLI 脚本接受 ip_file + --no-validate 参数
+- [ ] ipinfo_api 脚本额外接受 --no-api 参数
+- [ ] 每个 CLI 脚本能端到端运行（加载 IP → 查询 → 写入 → 进度）
+- [ ] 无 sys.path.insert hack
+- [ ] 无 from legacy import ...
+- [ ] `python -m pytest tests/unit/ -v` 全部通过
+- [ ] `ruff check src/ tests/unit/` 无错误

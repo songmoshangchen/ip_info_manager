@@ -1,0 +1,38 @@
+- [x] `ChannelProtocol` Protocol 已定义且 `@runtime_checkable`，isinstance 检查通过/失败正确
+- [x] `ChannelFetcher` Protocol 已定义且 `@runtime_checkable`，isinstance 检查通过
+- [x] `ChannelError` 异常类已定义，支持可读错误消息
+- [x] `ChannelPermanentError` 是 `ChannelError` 的子类
+- [x] `ChannelRegistry.register()` 正常注册和 TypeError 检查（S24）
+- [x] `ChannelRegistry.register()` 重复注册覆盖旧渠道（S25）
+- [x] `ChannelRegistry.get()` 正常获取和不存在返回 None（S26）
+- [x] `ChannelRegistry.list_names()` / `list_channels()` 返回正确（S21）
+- [x] `ChannelRegistry.validate()` / `validate_all()` 验证逻辑正确（S22/S28）
+- [x] `ChannelRegistry.fetch()` 委托调用成功（S23）
+- [x] `ChannelRegistry.fetch()` 透传 ChannelError（S27）
+- [x] `ChannelRegistry.fetch()` 不存在渠道抛 KeyError（S27）
+- [x] `InMemoryChannel` 默认行为正确（name='test_channel', validate=True, fetch={}）
+- [x] `InMemoryChannel` 自定义 validate/fetch 结果正确
+- [x] `InMemoryChannel` fetch_error 配置抛出 ChannelError
+- [x] `InMemoryChannel.fetch_calls` 正确记录调用参数
+- [x] `InMemoryChannel.fetch()` 返回副本（非引用）
+- [x] `InMemoryChannel` 满足 `ChannelProtocol`
+- [x] `BaseChannelAdapter.validate()` 成功返回 True，disabled=False
+- [x] `BaseChannelAdapter.validate()` 失败（异常）返回 False，disabled=True
+- [x] `BaseChannelAdapter.disabled` 标志替代 sys.exit 的"终止后续查询"功能
+- [x] `BaseChannelAdapter.validate()` 是无状态调用（每次重新执行 _validate_key）
+- [x] `BaseChannelAdapter.fetch()` 标准调用链正确（delay → _request → _parse → format_output）
+- [x] `BaseChannelAdapter.fetch()` 透传 kwargs 给 _request（delay 除外）
+- [x] `BaseChannelAdapter.fetch()` ChannelError 透传（S36/S46/S56），不改变 disabled
+- [x] `BaseChannelAdapter.fetch()` ChannelPermanentError 设 disabled=True（S38/S49），由 fetch() 管理
+- [x] `BaseChannelAdapter._parse()` 默认实现（dict 透传），爬虫类可覆盖
+- [x] `BaseChannelAdapter.fetch()` delay 参数由 fetch() 消费，不传给 _request()
+- [x] `BaseChannelAdapter` 基类不内置 logger
+- [x] `BaseChannelAdapter` 满足 `ChannelProtocol`
+- [x] 未实现 `_request()` 的子类无法实例化
+- [x] 所有新测试文件位于 `tests/unit/channel/`，不依赖 `legacy/` 代码
+- [x] 无 `sys.path.insert` hack
+- [x] 无 `from legacy import ...`
+- [x] 每个 Task 使用了 `tdd` skill（RED → GREEN 循环）
+- [x] Task 5 使用了 `brainstorming` skill 确认 6 个设计决策
+- [x] 每个 Task 使用了 `git-commit` skill（commit message 含中文翻译）
+- [x] `python -m pytest tests/unit/channel/ -q` 全部通过（50 passed）
