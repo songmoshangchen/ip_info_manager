@@ -2,6 +2,9 @@ import json
 import os
 import threading
 
+from ip_info.batch.progress import FileProgressTracker
+from ip_info.batch.protocols import ProgressTracker
+
 
 class IPWriter:
     """基于 JSON 文件的 IP 数据写入器，线程安全"""
@@ -59,6 +62,14 @@ class IPWriter:
             self._save_data(store)
         return True
 
+    def progress_tracker(self, channel_name: str) -> ProgressTracker:
+        """为指定渠道返回进度跟踪器"""
+        base = self._storage_file
+        if base.endswith(".json"):
+            base = base[:-5]
+        progress_path = f"{base}.{channel_name}.progress"
+        return FileProgressTracker(progress_path)
+
 
 class IPReader:
     """基于 JSON 文件的 IP 数据读取器"""
@@ -100,9 +111,7 @@ class IPReader:
             return []
         return [key for key in ip_data.keys() if key != "ip"]
 
-    def search_ips_by_channel(
-        self, channel: str, key: str = None, value: str = None
-    ) -> list[str]:
+    def search_ips_by_channel(self, channel: str, key: str = None, value: str = None) -> list[str]:
         """按渠道名称和键值对搜索 IP"""
         store = self._load_data()
         matched = []

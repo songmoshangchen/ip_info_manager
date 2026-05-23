@@ -1,3 +1,7 @@
+from ip_info.batch.progress import InMemoryProgressTracker
+from ip_info.batch.protocols import ProgressTracker
+
+
 class InMemoryIPWriter:
     """基于内存的 IP 数据写入器"""
 
@@ -22,6 +26,10 @@ class InMemoryIPWriter:
             return True
         return False
 
+    def progress_tracker(self, channel_name: str) -> ProgressTracker:
+        """为指定渠道返回进度跟踪器"""
+        return InMemoryProgressTracker()
+
     def get_all(self) -> dict[str, dict]:
         return self._store
 
@@ -43,9 +51,7 @@ class InMemoryIPWriter:
             return []
         return [key for key in ip_data.keys() if key != "ip"]
 
-    def search_ips_by_channel(
-        self, channel: str, key: str = None, value: str = None
-    ) -> list[str]:
+    def search_ips_by_channel(self, channel: str, key: str = None, value: str = None) -> list[str]:
         matched = []
         for ip, ip_data in self._store.items():
             if channel not in ip_data:
@@ -91,9 +97,7 @@ class InMemoryIPReader:
             return []
         return [key for key in ip_data.keys() if key != "ip"]
 
-    def search_ips_by_channel(
-        self, channel: str, key: str = None, value: str = None
-    ) -> list[str]:
+    def search_ips_by_channel(self, channel: str, key: str = None, value: str = None) -> list[str]:
         matched = []
         for ip, ip_data in self._store.items():
             if channel not in ip_data:
