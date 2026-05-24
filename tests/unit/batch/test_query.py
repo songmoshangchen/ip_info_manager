@@ -1,6 +1,7 @@
 import pytest
 
 from ip_info.batch.core.query import BaseBatchQuery, BatchResult
+from ip_info.batch.core.runner import BatchRunner
 from ip_info.channel.adapter import BaseChannelAdapter
 from ip_info.channel.errors import ChannelError, ChannelPermanentError
 from ip_info.utils.progress import InMemoryProgressTracker
@@ -66,6 +67,12 @@ def _make_query(
         ch,
         writer,
     )
+
+
+class TestBatchRunnerProtocol:
+    def test_base_batch_query_satisfies_protocol(self):
+        q, _, _ = _make_query(["1.1.1.1"])
+        assert isinstance(q, BatchRunner)
 
 
 class TestBatchResult:
@@ -291,6 +298,34 @@ class TestRunCircuitBreaking:
         assert result.fail_count == 3
         assert result.stopped_early is True
         assert result.stop_reason == "circuit_break"
+
+
+class TestRunWarningLogging:
+    def test_permanent_error_logs_warning(self, caplog):
+        ch = _FakeChannel()
+        ch._results["1.1.1.1"] = ChannelPermanentError("key invalid")
+        q, _, _ = _make_query(["1.1.1.1", "2.2.2.2"], channel=ch)
+        with caplog.at_level("WARNING"):
+            q.run()
+        assert any("永久错误" in r.message for r in caplog.records)
+
+    def test_channel_error_logs_warning(self, caplog):
+        ch = _FakeChannel()
+        ch._results["1.1.1.1"] = ChannelError("timeout")
+        q, _, _ = _make_query(["1.1.1.1", "2.2.2.2"], channel=ch)
+        with caplog.at_level("WARNING"):
+            q.run()
+        assert any("查询失败" in r.message and "1.1.1.1" in r.message for r in caplog.records)
+
+    def test_circuit_break_logs_warning(self, caplog):
+        ch = _FakeChannel()
+        ips = ["1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4", "5.5.5.5", "6.6.6.6"]
+        for ip in ips:
+            ch._results[ip] = ChannelError("fail")
+        q, _, _ = _make_query(ips, channel=ch)
+        with caplog.at_level("WARNING"):
+            q.run()
+        assert any("熔断" in r.message for r in caplog.records)
 
 
 class TestRunDependencyCheck:

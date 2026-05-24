@@ -71,6 +71,8 @@ def run_concurrent(
 
     # 并发查询
     start_time = time.time()
+    total = len(pending_ips)
+    done_count = 0
     success_count = 0
     fail_count = 0
     consecutive_failures = 0
@@ -102,21 +104,26 @@ def run_concurrent(
             if error is not None:
                 with lock:
                     fail_count += 1
+                    done_count += 1
                     if isinstance(error, ChannelPermanentError):
                         channel.disabled = True
                         stop_event.set()
                         stop_reason = "permanent_error"
                         logger.warning(
-                            "[%s] 查询失败(永久错误): %s - %s",
+                            "[%s] 进度: %d/%d - 查询失败(永久错误): %s - %s",
                             channel_name,
+                            done_count,
+                            total,
                             ip,
                             error,
                         )
                     else:
                         consecutive_failures += 1
                         logger.warning(
-                            "[%s] 查询失败: %s - %s",
+                            "[%s] 进度: %d/%d - 查询失败: %s - %s",
                             channel_name,
+                            done_count,
+                            total,
                             ip,
                             error,
                         )
@@ -137,8 +144,15 @@ def run_concurrent(
             writer.add_or_update_ip(ip, channel_name, data)
             with lock:
                 success_count += 1
+                done_count += 1
                 consecutive_failures = 0
-            logger.info("[%s] 查询成功: %s", channel_name, ip)
+                logger.info(
+                    "[%s] 进度: %d/%d - 查询成功: %s",
+                    channel_name,
+                    done_count,
+                    total,
+                    ip,
+                )
             if progress_tracker is not None:
                 progress_tracker.mark_processed(ip)
 

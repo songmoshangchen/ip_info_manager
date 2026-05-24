@@ -240,6 +240,47 @@ class TestRunConcurrentCircuitBreaking:
         assert result.stop_reason == "circuit_break"
 
 
+class TestRunConcurrentProgressLogging:
+    def test_success_logs_progress_counter(self, caplog):
+        result, _, _ = _run(["1.1.1.1", "2.2.2.2", "3.3.3.3"], workers=2)
+        assert result.success_count == 3
+        with caplog.at_level("INFO"):
+            _run(["1.1.1.1", "2.2.2.2", "3.3.3.3"], workers=2)
+        progress_logs = [r for r in caplog.records if "进度" in r.message]
+        assert len(progress_logs) == 3
+        assert "1/3" in progress_logs[0].message
+        assert "2/3" in progress_logs[1].message
+        assert "3/3" in progress_logs[2].message
+
+    def test_failure_logs_progress_counter(self, caplog):
+        ch = _FakeChannel()
+        ch._results["2.2.2.2"] = ChannelError("fail")
+        with caplog.at_level("INFO"):
+            _run(["1.1.1.1", "2.2.2.2", "3.3.3.3"], workers=2, channel=ch)
+        fail_warnings = [r for r in caplog.records if r.levelname == "WARNING" and "查询失败" in r.message]
+        assert len(fail_warnings) >= 1
+        for record in fail_warnings:
+            assert "2.2.2.2" in record.message
+
+
+class TestRunConcurrentWarningLogging:
+    def test_permanent_error_logs_warning(self, caplog):
+        ch = _FakeChannel()
+        ch._results["1.1.1.1"] = ChannelPermanentError("key invalid")
+        with caplog.at_level("WARNING"):
+            _run(["1.1.1.1", "2.2.2.2"], workers=2, channel=ch)
+        assert any("永久错误" in r.message for r in caplog.records)
+
+    def test_circuit_break_logs_warning(self, caplog):
+        ch = _FakeChannel()
+        ips = [f"{i}.{i}.{i}.{i}" for i in range(1, 7)]
+        for ip in ips:
+            ch._results[ip] = ChannelError("fail")
+        with caplog.at_level("WARNING"):
+            _run(ips, workers=2, channel=ch)
+        assert any("熔断" in r.message for r in caplog.records)
+
+
 class TestRunConcurrentDependencyCheck:
     def test_disabled_channel_returns_empty(self, caplog):
         ch = _FakeChannel()
