@@ -80,6 +80,7 @@ class TestBatchResult:
         result = BatchResult()
         assert result.success_count == 0
         assert result.fail_count == 0
+        assert result.skip_count == 0
         assert result.total_elapsed == 0.0
         assert result.stopped_early is False
         assert result.stop_reason == ""
@@ -215,6 +216,30 @@ class TestRunProgressTracking:
         q, _, _ = _make_query(["1.1.1.1"], progress_tracker=tracker, channel=ch)
         q.run()
         assert tracker.is_processed("1.1.1.1") is False
+
+    def test_run_skip_count_with_tracker(self):
+        tracker = InMemoryProgressTracker()
+        tracker.mark_processed("1.1.1.1")
+        q, _, _ = _make_query(["1.1.1.1", "2.2.2.2", "3.3.3.3"], progress_tracker=tracker)
+        result = q.run()
+        assert result.skip_count == 1
+        assert result.success_count == 2
+
+    def test_run_skip_count_without_tracker(self):
+        q, _, _ = _make_query(["1.1.1.1", "2.2.2.2"])
+        result = q.run()
+        assert result.skip_count == 0
+        assert result.success_count == 2
+
+    def test_run_all_skipped(self):
+        tracker = InMemoryProgressTracker()
+        tracker.mark_processed("1.1.1.1")
+        tracker.mark_processed("2.2.2.2")
+        q, _, _ = _make_query(["1.1.1.1", "2.2.2.2"], progress_tracker=tracker)
+        result = q.run()
+        assert result.skip_count == 2
+        assert result.success_count == 0
+        assert result.fail_count == 0
 
 
 class TestRunErrorHandling:

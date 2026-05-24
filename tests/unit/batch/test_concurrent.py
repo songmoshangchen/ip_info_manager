@@ -166,6 +166,35 @@ class TestRunConcurrentProgressTracking:
         _run(["1.1.1.1"], workers=2, progress_tracker=tracker, channel=ch)
         assert tracker.is_processed("1.1.1.1") is False
 
+    def test_skip_count_with_tracker(self):
+        tracker = InMemoryProgressTracker()
+        tracker.mark_processed("1.1.1.1")
+        result, _, _ = _run(
+            ["1.1.1.1", "2.2.2.2", "3.3.3.3"],
+            workers=2,
+            progress_tracker=tracker,
+        )
+        assert result.skip_count == 1
+        assert result.success_count == 2
+
+    def test_skip_count_without_tracker(self):
+        result, _, _ = _run(["1.1.1.1", "2.2.2.2"], workers=2)
+        assert result.skip_count == 0
+        assert result.success_count == 2
+
+    def test_all_skipped(self):
+        tracker = InMemoryProgressTracker()
+        tracker.mark_processed("1.1.1.1")
+        tracker.mark_processed("2.2.2.2")
+        result, _, _ = _run(
+            ["1.1.1.1", "2.2.2.2"],
+            workers=2,
+            progress_tracker=tracker,
+        )
+        assert result.skip_count == 2
+        assert result.success_count == 0
+        assert result.fail_count == 0
+
 
 class TestRunConcurrentErrorHandling:
     def test_channel_error_does_not_write(self):

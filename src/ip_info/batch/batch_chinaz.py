@@ -55,9 +55,10 @@ def main():
     result = query.run()
 
     logger.info(
-        "完成: 成功 %d, 失败 %d, 耗时 %.1fs, 提前停止: %s",
+        "完成: 成功 %d, 失败 %d, 跳过 %d, 耗时 %.1fs, 提前停止: %s",
         result.success_count,
         result.fail_count,
+        result.skip_count,
         result.total_elapsed,
         result.stop_reason or "否",
     )

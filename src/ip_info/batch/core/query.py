@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 class BatchResult:
     success_count: int = 0
     fail_count: int = 0
+    skip_count: int = 0
     total_elapsed: float = 0.0
     stopped_early: bool = False
     stop_reason: str = ""
@@ -65,6 +66,7 @@ class BaseBatchQuery:
         success_count = 0
         fail_count = 0
         consecutive_failures = 0
+        skip_count = self.total_count - self.pending_count
 
         if not self._no_validate:
             self._channel.validate()
@@ -77,6 +79,7 @@ class BaseBatchQuery:
             total_elapsed = time.time() - start_time
             return BatchResult(
                 fail_count=len(self._pending_ips),
+                skip_count=skip_count,
                 total_elapsed=total_elapsed,
             )
 
@@ -139,6 +142,7 @@ class BaseBatchQuery:
         return BatchResult(
             success_count=success_count,
             fail_count=fail_count,
+            skip_count=skip_count,
             total_elapsed=total_elapsed,
             stopped_early=stopped_early,
             stop_reason=stop_reason,

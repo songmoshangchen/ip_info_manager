@@ -42,6 +42,8 @@ def run_concurrent(
     else:
         pending_ips = list(unique_ips)
 
+    skip_count = len(unique_ips) - len(pending_ips)
+
     # 渠道验证
     if not no_validate:
         channel.validate()
@@ -51,7 +53,7 @@ def run_concurrent(
             "[%s] 渠道已禁用，跳过查询。可能原因：验证失败或凭证无效",
             channel_name,
         )
-        return BatchResult(fail_count=len(pending_ips))
+        return BatchResult(fail_count=len(pending_ips), skip_count=skip_count)
 
     # 单线程退化
     if workers <= 1:
@@ -165,6 +167,7 @@ def run_concurrent(
     return BatchResult(
         success_count=success_count,
         fail_count=fail_count,
+        skip_count=skip_count,
         total_elapsed=total_elapsed,
         stopped_early=stopped_early,
         stop_reason=stop_reason,
