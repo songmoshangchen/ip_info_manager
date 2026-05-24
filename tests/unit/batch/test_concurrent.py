@@ -293,6 +293,7 @@ class TestRunConcurrentDependencyCheck:
                 no_validate=True,
             )
         assert result.success_count == 0
+        assert result.fail_count == 2
         assert len(writer.writes) == 0
         assert "渠道已禁用" in caplog.text
 

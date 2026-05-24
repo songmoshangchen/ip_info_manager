@@ -75,7 +75,10 @@ class BaseBatchQuery:
                 self._channel_name,
             )
             total_elapsed = time.time() - start_time
-            return BatchResult(total_elapsed=total_elapsed)
+            return BatchResult(
+                fail_count=len(self._pending_ips),
+                total_elapsed=total_elapsed,
+            )
 
         for idx, ip in enumerate(self._pending_ips, start=1):
             total = len(self._pending_ips)
