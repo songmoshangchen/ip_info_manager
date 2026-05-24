@@ -1,6 +1,6 @@
 """IP 列表文件加载工具。
 
-处理 UTF-8 BOM、去空行、去重。
+处理 UTF-8 BOM、去空行、去重、过滤注释行。
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ def load_ips(file_path: str) -> list[str]:
         ips: list[str] = []
         for line in f:
             ip = line.strip()
-            if ip and ip not in seen:
+            if ip and not ip.startswith("#") and ip not in seen:
                 seen.add(ip)
                 ips.append(ip)
         return ips
