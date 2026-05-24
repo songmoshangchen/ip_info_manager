@@ -1,8 +1,11 @@
+import logging
 import time
 from abc import ABC, abstractmethod
 from datetime import datetime
 
 from ip_info.channel.errors import ChannelPermanentError
+
+logger = logging.getLogger(__name__)
 
 
 class BaseChannelAdapter(ABC):
@@ -34,8 +37,9 @@ class BaseChannelAdapter(ABC):
             self._validate_key()
             self.disabled = False
             return True
-        except Exception:
+        except Exception as e:
             self.disabled = True
+            logger.warning("[%s] 渠道验证失败: %s", self.channel_name, e)
             return False
 
     def fetch(self, ip: str, **kwargs) -> dict:
