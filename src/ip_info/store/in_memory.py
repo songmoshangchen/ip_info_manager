@@ -1,4 +1,5 @@
 import threading
+from datetime import datetime, timezone
 
 from ip_info.utils.progress import InMemoryProgressTracker, ProgressTracker
 
@@ -14,7 +15,13 @@ class InMemoryDomainCache:
 
     def set(self, domain: str, data: dict) -> None:
         with self._lock:
-            self._cache[domain] = data
+            entry = {
+                "domain": domain,
+                "status": data.get("status", ""),
+                "resolved_ips": data.get("resolved_ips", []),
+                "verify_time": data.get("verify_time", datetime.now(timezone.utc).isoformat()),
+            }
+            self._cache[domain] = entry
 
 
 class InMemoryIPWriter:

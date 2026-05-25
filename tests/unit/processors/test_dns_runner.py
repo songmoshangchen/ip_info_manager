@@ -103,7 +103,7 @@ class TestDomainCacheConcurrency:
         def writer_thread(domain_prefix, count):
             try:
                 for i in range(count):
-                    cache.set(f"{domain_prefix}_{i}", {"status": "matched", "index": i})
+                    cache.set(f"{domain_prefix}_{i}", {"status": "matched", "resolved_ips": [f"10.0.0.{i}"]})
             except Exception as e:
                 errors.append(e)
 
@@ -130,7 +130,7 @@ class TestDomainCacheConcurrency:
                 result = cache.get(f"t{t}_{i}")
                 assert result is not None
                 assert result["status"] == "matched"
-                assert result["index"] == i
+                assert result["resolved_ips"] == [f"10.0.0.{i}"]
 
     def test_concurrent_set_last_write_wins(self):
         import threading
@@ -140,7 +140,7 @@ class TestDomainCacheConcurrency:
 
         def writer(value):
             barrier.wait()
-            cache.set("shared.com", {"value": value})
+            cache.set("shared.com", {"status": "matched", "resolved_ips": [f"1.2.3.{value}"]})
 
         threads = [threading.Thread(target=writer, args=(i,)) for i in range(5)]
         for th in threads:
@@ -150,21 +150,22 @@ class TestDomainCacheConcurrency:
 
         result = cache.get("shared.com")
         assert result is not None
-        assert result["value"] in range(5)
+        assert result["status"] == "matched"
+        assert len(result["resolved_ips"]) == 1
 
     def test_concurrent_read_during_write_returns_valid_data(self):
         import threading
         import time
 
         cache = InMemoryDomainCache()
-        cache.set("test.com", {"version": 0, "status": "ok"})
+        cache.set("test.com", {"status": "ok", "resolved_ips": ["1.1.1.1"]})
 
         results = []
         stop_event = threading.Event()
 
         def writer():
             for i in range(1, 100):
-                cache.set("test.com", {"version": i, "status": "ok"})
+                cache.set("test.com", {"status": "ok", "resolved_ips": [f"10.0.0.{i}"]})
                 time.sleep(0.0001)
             stop_event.set()
 
@@ -184,8 +185,8 @@ class TestDomainCacheConcurrency:
         t_reader.join(timeout=2)
 
         for r in results:
-            assert "version" in r
             assert "status" in r
+            assert "resolved_ips" in r
             assert r["status"] == "ok"
 
 
@@ -478,14 +479,34 @@ class TestInMemoryDomainCache:
 
     def test_set_and_get(self):
         cache = InMemoryDomainCache()
-        cache.set("example.com", {"status": "matched"})
-        assert cache.get("example.com") == {"status": "matched"}
+        cache.set("example.com", {"status": "matched", "resolved_ips": ["1.2.3.4"]})
+        result = cache.get("example.com")
+        assert result["domain"] == "example.com"
+        assert result["status"] == "matched"
+        assert result["resolved_ips"] == ["1.2.3.4"]
+        assert "verify_time" in result
 
     def test_set_overwrites(self):
         cache = InMemoryDomainCache()
-        cache.set("example.com", {"status": "matched"})
-        cache.set("example.com", {"status": "changed"})
-        assert cache.get("example.com") == {"status": "changed"}
+        cache.set("example.com", {"status": "matched", "resolved_ips": ["1.1.1.1"]})
+        cache.set("example.com", {"status": "changed", "resolved_ips": ["2.2.2.2"]})
+        result = cache.get("example.com")
+        assert result["status"] == "changed"
+        assert result["resolved_ips"] == ["2.2.2.2"]
+
+    def test_verify_time自动生成(self):
+        cache = InMemoryDomainCache()
+        cache.set("example.com", {"status": "matched", "resolved_ips": ["1.2.3.4"]})
+        result = cache.get("example.com")
+        assert isinstance(result["verify_time"], str)
+        assert "T" in result["verify_time"]
+
+    def test_verify_time可显式传入(self):
+        cache = InMemoryDomainCache()
+        ts = "2026-01-01T00:00:00+00:00"
+        cache.set("example.com", {"status": "matched", "resolved_ips": ["1.2.3.4"], "verify_time": ts})
+        result = cache.get("example.com")
+        assert result["verify_time"] == ts
 
 
 class TestDomainCacheIntegration:
