@@ -51,6 +51,7 @@ def main():
     from ip_info.store.json_store import IPReader, IPWriter
     from ip_info.store.sqlite_cache import SqliteDomainCache
     from ip_info.utils.load_ips import load_ips
+    from ip_info.utils.progress import FileProgressTracker
 
     if len(sys.argv) < 3:
         print("用法: python scripts/run_pipeline.py <ip_file> <output_dir>")
@@ -62,8 +63,10 @@ def main():
 
     storage_file = os.path.join(output_dir, "ip_data.json")
     domain_cache_db = os.path.join(output_dir, "domain_cache.db")
+    progress_file = os.path.join(output_dir, "progress.txt")
     rules_dir = os.path.join(project_root, "config", "classifier")
     tagger_config_dir = os.path.join(project_root, "config", "ip_tagger")
+    progress_tracker = FileProgressTracker(progress_file)
 
     start = time.time()
 
@@ -91,6 +94,7 @@ def main():
         rdns_channel=RdnsPtrChannel(),
         ipinfo_workers=2,
         rdns_workers=3,
+        progress_tracker=progress_tracker,
     )
     r1 = phase1.run()
     logger.info("Phase 1 完成: %s, 耗时 %.1fs", r1.message, r1.elapsed)
@@ -131,6 +135,7 @@ def main():
             aizhan_workers=1,
             chinaz_workers=2,
             fofa_workers=2,
+            progress_tracker=progress_tracker,
         )
         r3 = phase3.run()
         logger.info("Phase 3 完成: %s, 耗时 %.1fs", r3.message, r3.elapsed)
@@ -152,6 +157,7 @@ def main():
             dns_timeout=3.0,
             dns_concurrency=10,
             nmap_workers=3,
+            progress_tracker=progress_tracker,
         )
         r4 = phase4.run()
         logger.info("Phase 4 完成: %s, 耗时 %.1fs", r4.message, r4.elapsed)

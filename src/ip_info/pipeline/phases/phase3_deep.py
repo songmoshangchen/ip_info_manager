@@ -7,6 +7,7 @@ from ip_info.batch.core.query import BatchResult
 from ip_info.channel.adapter import BaseChannelAdapter
 from ip_info.pipeline.phase import PhaseResult
 from ip_info.store.protocols import IPDataReader, IPDataWriter
+from ip_info.utils.progress import ProgressTracker
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ class DeepQueryPhase:
         aizhan_workers: int = 1,
         chinaz_workers: int = 1,
         fofa_workers: int = 1,
+        progress_tracker: ProgressTracker | None = None,
     ):
         self._ips = ips
         self._writer = writer
@@ -36,6 +38,7 @@ class DeepQueryPhase:
         self._aizhan_workers = aizhan_workers
         self._chinaz_workers = chinaz_workers
         self._fofa_workers = fofa_workers
+        self._progress_tracker = progress_tracker
 
     @property
     def name(self) -> str:
@@ -71,7 +74,9 @@ class DeepQueryPhase:
                 writer=self._writer,
                 channel_name=name,
                 workers=workers,
+                delay=channel.default_delay,
                 no_validate=True,
+                progress_tracker=self._progress_tracker,
             )
             return (name, result)
 

@@ -7,6 +7,7 @@ from ip_info.channel.port_scan import PortScanChannel
 from ip_info.pipeline.phase import PhaseResult
 from ip_info.processors.dns_verify.runner import BatchDnsVerify
 from ip_info.store.protocols import IPDataReader, IPDataWriter
+from ip_info.utils.progress import ProgressTracker
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ class VerifyScanPhase:
         dns_concurrency: int = 10,
         nmap_workers: int = 1,
         no_validate: bool = False,
+        progress_tracker: ProgressTracker | None = None,
     ):
         self._ips = ips
         self._writer = writer
@@ -38,6 +40,7 @@ class VerifyScanPhase:
         self._dns_concurrency = dns_concurrency
         self._nmap_workers = nmap_workers
         self._no_validate = no_validate
+        self._progress_tracker = progress_tracker
 
     @property
     def name(self) -> str:
@@ -72,7 +75,9 @@ class VerifyScanPhase:
                 writer=self._writer,
                 channel_name="port_scan",
                 workers=self._nmap_workers,
+                delay=self._nmap_channel.default_delay,
                 no_validate=self._no_validate,
+                progress_tracker=self._progress_tracker,
             )
 
         with ThreadPoolExecutor(max_workers=2) as executor:

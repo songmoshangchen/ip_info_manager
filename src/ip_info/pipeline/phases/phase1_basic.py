@@ -6,6 +6,7 @@ from ip_info.batch.core.concurrent import run_concurrent
 from ip_info.channel.adapter import BaseChannelAdapter
 from ip_info.pipeline.phase import PhaseResult
 from ip_info.store.protocols import IPDataReader, IPDataWriter
+from ip_info.utils.progress import ProgressTracker
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,7 @@ class BasicCollectPhase:
         no_validate: bool = False,
         ipinfo_workers: int = 1,
         rdns_workers: int = 1,
+        progress_tracker: ProgressTracker | None = None,
     ):
         self._ips = ips
         self._writer = writer
@@ -31,6 +33,7 @@ class BasicCollectPhase:
         self._no_validate = no_validate
         self._ipinfo_workers = ipinfo_workers
         self._rdns_workers = rdns_workers
+        self._progress_tracker = progress_tracker
 
     @property
     def name(self) -> str:
@@ -60,7 +63,9 @@ class BasicCollectPhase:
                 writer=self._writer,
                 channel_name="ipinfo_api",
                 workers=self._ipinfo_workers,
+                delay=self._ipinfo_channel.default_delay,
                 no_validate=True,
+                progress_tracker=self._progress_tracker,
             )
 
         def run_rdns():
@@ -73,7 +78,9 @@ class BasicCollectPhase:
                 writer=self._writer,
                 channel_name="rdns_ptr",
                 workers=self._rdns_workers,
+                delay=self._rdns_channel.default_delay,
                 no_validate=True,
+                progress_tracker=self._progress_tracker,
             )
 
         with ThreadPoolExecutor(max_workers=2) as executor:
