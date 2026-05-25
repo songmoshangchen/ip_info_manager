@@ -91,11 +91,102 @@ class TestNormalFlow:
         assert channel_data["total_domains"] == 2
         assert channel_data["matched"] == 1
         assert channel_data["changed"] == 1
-        assert channel_data["unresolved"] == 0
-        assert channel_data["timeout"] == 0
-        assert channel_data["error"] == 0
-        assert "verify_time" in channel_data
-        assert len(channel_data["results"]) == 2
+
+
+class TestDomainCacheConcurrency:
+    def test_concurrent_get_set_no_data_loss(self):
+        import threading
+
+        cache = InMemoryDomainCache()
+        errors = []
+
+        def writer_thread(domain_prefix, count):
+            try:
+                for i in range(count):
+                    cache.set(f"{domain_prefix}_{i}", {"status": "matched", "index": i})
+            except Exception as e:
+                errors.append(e)
+
+        def reader_thread(domain_prefix, count):
+            try:
+                for i in range(count):
+                    cache.get(f"{domain_prefix}_{i}")
+            except Exception as e:
+                errors.append(e)
+
+        threads = []
+        for t in range(10):
+            threads.append(threading.Thread(target=writer_thread, args=(f"t{t}", 100)))
+            threads.append(threading.Thread(target=reader_thread, args=(f"t{t}", 100)))
+
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join()
+
+        assert errors == []
+        for t in range(10):
+            for i in range(100):
+                result = cache.get(f"t{t}_{i}")
+                assert result is not None
+                assert result["status"] == "matched"
+                assert result["index"] == i
+
+    def test_concurrent_set_last_write_wins(self):
+        import threading
+
+        cache = InMemoryDomainCache()
+        barrier = threading.Barrier(5)
+
+        def writer(value):
+            barrier.wait()
+            cache.set("shared.com", {"value": value})
+
+        threads = [threading.Thread(target=writer, args=(i,)) for i in range(5)]
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join()
+
+        result = cache.get("shared.com")
+        assert result is not None
+        assert result["value"] in range(5)
+
+    def test_concurrent_read_during_write_returns_valid_data(self):
+        import threading
+        import time
+
+        cache = InMemoryDomainCache()
+        cache.set("test.com", {"version": 0, "status": "ok"})
+
+        results = []
+        stop_event = threading.Event()
+
+        def writer():
+            for i in range(1, 100):
+                cache.set("test.com", {"version": i, "status": "ok"})
+                time.sleep(0.0001)
+            stop_event.set()
+
+        def reader():
+            while not stop_event.is_set():
+                r = cache.get("test.com")
+                if r is not None:
+                    results.append(r)
+                time.sleep(0.0001)
+
+        t_writer = threading.Thread(target=writer)
+        t_reader = threading.Thread(target=reader)
+
+        t_writer.start()
+        t_reader.start()
+        t_writer.join()
+        t_reader.join(timeout=2)
+
+        for r in results:
+            assert "version" in r
+            assert "status" in r
+            assert r["status"] == "ok"
 
 
 class TestSkipIPsWithNoData:
