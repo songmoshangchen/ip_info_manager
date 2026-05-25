@@ -1,0 +1,30 @@
+- [x] load_ips: 混合有效/无效 IP 正确过滤
+- [x] load_ips: 全部有效无 WARNING
+- [x] load_ips: 全部无效返回空列表
+- [x] load_ips: 注释行和空行不受影响
+- [x] filter_ips_by_classification: 正常过滤出 need_deep_query=True 的 IP
+- [x] filter_ips_by_classification: 全部被过滤返回空列表
+- [x] filter_ips_by_classification: 无分类数据 IP 默认保留
+- [x] SqliteDomainCache: get/set 正常读写
+- [x] SqliteDomainCache: 不存在域名返回 None
+- [x] SqliteDomainCache: 覆盖写入（updated_at 更新）
+- [x] SqliteDomainCache: 并发安全（多线程独立连接）
+- [x] SqliteDomainCache: 数据库文件自动创建
+- [x] Phase 1: ipinfo_api + rdns_ptr 并行查询，结果写入 store
+- [x] Phase 1: 空输入返回 PhaseResult(success=True)
+- [x] Phase 1: 渠道验证失败跳过并 WARNING
+- [x] Phase 1: 两渠道都失败返回 PhaseResult(success=False)
+- [x] Phase 2: 分类 + 标签顺序执行，结果写入 store
+- [x] Phase 2: no_tagger=True 跳过标签
+- [x] Phase 2: 空输入返回成功
+- [x] Phase 3: 三渠道并行查询（aizhan + chinaz + fofa_host）
+- [x] Phase 3: 空输入返回成功
+- [x] Phase 3: 部分渠道验证失败跳过
+- [x] Phase 4: DNS 验证 + Nmap 端口扫描并行
+- [x] Phase 4: 空 IP 列表返回成功
+- [x] Phase 4: 无 domain_cache 时 DNS 验证不使用缓存
+- [x] 所有 Phase 实现 Phase Protocol (isinstance 检查)
+- [x] PhaseResult.data 包含正确的渠道结果
+- [x] TDD + git-commit 循环执行
+- [x] 全量测试通过（python -m pytest tests/unit/ -q）— 680 passed
+- [x] ruff check + ruff format 通过
