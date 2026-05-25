@@ -1,6 +1,17 @@
 from ip_info.utils.progress import InMemoryProgressTracker, ProgressTracker
 
 
+class InMemoryDomainCache:
+    def __init__(self):
+        self._cache: dict[str, dict] = {}
+
+    def get(self, domain: str) -> dict | None:
+        return self._cache.get(domain)
+
+    def set(self, domain: str, data: dict) -> None:
+        self._cache[domain] = data
+
+
 class InMemoryIPWriter:
     """基于内存的 IP 数据写入器"""
 

@@ -16,8 +16,8 @@ CHANNEL_NAME = "domain_verify"
 DEFAULT_MAX_AGE_DAYS = 7
 
 
-def _is_verify_expired(verify_data: dict, max_age_days: float) -> bool:
-    verify_time_str = verify_data.get("verify_time", "")
+def _is_expired(data: dict, max_age_days: int) -> bool:
+    verify_time_str = data.get("verify_time", "")
     if not verify_time_str:
         return True
     try:
@@ -38,14 +38,23 @@ class BatchDnsVerify:
         reader,
         timeout: float = 3.0,
         concurrency: int = 10,
-        max_age_days: float = DEFAULT_MAX_AGE_DAYS,
+        max_age_days: int = DEFAULT_MAX_AGE_DAYS,
+        force_days: int | None = None,
+        domain_cache=None,
     ):
+        if not isinstance(max_age_days, int) or max_age_days < 1:
+            raise ValueError(f"max_age_days must be a positive integer (>= 1), got {max_age_days}")
+        if force_days is not None and (not isinstance(force_days, int) or force_days < 0):
+            raise ValueError(f"force_days must be a non-negative integer (>= 0) if provided, got {force_days}")
+
         self._ips = ips
         self._writer = writer
         self._reader = reader
         self._timeout = timeout
         self._concurrency = concurrency
         self._max_age_days = max_age_days
+        self._force_days = force_days
+        self._domain_cache = domain_cache
 
     def run(self) -> BatchResult:
         start_time = time.time()
@@ -56,7 +65,6 @@ class BatchDnsVerify:
 
         all_mappings: list[dict] = []
         skip_count = 0
-        expired_count = 0
         total = len(self._ips)
 
         for idx, ip in enumerate(self._ips, 1):
@@ -67,14 +75,32 @@ class BatchDnsVerify:
                 continue
 
             existing_verify = ip_data.get(CHANNEL_NAME)
-            if existing_verify and not _is_verify_expired(existing_verify, self._max_age_days):
+            if existing_verify and self._force_days != 0 and not _is_expired(existing_verify, self._max_age_days):
                 skip_count += 1
                 logger.debug("[%d/%d] %s — 验证结果有效（%d天内），跳过", idx, total, ip, self._max_age_days)
                 continue
 
-            if existing_verify and _is_verify_expired(existing_verify, self._max_age_days):
-                expired_count += 1
-                logger.info("[%d/%d] %s — 验证结果已过期（超过%.0f天），重新验证", idx, total, ip, self._max_age_days)
+            if existing_verify:
+                if self._force_days is not None and (
+                    self._force_days == 0 or _is_expired(existing_verify, self._force_days)
+                ):
+                    logger.info(
+                        "[%d/%d] %s — 验证结果已过期，force_days=%d，重新验证",
+                        idx,
+                        total,
+                        ip,
+                        self._force_days,
+                    )
+                else:
+                    skip_count += 1
+                    logger.warning(
+                        "[%d/%d] %s — 验证结果已过期（超过%d天），跳过",
+                        idx,
+                        total,
+                        ip,
+                        self._max_age_days,
+                    )
+                    continue
 
             ip_data["ip"] = ip
             mappings = extract_domain_mappings(ip_data)
@@ -89,25 +115,51 @@ class BatchDnsVerify:
             total_elapsed = time.time() - start_time
             return BatchResult(skip_count=skip_count, total_elapsed=total_elapsed)
 
-        logger.info(
-            "提取 %d 个域名映射，开始验证 (并发: %d, 超时: %.1fs)",
-            len(all_mappings),
-            self._concurrency,
-            self._timeout,
-        )
+        mappings_to_verify: list[dict] = []
+        cached_results: list[tuple[dict, dict]] = []
 
-        def on_progress(done, total_count):
-            if done % 20 == 0 or done == total_count:
-                logger.info("DNS 验证进度: %d/%d", done, total_count)
+        if self._domain_cache is not None:
+            for mapping in all_mappings:
+                domain = mapping["domain"]
+                cached = self._domain_cache.get(domain)
+                if cached is not None and not _is_expired(cached, self._max_age_days):
+                    cached_results.append((mapping, cached))
+                else:
+                    mappings_to_verify.append(mapping)
+        else:
+            mappings_to_verify = all_mappings
 
-        verify_results = batch_verify(
-            all_mappings,
-            timeout=self._timeout,
-            concurrency=self._concurrency,
-            progress_callback=on_progress,
-        )
+        verify_results = []
+        if mappings_to_verify:
+            logger.info(
+                "提取 %d 个域名映射，开始验证 (并发: %d, 超时: %.1fs)",
+                len(mappings_to_verify),
+                self._concurrency,
+                self._timeout,
+            )
 
-        grouped = build_verify_results(all_mappings, verify_results)
+            def on_progress(done, total_count):
+                if done % 20 == 0 or done == total_count:
+                    logger.info("DNS 验证进度: %d/%d", done, total_count)
+
+            verify_results = batch_verify(
+                mappings_to_verify,
+                timeout=self._timeout,
+                concurrency=self._concurrency,
+                progress_callback=on_progress,
+            )
+
+            if self._domain_cache is not None:
+                for i, mapping in enumerate(mappings_to_verify):
+                    self._domain_cache.set(mapping["domain"], verify_results[i])
+
+        combined_candidates = mappings_to_verify
+        combined_results = verify_results
+        for mapping, cached_result in cached_results:
+            combined_candidates.append(mapping)
+            combined_results.append(cached_result)
+
+        grouped = build_verify_results(combined_candidates, combined_results)
         verify_data = add_verify_stats(grouped)
 
         success_count = 0

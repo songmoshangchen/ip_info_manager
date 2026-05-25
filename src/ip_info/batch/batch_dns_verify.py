@@ -37,9 +37,16 @@ def parse_args():
     )
     parser.add_argument(
         "--max-age-days",
-        type=float,
+        type=int,
         default=7,
-        help="验证结果有效天数，超过则重新验证 (默认: 7, 设为 0 则强制全量)",
+        help="验证结果有效天数 (默认: 7)",
+    )
+    parser.add_argument(
+        "--force",
+        type=int,
+        default=None,
+        metavar="N",
+        help="重新验证 N 天前的数据 (默认: 不覆盖, 0=全量)",
     )
     return parser.parse_args()
 
@@ -72,6 +79,7 @@ def main():
         timeout=args.timeout,
         concurrency=args.concurrency,
         max_age_days=args.max_age_days,
+        force_days=args.force,
     )
     result = verifier.run()
 
