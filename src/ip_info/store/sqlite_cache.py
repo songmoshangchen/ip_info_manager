@@ -38,10 +38,12 @@ class SqliteDomainCache:
 
     def get(self, domain: str) -> dict | None:
         conn = self._get_conn()
-        row = conn.execute("SELECT status, resolved_ips FROM domain_cache WHERE domain = ?", (domain,)).fetchone()
+        row = conn.execute(
+            "SELECT status, resolved_ips, updated_at FROM domain_cache WHERE domain = ?", (domain,)
+        ).fetchone()
         if row is None:
             return None
-        status, resolved_ips_json = row
+        status, resolved_ips_json, updated_at = row
         try:
             resolved_ips = json.loads(resolved_ips_json)
         except (json.JSONDecodeError, TypeError):
@@ -50,6 +52,7 @@ class SqliteDomainCache:
             "domain": domain,
             "status": status,
             "resolved_ips": resolved_ips,
+            "verify_time": updated_at,
         }
 
     def set(self, domain: str, data: dict) -> None:

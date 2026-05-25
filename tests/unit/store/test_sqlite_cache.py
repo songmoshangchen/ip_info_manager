@@ -21,7 +21,10 @@ class TestSqliteDomainCache:
     def test_正常读写(self, cache):
         cache.set("example.com", {"status": "matched", "resolved_ips": ["1.2.3.4"]})
         result = cache.get("example.com")
-        assert result == {"domain": "example.com", "status": "matched", "resolved_ips": ["1.2.3.4"]}
+        assert result["domain"] == "example.com"
+        assert result["status"] == "matched"
+        assert result["resolved_ips"] == ["1.2.3.4"]
+        assert "verify_time" in result
 
     def test_不存在域名返回None(self, cache):
         result = cache.get("notexist.com")
@@ -31,7 +34,9 @@ class TestSqliteDomainCache:
         cache.set("example.com", {"status": "first", "resolved_ips": ["1.1.1.1"]})
         cache.set("example.com", {"status": "second", "resolved_ips": ["2.2.2.2"]})
         result = cache.get("example.com")
-        assert result == {"domain": "example.com", "status": "second", "resolved_ips": ["2.2.2.2"]}
+        assert result["domain"] == "example.com"
+        assert result["status"] == "second"
+        assert result["resolved_ips"] == ["2.2.2.2"]
 
     def test_并发安全(self, tmp_path):
         db_path = str(tmp_path / "concurrent_test.db")
@@ -76,15 +81,20 @@ class TestSqliteDomainCache:
         result = cache.get("example.com")
         assert result is not None
 
-    def test_get返回结构包含domain_status_resolved_ips(self, cache):
+    def test_get返回四字段结构(self, cache):
         cache.set("test.com", {"status": "changed", "resolved_ips": ["5.6.7.8", "9.10.11.12"]})
         result = cache.get("test.com")
-        assert "domain" in result
-        assert "status" in result
-        assert "resolved_ips" in result
         assert result["domain"] == "test.com"
         assert result["status"] == "changed"
         assert result["resolved_ips"] == ["5.6.7.8", "9.10.11.12"]
+        assert "verify_time" in result
+
+    def test_verify_time为ISO格式(self, cache):
+        cache.set("test.com", {"status": "matched", "resolved_ips": ["1.2.3.4"]})
+        result = cache.get("test.com")
+        # verify_time 应为 ISO 格式字符串
+        assert isinstance(result["verify_time"], str)
+        assert "T" in result["verify_time"]
 
     def test_set缺少status时默认空字符串(self, cache):
         cache.set("example.com", {"resolved_ips": ["1.2.3.4"]})
