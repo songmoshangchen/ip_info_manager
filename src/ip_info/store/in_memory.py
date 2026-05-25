@@ -1,15 +1,20 @@
+import threading
+
 from ip_info.utils.progress import InMemoryProgressTracker, ProgressTracker
 
 
 class InMemoryDomainCache:
     def __init__(self):
         self._cache: dict[str, dict] = {}
+        self._lock = threading.Lock()
 
     def get(self, domain: str) -> dict | None:
-        return self._cache.get(domain)
+        with self._lock:
+            return self._cache.get(domain)
 
     def set(self, domain: str, data: dict) -> None:
-        self._cache[domain] = data
+        with self._lock:
+            self._cache[domain] = data
 
 
 class InMemoryIPWriter:
