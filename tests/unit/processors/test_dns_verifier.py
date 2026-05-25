@@ -207,7 +207,7 @@ class TestAddVerifyStats:
         assert ip_stats["unresolved"] == 1
         assert ip_stats["timeout"] == 1
         assert ip_stats["error"] == 1
-        assert "verify_time" in ip_stats
+        assert "verify_time" not in ip_stats
         assert len(ip_stats["results"]) == 5
 
     def test_empty_grouped(self):

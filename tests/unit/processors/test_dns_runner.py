@@ -279,17 +279,20 @@ class TestEmptyInput:
 class TestIsExpired:
     def test_old_time_is_expired(self):
         old_time = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
-        assert _is_expired({"verify_time": old_time}, 7) is True
+        assert _is_expired({"results": [{"verify_time": old_time}]}, 7) is True
 
     def test_recent_time_not_expired(self):
         recent_time = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-        assert _is_expired({"verify_time": recent_time}, 7) is False
+        assert _is_expired({"results": [{"verify_time": recent_time}]}, 7) is False
 
-    def test_no_time_is_expired(self):
+    def test_no_results_is_expired(self):
         assert _is_expired({}, 7) is True
 
+    def test_empty_results_is_expired(self):
+        assert _is_expired({"results": []}, 7) is True
+
     def test_invalid_time_is_expired(self):
-        assert _is_expired({"verify_time": "not-a-date"}, 7) is True
+        assert _is_expired({"results": [{"verify_time": "not-a-date"}]}, 7) is True
 
 
 class TestDefaultExpiredBehavior:
@@ -303,7 +306,7 @@ class TestDefaultExpiredBehavior:
             CHANNEL_NAME,
             {
                 "matched": 0,
-                "verify_time": old_time,
+                "results": [{"domain": "example.com", "verify_time": old_time}],
             },
         )
 
@@ -324,7 +327,7 @@ class TestDefaultExpiredBehavior:
             CHANNEL_NAME,
             {
                 "matched": 0,
-                "verify_time": old_time,
+                "results": [{"domain": "example.com", "verify_time": old_time}],
             },
         )
 
@@ -345,7 +348,7 @@ class TestDefaultExpiredBehavior:
             CHANNEL_NAME,
             {
                 "matched": 1,
-                "verify_time": recent_time,
+                "results": [{"domain": "example.com", "verify_time": recent_time}],
             },
         )
 
@@ -361,7 +364,12 @@ class TestForceDaysBehavior:
     @patch("ip_info.processors.dns_verify.runner.batch_verify")
     def test_force_days_7_reverify_old_ips(self, mock_batch_verify):
         mock_batch_verify.return_value = [
-            {"domain": "example.com", "status": "matched", "resolved_ips": ["1.2.3.4"]},
+            {
+                "domain": "example.com",
+                "status": "matched",
+                "resolved_ips": ["1.2.3.4"],
+                "verify_time": "2026-01-01T00:00:00",
+            },
         ]
         writer = InMemoryIPWriter()
         writer.add_or_update_ip("1.2.3.4", "aizhan", {"domains": ["example.com"]})
@@ -371,7 +379,7 @@ class TestForceDaysBehavior:
             CHANNEL_NAME,
             {
                 "matched": 0,
-                "verify_time": old_time,
+                "results": [{"domain": "example.com", "verify_time": old_time}],
             },
         )
 
@@ -384,7 +392,12 @@ class TestForceDaysBehavior:
     @patch("ip_info.processors.dns_verify.runner.batch_verify")
     def test_force_days_0_reverify_all_ips(self, mock_batch_verify):
         mock_batch_verify.return_value = [
-            {"domain": "example.com", "status": "matched", "resolved_ips": ["1.2.3.4"]},
+            {
+                "domain": "example.com",
+                "status": "matched",
+                "resolved_ips": ["1.2.3.4"],
+                "verify_time": "2026-01-01T00:00:00",
+            },
         ]
         writer = InMemoryIPWriter()
         writer.add_or_update_ip("1.2.3.4", "aizhan", {"domains": ["example.com"]})
@@ -394,7 +407,7 @@ class TestForceDaysBehavior:
             CHANNEL_NAME,
             {
                 "matched": 1,
-                "verify_time": recent_time,
+                "results": [{"domain": "example.com", "verify_time": recent_time}],
             },
         )
 
@@ -414,7 +427,7 @@ class TestForceDaysBehavior:
             CHANNEL_NAME,
             {
                 "matched": 1,
-                "verify_time": slightly_old,
+                "results": [{"domain": "example.com", "verify_time": slightly_old}],
             },
         )
 
@@ -428,7 +441,12 @@ class TestForceDaysBehavior:
     @patch("ip_info.processors.dns_verify.runner.batch_verify")
     def test_force_days_no_verify_data_verifies_normally(self, mock_batch_verify):
         mock_batch_verify.return_value = [
-            {"domain": "example.com", "status": "matched", "resolved_ips": ["1.2.3.4"]},
+            {
+                "domain": "example.com",
+                "status": "matched",
+                "resolved_ips": ["1.2.3.4"],
+                "verify_time": "2026-01-01T00:00:00",
+            },
         ]
         writer = InMemoryIPWriter()
         writer.add_or_update_ip("1.2.3.4", "aizhan", {"domains": ["example.com"]})
@@ -513,7 +531,7 @@ class TestDomainCacheIntegration:
     @patch("ip_info.processors.dns_verify.runner.batch_verify")
     def test_cached_domains_skipped(self, mock_batch_verify):
         mock_batch_verify.return_value = [
-            {"domain": "b.com", "status": "changed", "resolved_ips": ["9.9.9.9"]},
+            {"domain": "b.com", "status": "changed", "resolved_ips": ["9.9.9.9"], "verify_time": "2026-01-01T00:00:00"},
         ]
         writer = InMemoryIPWriter()
         writer.add_or_update_ip("1.2.3.4", "aizhan", {"domains": ["a.com", "b.com"]})
@@ -537,7 +555,12 @@ class TestDomainCacheIntegration:
     @patch("ip_info.processors.dns_verify.runner.batch_verify")
     def test_verified_domains_are_cached(self, mock_batch_verify):
         mock_batch_verify.return_value = [
-            {"domain": "example.com", "status": "matched", "resolved_ips": ["1.2.3.4"]},
+            {
+                "domain": "example.com",
+                "status": "matched",
+                "resolved_ips": ["1.2.3.4"],
+                "verify_time": "2026-01-01T00:00:00",
+            },
         ]
         writer = InMemoryIPWriter()
         writer.add_or_update_ip("1.2.3.4", "aizhan", {"domains": ["example.com"]})
@@ -553,7 +576,12 @@ class TestDomainCacheIntegration:
     @patch("ip_info.processors.dns_verify.runner.batch_verify")
     def test_no_domain_cache_verifies_all(self, mock_batch_verify):
         mock_batch_verify.return_value = [
-            {"domain": "example.com", "status": "matched", "resolved_ips": ["1.2.3.4"]},
+            {
+                "domain": "example.com",
+                "status": "matched",
+                "resolved_ips": ["1.2.3.4"],
+                "verify_time": "2026-01-01T00:00:00",
+            },
         ]
         writer = InMemoryIPWriter()
         writer.add_or_update_ip("1.2.3.4", "aizhan", {"domains": ["example.com"]})

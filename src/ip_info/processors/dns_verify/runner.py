@@ -18,11 +18,34 @@ DEFAULT_MAX_AGE_DAYS = 7
 
 
 def _is_expired(data: dict, max_age_days: int) -> bool:
+    """判断验证数据是否过期。
+
+    支持两种格式：
+    - IP store 格式：{"results": [{"verify_time": ...}, ...]}
+    - DomainCache 格式：{"verify_time": ...}
+    """
+    # DomainCache 格式：直接有 verify_time
     verify_time_str = data.get("verify_time", "")
-    if not verify_time_str:
+    if verify_time_str:
+        try:
+            verify_time = datetime.fromisoformat(verify_time_str)
+            if verify_time.tzinfo is None:
+                verify_time = verify_time.replace(tzinfo=timezone.utc)
+            age = datetime.now(timezone.utc) - verify_time
+            return age > timedelta(days=max_age_days)
+        except (ValueError, TypeError):
+            return True
+
+    # IP store 格式：从 results 列表取最新的 verify_time
+    results = data.get("results", [])
+    if not results:
         return True
+    verify_times = [r.get("verify_time", "") for r in results if r.get("verify_time")]
+    if not verify_times:
+        return True
+    latest_time = max(verify_times)
     try:
-        verify_time = datetime.fromisoformat(verify_time_str)
+        verify_time = datetime.fromisoformat(latest_time)
         if verify_time.tzinfo is None:
             verify_time = verify_time.replace(tzinfo=timezone.utc)
         age = datetime.now(timezone.utc) - verify_time

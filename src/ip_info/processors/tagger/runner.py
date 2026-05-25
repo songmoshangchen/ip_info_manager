@@ -79,12 +79,10 @@ class BatchTagger:
             source_file = item["file"]
             dataset_path = os.path.join(self._config_dir, source_file)
 
-            logger.info("[%d/%d] 加载标签源: %s (%s)", idx + 1, total, label, source_file)
             t0 = time.time()
-
             matched = match_sorted_ips_streaming(valid_items, dataset_path)
             elapsed = time.time() - t0
-            logger.info("  匹配完成: %d 个 IP 命中，耗时 %.2fs", len(matched), elapsed)
+            logger.info("[%d/%d] %s (%s): %d 命中, %.2fs", idx + 1, total, label, source_file, len(matched), elapsed)
 
             for match_idx in matched:
                 ip_str = valid_items[match_idx][0]

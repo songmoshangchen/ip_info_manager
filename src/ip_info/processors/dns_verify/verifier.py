@@ -36,6 +36,7 @@ def verify_one(domain: str, target_ip: str, timeout: float = 3.0) -> dict:
         "domain": domain,
         "status": status,
         "resolved_ips": resolved if resolved is not None else [],
+        "verify_time": datetime.now().isoformat(),
     }
 
 
@@ -84,6 +85,7 @@ def build_verify_results(candidates: list[dict], verify_results: list[dict]) -> 
                 "sources": sources,
                 "status": vr["status"],
                 "resolved_ips": vr["resolved_ips"],
+                "verify_time": vr.get("verify_time", ""),
             }
         )
     return ip_results
@@ -98,7 +100,6 @@ def add_verify_stats(grouped_results: dict[str, list]) -> dict[str, dict]:
         timeout = sum(1 for r in items if r["status"] == "timeout")
         error = sum(1 for r in items if r["status"] == "error")
         verify_data[ip] = {
-            "verify_time": datetime.now().isoformat(),
             "total_domains": len(items),
             "matched": matched,
             "changed": changed,
