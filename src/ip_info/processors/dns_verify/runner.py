@@ -71,7 +71,7 @@ class BatchDnsVerify:
             ip_data = self._reader.get_ip_data(ip)
             if ip_data is None:
                 skip_count += 1
-                logger.debug("[%d/%d] %s — 无数据，跳过", idx, total, ip)
+                logger.warning("[%d/%d] %s — 无任何渠道数据，请先执行深度查询", idx, total, ip)
                 continue
 
             existing_verify = ip_data.get(CHANNEL_NAME)

@@ -190,14 +190,18 @@ class TestDomainCacheConcurrency:
 
 
 class TestSkipIPsWithNoData:
-    def test_ip_without_data_is_skipped(self):
+    def test_ip_without_data_logs_warning(self, caplog):
+        import logging
+
         writer = InMemoryIPWriter()
         runner = BatchDnsVerify(ips=["10.0.0.1"], writer=writer, reader=writer)
-        result = runner.run()
+        with caplog.at_level(logging.WARNING):
+            result = runner.run()
 
         assert result.success_count == 0
         assert result.skip_count == 1
         assert writer.get_channel_data("10.0.0.1", CHANNEL_NAME) is None
+        assert any("无任何渠道数据" in r.message for r in caplog.records)
 
     def test_ip_with_data_but_no_domains_is_skipped(self):
         writer = InMemoryIPWriter()
@@ -238,14 +242,19 @@ class TestSkipIPsWithNoData:
         assert writer.get_channel_data("1.2.3.4", CHANNEL_NAME)["matched"] == 1
         assert writer.get_channel_data("10.0.0.1", CHANNEL_NAME) is None
 
-    def test_all_ips_no_data_returns_zero_success(self):
+    def test_all_ips_no_data_returns_zero_success(self, caplog):
+        import logging
+
         writer = InMemoryIPWriter()
         runner = BatchDnsVerify(ips=["10.0.0.1", "10.0.0.2", "10.0.0.3"], writer=writer, reader=writer)
-        result = runner.run()
+        with caplog.at_level(logging.WARNING):
+            result = runner.run()
 
         assert result.success_count == 0
         assert result.skip_count == 3
         assert result.fail_count == 0
+        warning_msgs = [r.message for r in caplog.records if "无任何渠道数据" in r.message]
+        assert len(warning_msgs) == 3
 
 
 class TestEmptyInput:
