@@ -3,7 +3,6 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from ip_info.batch.core.concurrent import run_concurrent
-from ip_info.batch.core.query import BaseBatchQuery
 from ip_info.channel.adapter import BaseChannelAdapter
 from ip_info.pipeline.phase import PhaseResult
 from ip_info.store.protocols import IPDataReader, IPDataWriter
@@ -21,6 +20,7 @@ class BasicCollectPhase:
         rdns_channel: BaseChannelAdapter,
         *,
         no_validate: bool = False,
+        ipinfo_workers: int = 1,
         rdns_workers: int = 1,
     ):
         self._ips = ips
@@ -29,6 +29,7 @@ class BasicCollectPhase:
         self._ipinfo_channel = ipinfo_channel
         self._rdns_channel = rdns_channel
         self._no_validate = no_validate
+        self._ipinfo_workers = ipinfo_workers
         self._rdns_workers = rdns_workers
 
     @property
@@ -53,13 +54,14 @@ class BasicCollectPhase:
             if self._ipinfo_channel.disabled:
                 logger.warning("ipinfo_api 渠道已禁用，跳过")
                 return None
-            return BaseBatchQuery(
-                channel_name="ipinfo_api",
+            return run_concurrent(
+                ips=self._ips,
                 channel=self._ipinfo_channel,
                 writer=self._writer,
-                ips=self._ips,
+                channel_name="ipinfo_api",
+                workers=self._ipinfo_workers,
                 no_validate=True,
-            ).run()
+            )
 
         def run_rdns():
             if self._rdns_channel.disabled:

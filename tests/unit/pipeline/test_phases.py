@@ -45,15 +45,13 @@ class TestDeepQueryPhase:
 
         mock_batch_result = BatchResult(success_count=2, fail_count=0, skip_count=0, total_elapsed=0.1)
 
-        with patch("ip_info.pipeline.phases.phase3_deep.BaseBatchQuery") as MockBatchQuery:
-            MockBatchQuery.return_value.run.return_value = mock_batch_result
+        with patch("ip_info.pipeline.phases.phase3_deep.run_concurrent") as mock_run:
+            mock_run.return_value = mock_batch_result
             result = phase.run()
 
         assert result.success is True
-        assert MockBatchQuery.call_count == 3
-        call_channel_names = [
-            c.kwargs.get("channel_name", c.args[0] if c.args else None) for c in MockBatchQuery.call_args_list
-        ]
+        assert mock_run.call_count == 3
+        call_channel_names = [c.kwargs.get("channel_name") for c in mock_run.call_args_list]
         assert "aizhan" in call_channel_names
         assert "chinaz" in call_channel_names
         assert "fofa_host" in call_channel_names
@@ -101,15 +99,13 @@ class TestDeepQueryPhase:
 
         mock_batch_result = BatchResult(success_count=1, fail_count=0, skip_count=0, total_elapsed=0.1)
 
-        with patch("ip_info.pipeline.phases.phase3_deep.BaseBatchQuery") as MockBatchQuery:
-            MockBatchQuery.return_value.run.return_value = mock_batch_result
+        with patch("ip_info.pipeline.phases.phase3_deep.run_concurrent") as mock_run:
+            mock_run.return_value = mock_batch_result
             result = phase.run()
 
         # aizhan 被跳过，只有 chinaz 和 fofa_host 两个渠道执行
-        assert MockBatchQuery.call_count == 2
-        call_channel_names = [
-            c.kwargs.get("channel_name", c.args[0] if c.args else None) for c in MockBatchQuery.call_args_list
-        ]
+        assert mock_run.call_count == 2
+        call_channel_names = [c.kwargs.get("channel_name") for c in mock_run.call_args_list]
         assert "aizhan" not in call_channel_names
         assert "chinaz" in call_channel_names
         assert "fofa_host" in call_channel_names

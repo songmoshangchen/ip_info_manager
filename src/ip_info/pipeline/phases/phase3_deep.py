@@ -2,7 +2,8 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from ip_info.batch.core.query import BaseBatchQuery, BatchResult
+from ip_info.batch.core.concurrent import run_concurrent
+from ip_info.batch.core.query import BatchResult
 from ip_info.channel.adapter import BaseChannelAdapter
 from ip_info.pipeline.phase import PhaseResult
 from ip_info.store.protocols import IPDataReader, IPDataWriter
@@ -21,6 +22,9 @@ class DeepQueryPhase:
         fofa_channel: BaseChannelAdapter,
         *,
         no_validate: bool = False,
+        aizhan_workers: int = 1,
+        chinaz_workers: int = 1,
+        fofa_workers: int = 1,
     ):
         self._ips = ips
         self._writer = writer
@@ -29,6 +33,9 @@ class DeepQueryPhase:
         self._chinaz_channel = chinaz_channel
         self._fofa_channel = fofa_channel
         self._no_validate = no_validate
+        self._aizhan_workers = aizhan_workers
+        self._chinaz_workers = chinaz_workers
+        self._fofa_workers = fofa_workers
 
     @property
     def name(self) -> str:
@@ -47,28 +54,29 @@ class DeepQueryPhase:
             self._fofa_channel.validate()
 
         channels = [
-            ("aizhan", self._aizhan_channel),
-            ("chinaz", self._chinaz_channel),
-            ("fofa_host", self._fofa_channel),
+            ("aizhan", self._aizhan_channel, self._aizhan_workers),
+            ("chinaz", self._chinaz_channel, self._chinaz_workers),
+            ("fofa_host", self._fofa_channel, self._fofa_workers),
         ]
 
         results: dict[str, BatchResult | None] = {}
 
-        def run_channel(name: str, channel: BaseChannelAdapter) -> tuple[str, BatchResult | None]:
+        def run_channel(name: str, channel: BaseChannelAdapter, workers: int) -> tuple[str, BatchResult | None]:
             if channel.disabled:
                 logger.warning("%s 渠道已禁用，跳过", name)
                 return (name, None)
-            result = BaseBatchQuery(
-                channel_name=name,
+            result = run_concurrent(
+                ips=self._ips,
                 channel=channel,
                 writer=self._writer,
-                ips=self._ips,
+                channel_name=name,
+                workers=workers,
                 no_validate=True,
-            ).run()
+            )
             return (name, result)
 
         with ThreadPoolExecutor(max_workers=3) as executor:
-            futures = {executor.submit(run_channel, name, ch): name for name, ch in channels}
+            futures = {executor.submit(run_channel, name, ch, workers): name for name, ch, workers in channels}
             for future in as_completed(futures):
                 name, result = future.result()
                 results[name] = result
