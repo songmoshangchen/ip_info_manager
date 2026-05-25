@@ -208,20 +208,44 @@ class TestSkipIPsWithNoData:
 
         assert result.success_count == 0
         assert result.skip_count == 1
+        assert writer.get_channel_data("1.2.3.4", CHANNEL_NAME) is None
 
-    def test_mixed_ips_skip_only_no_data(self):
+    def test_ip_with_channel_data_but_no_domains_field_is_skipped(self):
+        writer = InMemoryIPWriter()
+        writer.add_or_update_ip("1.2.3.4", "aizhan", {"ip": "1.2.3.4", "location": "US"})
+
+        runner = BatchDnsVerify(ips=["1.2.3.4"], writer=writer, reader=writer)
+        result = runner.run()
+
+        assert result.success_count == 0
+        assert result.skip_count == 1
+        assert writer.get_channel_data("1.2.3.4", CHANNEL_NAME) is None
+
+    @patch("ip_info.processors.dns_verify.runner.batch_verify")
+    def test_mixed_ips_skip_only_no_data(self, mock_batch_verify):
+        mock_batch_verify.return_value = [
+            {"domain": "a.com", "status": "matched", "resolved_ips": ["1.2.3.4"]},
+        ]
         writer = InMemoryIPWriter()
         writer.add_or_update_ip("1.2.3.4", "aizhan", {"domains": ["a.com"]})
 
-        with patch("ip_info.processors.dns_verify.runner.batch_verify") as mock_batch_verify:
-            mock_batch_verify.return_value = [
-                {"domain": "a.com", "status": "matched", "resolved_ips": ["1.2.3.4"]},
-            ]
-            runner = BatchDnsVerify(ips=["1.2.3.4", "10.0.0.1"], writer=writer, reader=writer)
-            result = runner.run()
+        runner = BatchDnsVerify(ips=["1.2.3.4", "10.0.0.1"], writer=writer, reader=writer)
+        result = runner.run()
 
         assert result.success_count == 1
         assert result.skip_count == 1
+        assert writer.get_channel_data("1.2.3.4", CHANNEL_NAME) is not None
+        assert writer.get_channel_data("1.2.3.4", CHANNEL_NAME)["matched"] == 1
+        assert writer.get_channel_data("10.0.0.1", CHANNEL_NAME) is None
+
+    def test_all_ips_no_data_returns_zero_success(self):
+        writer = InMemoryIPWriter()
+        runner = BatchDnsVerify(ips=["10.0.0.1", "10.0.0.2", "10.0.0.3"], writer=writer, reader=writer)
+        result = runner.run()
+
+        assert result.success_count == 0
+        assert result.skip_count == 3
+        assert result.fail_count == 0
 
 
 class TestEmptyInput:
@@ -459,20 +483,26 @@ class TestDomainCacheIntegration:
     @patch("ip_info.processors.dns_verify.runner.batch_verify")
     def test_cached_domains_skipped(self, mock_batch_verify):
         mock_batch_verify.return_value = [
-            {"domain": "b.com", "status": "matched", "resolved_ips": ["1.2.3.4"]},
+            {"domain": "b.com", "status": "changed", "resolved_ips": ["9.9.9.9"]},
         ]
         writer = InMemoryIPWriter()
         writer.add_or_update_ip("1.2.3.4", "aizhan", {"domains": ["a.com", "b.com"]})
 
         cache = InMemoryDomainCache()
         recent_time = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-        cache.set("a.com", {"status": "matched", "resolved_ips": ["1.2.3.4"], "verify_time": recent_time})
+        cache.set(
+            "a.com", {"domain": "a.com", "status": "matched", "resolved_ips": ["1.2.3.4"], "verify_time": recent_time}
+        )
 
         runner = BatchDnsVerify(ips=["1.2.3.4"], writer=writer, reader=writer, domain_cache=cache)
         result = runner.run()
 
         assert result.success_count == 1
         assert mock_batch_verify.call_count == 1
+        channel_data = writer.get_channel_data("1.2.3.4", CHANNEL_NAME)
+        assert channel_data["matched"] == 1
+        assert channel_data["changed"] == 1
+        assert channel_data["total_domains"] == 2
 
     @patch("ip_info.processors.dns_verify.runner.batch_verify")
     def test_verified_domains_are_cached(self, mock_batch_verify):
