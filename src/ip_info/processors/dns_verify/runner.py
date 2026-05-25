@@ -9,6 +9,7 @@ from ip_info.processors.dns_verify.verifier import (
     batch_verify,
     build_verify_results,
 )
+from ip_info.store.protocols import DomainCache
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ class BatchDnsVerify:
         concurrency: int = 10,
         max_age_days: int = DEFAULT_MAX_AGE_DAYS,
         force_days: int | None = None,
-        domain_cache=None,
+        domain_cache: DomainCache | None = None,
     ):
         if not isinstance(max_age_days, int) or max_age_days < 1:
             raise ValueError(f"max_age_days must be a positive integer (>= 1), got {max_age_days}")
