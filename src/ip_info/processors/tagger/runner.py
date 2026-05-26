@@ -5,6 +5,7 @@ import os
 import time
 
 from ip_info.batch.core.query import BatchResult
+from ip_info.processors.core.base import BaseProcessor
 from ip_info.processors.tagger.manifest import load_manifest, validate_manifest
 from ip_info.processors.tagger.matcher import ip_to_int, match_sorted_ips_streaming
 from ip_info.store.protocols import IPDataWriter
@@ -12,11 +13,11 @@ from ip_info.utils.progress import ProgressTracker
 
 logger = logging.getLogger(__name__)
 
-CHANNEL_NAME = "tagger"
 
-
-class BatchTagger:
+class BatchTagger(BaseProcessor):
     """IP 标签打标批量处理器，实现 BatchRunner Protocol"""
+
+    channel_name = "tagger"
 
     def __init__(
         self,
@@ -27,24 +28,15 @@ class BatchTagger:
         mode: str = "accumulate",
         progress_tracker: ProgressTracker | None = None,
     ):
-        self._ips = ips
-        self._writer = writer
+        super().__init__(ips=ips, writer=writer, progress_tracker=progress_tracker)
         self._config_dir = config_dir
         self._level = level
         self._mode = mode
-        self._progress_tracker = progress_tracker
 
-    def run(self) -> BatchResult:
+    def _process(self) -> BatchResult:
         start_time = time.time()
 
-        # 过滤已处理的 IP
-        pending_ips: list[str] = []
-        skip_count = 0
-        for ip in self._ips:
-            if self._progress_tracker is not None and self._progress_tracker.is_processed(ip):
-                skip_count += 1
-            else:
-                pending_ips.append(ip)
+        pending_ips, skip_count = self._filter_pending()
 
         if not pending_ips:
             total_elapsed = time.time() - start_time
@@ -98,23 +90,22 @@ class BatchTagger:
                 continue
 
             if self._mode == "overwrite":
-                self._writer.add_or_update_ip(ip_str, CHANNEL_NAME, {"tags": tags})
+                self._writer.add_or_update_ip(ip_str, self.channel_name, {"tags": tags})
             else:  # accumulate
                 existing_data = self._read_channel_data(ip_str)
                 if existing_data is not None and "tags" in existing_data:
                     merged = list(set(existing_data["tags"]) | set(tags))
-                    self._writer.add_or_update_ip(ip_str, CHANNEL_NAME, {"tags": merged})
+                    self._writer.add_or_update_ip(ip_str, self.channel_name, {"tags": merged})
                 else:
-                    self._writer.add_or_update_ip(ip_str, CHANNEL_NAME, {"tags": tags})
+                    self._writer.add_or_update_ip(ip_str, self.channel_name, {"tags": tags})
 
             success_count += 1
-            if self._progress_tracker is not None:
-                self._progress_tracker.mark_processed(ip_str)
+            self._mark_processed(ip_str)
 
         # 未匹配的 IP 也标记为已处理
         for ip_str, _ in valid_items:
-            if ip_str not in ip_tags and self._progress_tracker is not None:
-                self._progress_tracker.mark_processed(ip_str)
+            if ip_str not in ip_tags:
+                self._mark_processed(ip_str)
 
         total_elapsed = time.time() - start_time
         return BatchResult(
@@ -127,5 +118,9 @@ class BatchTagger:
         """读取 IP 的渠道数据（鸭子类型方式）。"""
         get_channel_data = getattr(self._writer, "get_channel_data", None)
         if callable(get_channel_data):
-            return get_channel_data(ip, CHANNEL_NAME)
+            return get_channel_data(ip, self.channel_name)
         return None
+
+
+# 兼容旧代码中的 CHANNEL_NAME 引用
+CHANNEL_NAME = BatchTagger.channel_name

@@ -5,15 +5,17 @@ import time
 from ip_info.batch.core.query import BatchResult
 from ip_info.processors.classifier.engine import IPClassifier
 from ip_info.processors.classifier.rules import load_rules
+from ip_info.processors.core.base import BaseProcessor
 from ip_info.store.protocols import IPDataReader, IPDataWriter
+from ip_info.utils.progress import ProgressTracker
 
 logger = logging.getLogger(__name__)
 
-CHANNEL_NAME = "classifier"
 
-
-class BatchClassifier:
+class BatchClassifier(BaseProcessor):
     """IP 自动分类批量处理器，实现 BatchRunner Protocol。"""
+
+    channel_name = "classifier"
 
     def __init__(
         self,
@@ -22,19 +24,20 @@ class BatchClassifier:
         reader: IPDataReader,
         rules_dir: str,
         custom_rules_path: str | None = None,
+        progress_tracker: ProgressTracker | None = None,
     ):
-        self._ips = ips
-        self._writer = writer
-        self._reader = reader
+        super().__init__(ips=ips, writer=writer, reader=reader, progress_tracker=progress_tracker)
         self._rules_dir = rules_dir
         self._custom_rules_path = custom_rules_path
 
-    def run(self) -> BatchResult:
+    def _process(self) -> BatchResult:
         start_time = time.time()
 
-        if not self._ips:
+        pending_ips, skip_count = self._filter_pending()
+
+        if not pending_ips:
             total_elapsed = time.time() - start_time
-            return BatchResult(total_elapsed=total_elapsed)
+            return BatchResult(skip_count=skip_count, total_elapsed=total_elapsed)
 
         # 加载规则
         builtin_path = os.path.join(self._rules_dir, "builtin_rules.json")
@@ -46,10 +49,9 @@ class BatchClassifier:
 
         # 逐 IP 分类
         success_count = 0
-        skip_count = 0
-        total = len(self._ips)
+        total = len(pending_ips)
 
-        for idx, ip in enumerate(self._ips, 1):
+        for idx, ip in enumerate(pending_ips, 1):
             ip_data = self._reader.get_ip_data(ip)
 
             if ip_data is None:
@@ -58,8 +60,9 @@ class BatchClassifier:
                 continue
 
             result = classifier.classify(ip_data)
-            self._writer.add_or_update_ip(ip, CHANNEL_NAME, result)
+            self._writer.add_or_update_ip(ip, self.channel_name, result)
             success_count += 1
+            self._mark_processed(ip)
 
             label = result["label"]
             matched_info = ""
@@ -74,3 +77,7 @@ class BatchClassifier:
             skip_count=skip_count,
             total_elapsed=total_elapsed,
         )
+
+
+# 兼容旧代码中的 CHANNEL_NAME 引用
+CHANNEL_NAME = BatchClassifier.channel_name

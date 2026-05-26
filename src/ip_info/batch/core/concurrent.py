@@ -38,7 +38,7 @@ def run_concurrent(
 
     # 过滤已处理
     if progress_tracker is not None:
-        pending_ips = [ip for ip in unique_ips if not progress_tracker.is_processed(ip)]
+        pending_ips = [ip for ip in unique_ips if not progress_tracker.is_processed(ip, channel_name)]
     else:
         pending_ips = list(unique_ips)
 
@@ -156,7 +156,7 @@ def run_concurrent(
                     ip,
                 )
             if progress_tracker is not None:
-                progress_tracker.mark_processed(ip)
+                progress_tracker.mark_processed(ip, channel_name)
 
     # 取消剩余任务
     stop_event.set()

@@ -3,6 +3,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from ip_info.batch.core.query import BatchResult
+from ip_info.processors.core.base import BaseProcessor
 from ip_info.processors.dns_verify.extractor import extract_domain_mappings
 from ip_info.processors.dns_verify.verifier import (
     add_verify_stats,
@@ -13,7 +14,6 @@ from ip_info.store.protocols import DomainCache
 
 logger = logging.getLogger(__name__)
 
-CHANNEL_NAME = "domain_verify"
 DEFAULT_MAX_AGE_DAYS = 7
 
 
@@ -54,7 +54,11 @@ def _is_expired(data: dict, max_age_days: int) -> bool:
         return True
 
 
-class BatchDnsVerify:
+class BatchDnsVerify(BaseProcessor):
+    """DNS 域名验证批量处理器。"""
+
+    channel_name = "domain_verify"
+
     def __init__(
         self,
         ips: list[str],
@@ -65,27 +69,22 @@ class BatchDnsVerify:
         max_age_days: int = DEFAULT_MAX_AGE_DAYS,
         force_days: int | None = None,
         domain_cache: DomainCache | None = None,
+        progress_tracker=None,
     ):
         if not isinstance(max_age_days, int) or max_age_days < 1:
             raise ValueError(f"max_age_days must be a positive integer (>= 1), got {max_age_days}")
         if force_days is not None and (not isinstance(force_days, int) or force_days < 0):
             raise ValueError(f"force_days must be a non-negative integer (>= 0) if provided, got {force_days}")
 
-        self._ips = ips
-        self._writer = writer
-        self._reader = reader
+        super().__init__(ips=ips, writer=writer, reader=reader, progress_tracker=progress_tracker)
         self._timeout = timeout
         self._concurrency = concurrency
         self._max_age_days = max_age_days
         self._force_days = force_days
         self._domain_cache = domain_cache
 
-    def run(self) -> BatchResult:
+    def _process(self) -> BatchResult:
         start_time = time.time()
-
-        if not self._ips:
-            total_elapsed = time.time() - start_time
-            return BatchResult(total_elapsed=total_elapsed)
 
         all_mappings: list[dict] = []
         skip_count = 0
@@ -98,7 +97,7 @@ class BatchDnsVerify:
                 logger.warning("[%d/%d] %s — 无任何渠道数据，请先执行深度查询", idx, total, ip)
                 continue
 
-            existing_verify = ip_data.get(CHANNEL_NAME)
+            existing_verify = ip_data.get(self.channel_name)
             if existing_verify and self._force_days != 0 and not _is_expired(existing_verify, self._max_age_days):
                 skip_count += 1
                 logger.debug("[%d/%d] %s — 验证结果有效（%d天内），跳过", idx, total, ip, self._max_age_days)
@@ -188,8 +187,9 @@ class BatchDnsVerify:
 
         success_count = 0
         for ip, data in verify_data.items():
-            self._writer.add_or_update_ip(ip, CHANNEL_NAME, data)
+            self._writer.add_or_update_ip(ip, self.channel_name, data)
             success_count += 1
+            self._mark_processed(ip)
             logger.info(
                 "[IP %s] 验证完成: matched=%d, changed=%d, unresolved=%d",
                 ip,
@@ -204,3 +204,7 @@ class BatchDnsVerify:
             skip_count=skip_count,
             total_elapsed=total_elapsed,
         )
+
+
+# 兼容旧代码中的 CHANNEL_NAME 引用
+CHANNEL_NAME = BatchDnsVerify.channel_name

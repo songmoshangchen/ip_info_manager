@@ -59,7 +59,7 @@ class BaseBatchQuery:
     def _compute_pending(self) -> list[str]:
         if self._progress_tracker is None:
             return list(self._all_ips)
-        return [ip for ip in self._all_ips if not self._progress_tracker.is_processed(ip)]
+        return [ip for ip in self._all_ips if not self._progress_tracker.is_processed(ip, self._channel_name)]
 
     def run(self) -> BatchResult:
         start_time = time.time()
@@ -129,7 +129,7 @@ class BaseBatchQuery:
                 ip,
             )
             if self._progress_tracker is not None:
-                self._progress_tracker.mark_processed(ip)
+                self._progress_tracker.mark_processed(ip, self._channel_name)
 
         if self._channel.disabled:
             stop_reason = "permanent_error"
