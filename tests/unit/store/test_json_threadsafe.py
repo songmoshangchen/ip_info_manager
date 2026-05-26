@@ -1,14 +1,9 @@
 import threading
 
-from ip_info.store.json_store import IPWriter
+from ip_info.store.json_store import IPReader, IPWriter
 
 
 class TestIPWriterThreadSafe:
-    def test_has_lock_attribute(self, tmp_path):
-        writer = IPWriter(storage_file=str(tmp_path / "lock_test.json"))
-        assert hasattr(writer, "_lock")
-        assert isinstance(writer._lock, type(threading.Lock()))
-
     def test_concurrent_writes_no_data_loss(self, tmp_path):
         storage_file = str(tmp_path / "concurrent.json")
         writer = IPWriter(storage_file=storage_file)
@@ -33,6 +28,7 @@ class TestIPWriterThreadSafe:
 
         assert errors == []
 
-        reader_ips = writer._load_data()
+        reader = IPReader(storage_file)
         expected_count = thread_count * ips_per_thread
-        assert len(reader_ips) == expected_count, f"期望 {expected_count} 条记录，实际 {len(reader_ips)} 条"
+        all_ips = reader.list_all_ips()
+        assert len(all_ips) == expected_count, f"期望 {expected_count} 条记录，实际 {len(all_ips)} 条"

@@ -477,17 +477,20 @@ class TestParameterValidation:
     def test_max_age_days_one_is_valid(self):
         writer = InMemoryIPWriter()
         runner = BatchDnsVerify(ips=[], writer=writer, reader=writer, max_age_days=1)
-        assert runner._max_age_days == 1
+        result = runner.run()
+        assert result is not None
 
     def test_force_days_zero_is_valid(self):
         writer = InMemoryIPWriter()
         runner = BatchDnsVerify(ips=[], writer=writer, reader=writer, force_days=0)
-        assert runner._force_days == 0
+        result = runner.run()
+        assert result is not None
 
     def test_force_days_none_is_valid(self):
         writer = InMemoryIPWriter()
         runner = BatchDnsVerify(ips=[], writer=writer, reader=writer, force_days=None)
-        assert runner._force_days is None
+        result = runner.run()
+        assert result is not None
 
 
 class TestInMemoryDomainCache:

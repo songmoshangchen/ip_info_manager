@@ -1,5 +1,3 @@
-"""测试 IPWriter.progress_tracker() 方法"""
-
 from ip_info.store.in_memory import InMemoryIPWriter
 from ip_info.store.json_store import IPWriter
 from ip_info.utils.progress import InMemoryProgressTracker, SqliteProgressTracker
@@ -12,25 +10,27 @@ class TestIPWriterProgressTracker:
         tracker = writer.progress_tracker("fofa_host")
         assert isinstance(tracker, SqliteProgressTracker)
 
-    def test_progress_db_path_with_json_extension(self, tmp_path):
+    def test_tracker_persists_across_instances(self, tmp_path):
         storage_file = str(tmp_path / "ip_data.json")
         writer = IPWriter(storage_file)
-        tracker = writer.progress_tracker("fofa_host")
-        assert tracker._db_path == str(tmp_path / "ip_data.progress.db")
+        tracker = writer.progress_tracker("test_ch")
+        tracker.mark_processed("1.1.1.1")
+        tracker.flush()
 
-    def test_progress_db_path_without_json_extension(self, tmp_path):
-        storage_file = str(tmp_path / "ip_data")
-        writer = IPWriter(storage_file)
-        tracker = writer.progress_tracker("rdns_ptr")
-        assert tracker._db_path == str(tmp_path / "ip_data.progress.db")
+        writer2 = IPWriter(storage_file)
+        tracker2 = writer2.progress_tracker("test_ch")
+        assert tracker2.is_processed("1.1.1.1") is True
 
-    def test_different_channels_return_same_db_tracker(self, tmp_path):
+    def test_different_channels_share_same_persistence(self, tmp_path):
         storage_file = str(tmp_path / "ip_data.json")
         writer = IPWriter(storage_file)
         tracker1 = writer.progress_tracker("fofa_host")
         tracker2 = writer.progress_tracker("rdns_ptr")
-        # 同一个 db 文件
-        assert tracker1._db_path == tracker2._db_path
+        tracker1.mark_processed("1.1.1.1", "fofa_host")
+        tracker1.flush()
+
+        assert tracker2.is_processed("1.1.1.1", "fofa_host") is True
+        assert tracker2.is_processed("1.1.1.1", "rdns_ptr") is False
 
     def test_tracker_functional_write_and_check(self, tmp_path):
         storage_file = str(tmp_path / "ip_data.json")

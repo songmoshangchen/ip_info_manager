@@ -347,77 +347,136 @@ class TestIPClassifierProperties:
 
 
 # ---------------------------------------------------------------------------
-# Test: _extract_field / _match_pattern 静态方法
+# Test: _extract_field / _match_pattern 通过 classify() 公开接口间接覆盖
 # ---------------------------------------------------------------------------
 
 
-class TestExtractField:
+class TestExtractFieldViaClassify:
+    def _make_classifier(self, field, match_str, match_type="contains"):
+        rules = OrderedDict(
+            {
+                "test_cat": {
+                    "label": "Test",
+                    "patterns": [{"field": field, "match": match_str, "type": match_type}],
+                }
+            }
+        )
+        return IPClassifier(rules)
+
     def test_simple_field(self):
-        assert IPClassifier._extract_field({"a": 1}, "a") == 1
+        clf = self._make_classifier("a", "1")
+        result = clf.classify({"a": 1})
+        assert result["category"] == "test_cat"
 
     def test_nested_field(self):
-        assert IPClassifier._extract_field({"a": {"b": 2}}, "a.b") == 2
+        clf = self._make_classifier("a.b", "2")
+        result = clf.classify({"a": {"b": 2}})
+        assert result["category"] == "test_cat"
 
     def test_missing_field(self):
-        assert IPClassifier._extract_field({"a": 1}, "b") is None
+        clf = self._make_classifier("b", "1")
+        result = clf.classify({"a": 1})
+        assert result["category"] == "other"
 
     def test_missing_nested_field(self):
-        assert IPClassifier._extract_field({"a": {"b": 1}}, "a.c") is None
+        clf = self._make_classifier("a.c", "1")
+        result = clf.classify({"a": {"b": 1}})
+        assert result["category"] == "other"
 
     def test_non_dict_intermediate(self):
-        assert IPClassifier._extract_field({"a": "str"}, "a.b") is None
+        clf = self._make_classifier("a.b", "x")
+        result = clf.classify({"a": "str"})
+        assert result["category"] == "other"
 
     def test_none_value(self):
-        assert IPClassifier._extract_field({"a": None}, "a.b") is None
+        clf = self._make_classifier("a.b", "x")
+        result = clf.classify({"a": None})
+        assert result["category"] == "other"
 
     def test_deeply_nested(self):
-        data = {"a": {"b": {"c": {"d": "deep"}}}}
-        assert IPClassifier._extract_field(data, "a.b.c.d") == "deep"
+        clf = self._make_classifier("a.b.c.d", "deep")
+        result = clf.classify({"a": {"b": {"c": {"d": "deep"}}}})
+        assert result["category"] == "test_cat"
 
 
-class TestMatchPattern:
+class TestMatchPatternViaClassify:
+    def _make_classifier(self, match_str, match_type="contains"):
+        rules = OrderedDict(
+            {
+                "matched": {
+                    "label": "Matched",
+                    "patterns": [{"field": "ptr", "match": match_str, "type": match_type}],
+                }
+            }
+        )
+        return IPClassifier(rules)
+
     def test_suffix_match(self):
-        assert IPClassifier._match_pattern("example.com", {"match": ".com", "type": "suffix"})
+        clf = self._make_classifier(".com", "suffix")
+        result = clf.classify({"ptr": "example.com"})
+        assert result["category"] == "matched"
 
     def test_suffix_no_match(self):
-        assert not IPClassifier._match_pattern("example.org", {"match": ".com", "type": "suffix"})
+        clf = self._make_classifier(".com", "suffix")
+        result = clf.classify({"ptr": "example.org"})
+        assert result["category"] == "other"
 
     def test_contains_match(self):
-        assert IPClassifier._match_pattern("hello world", {"match": "world", "type": "contains"})
+        clf = self._make_classifier("world")
+        result = clf.classify({"ptr": "hello world"})
+        assert result["category"] == "matched"
 
     def test_contains_no_match(self):
-        assert not IPClassifier._match_pattern("hello", {"match": "world", "type": "contains"})
+        clf = self._make_classifier("world")
+        result = clf.classify({"ptr": "hello"})
+        assert result["category"] == "other"
 
     def test_prefix_match(self):
-        assert IPClassifier._match_pattern("hello_world", {"match": "hello", "type": "prefix"})
+        clf = self._make_classifier("hello", "prefix")
+        result = clf.classify({"ptr": "hello_world"})
+        assert result["category"] == "matched"
 
     def test_prefix_no_match(self):
-        assert not IPClassifier._match_pattern("world_hello", {"match": "hello", "type": "prefix"})
+        clf = self._make_classifier("hello", "prefix")
+        result = clf.classify({"ptr": "world_hello"})
+        assert result["category"] == "other"
 
     def test_exact_match(self):
-        assert IPClassifier._match_pattern("exact_match", {"match": "exact_match", "type": "exact"})
+        clf = self._make_classifier("exact_match", "exact")
+        result = clf.classify({"ptr": "exact_match"})
+        assert result["category"] == "matched"
 
     def test_exact_no_match(self):
-        assert not IPClassifier._match_pattern("exact_match_extra", {"match": "exact_match", "type": "exact"})
+        clf = self._make_classifier("exact_match", "exact")
+        result = clf.classify({"ptr": "exact_match_extra"})
+        assert result["category"] == "other"
 
     def test_regex_match(self):
-        assert IPClassifier._match_pattern(
-            "192.168.1.1", {"match": r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", "type": "regex"}
-        )
+        clf = self._make_classifier(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", "regex")
+        result = clf.classify({"ptr": "192.168.1.1"})
+        assert result["category"] == "matched"
 
     def test_regex_no_match(self):
-        assert not IPClassifier._match_pattern(
-            "not_an_ip", {"match": r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", "type": "regex"}
-        )
+        clf = self._make_classifier(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", "regex")
+        result = clf.classify({"ptr": "not_an_ip"})
+        assert result["category"] == "other"
 
     def test_case_insensitive(self):
-        assert IPClassifier._match_pattern("HELLO", {"match": "hello", "type": "contains"})
+        clf = self._make_classifier("hello")
+        result = clf.classify({"ptr": "HELLO"})
+        assert result["category"] == "matched"
 
     def test_none_field_value(self):
-        assert not IPClassifier._match_pattern(None, {"match": "hello", "type": "contains"})
+        clf = self._make_classifier("hello")
+        result = clf.classify({"ptr": None})
+        assert result["category"] == "other"
 
     def test_default_type_is_contains(self):
-        assert IPClassifier._match_pattern("hello world", {"match": "world"})
+        clf = self._make_classifier("world")
+        result = clf.classify({"ptr": "hello world"})
+        assert result["category"] == "matched"
 
     def test_unknown_type_returns_false(self):
-        assert not IPClassifier._match_pattern("hello", {"match": "hello", "type": "unknown"})
+        clf = self._make_classifier("hello", "unknown")
+        result = clf.classify({"ptr": "hello"})
+        assert result["category"] == "other"
