@@ -259,6 +259,69 @@ class TestDeepQueryPhase:
             for r in caplog.records
         )
 
+    def test_skip_ips_excludes_from_all_channels(self):
+        """skip_ips: 指定的 IP 不进入任何渠道查询"""
+        writer = InMemoryIPWriter()
+        reader = InMemoryIPReader()
+        aizhan = _make_channel()
+        chinaz = _make_channel()
+        fofa = _make_channel()
+        ips = ["1.2.3.4", "5.6.7.8", "9.10.11.12"]
+        skip = {"5.6.7.8"}
+
+        phase = DeepQueryPhase(
+            ips=ips,
+            writer=writer,
+            reader=reader,
+            aizhan_channel=aizhan,
+            chinaz_channel=chinaz,
+            fofa_channel=fofa,
+            no_validate=True,
+            skip_ips=skip,
+        )
+
+        mock_batch_result = BatchResult(success_count=2, fail_count=0, skip_count=0, total_elapsed=0.1)
+
+        with patch("ip_info.pipeline.phases.phase3_deep.run_concurrent") as mock_run:
+            mock_run.return_value = mock_batch_result
+            result = phase.run()
+
+        assert result.success is True
+        for call in mock_run.call_args_list:
+            assert "5.6.7.8" not in call.kwargs["ips"]
+            assert "1.2.3.4" in call.kwargs["ips"]
+            assert "9.10.11.12" in call.kwargs["ips"]
+
+    def test_skip_ips_logs_count(self, caplog):
+        """skip_ips: 日志显示跳过的动态 IP 数量"""
+        writer = InMemoryIPWriter()
+        reader = InMemoryIPReader()
+        aizhan = _make_channel()
+        chinaz = _make_channel()
+        fofa = _make_channel()
+        ips = ["1.2.3.4", "5.6.7.8", "9.10.11.12"]
+        skip = {"5.6.7.8", "9.10.11.12"}
+
+        phase = DeepQueryPhase(
+            ips=ips,
+            writer=writer,
+            reader=reader,
+            aizhan_channel=aizhan,
+            chinaz_channel=chinaz,
+            fofa_channel=fofa,
+            no_validate=True,
+            skip_ips=skip,
+        )
+
+        mock_batch_result = BatchResult(success_count=1, fail_count=0, skip_count=0, total_elapsed=0.1)
+
+        with caplog.at_level("INFO"):
+            with patch("ip_info.pipeline.phases.phase3_deep.run_concurrent") as mock_run:
+                mock_run.return_value = mock_batch_result
+                phase.run()
+
+        assert any("跳过 2 个动态 IP" in r.message for r in caplog.records)
+
 
 class TestVerifyScanPhase:
     """VerifyScanPhase (Phase 4) 单元测试"""
@@ -391,6 +454,72 @@ class TestVerifyScanPhase:
 
         rc_kwargs = mock_run_concurrent.call_args.kwargs
         assert rc_kwargs["progress_tracker"] is tracker
+
+    @patch("ip_info.pipeline.phases.phase4_verify_scan.run_concurrent")
+    @patch("ip_info.pipeline.phases.phase4_verify_scan.BatchDnsVerify")
+    def test_skip_ips_excludes_from_port_scan_only(self, MockBatchDnsVerify, mock_run_concurrent):
+        """skip_ips: 动态 IP 只跳过 port_scan，DNS 验证仍对所有 IP 执行"""
+        mock_dns_instance = MagicMock()
+        mock_dns_instance.run.return_value = BatchResult(success_count=3)
+        MockBatchDnsVerify.return_value = mock_dns_instance
+        mock_run_concurrent.return_value = BatchResult(success_count=1)
+
+        nmap_channel = MagicMock()
+        nmap_channel.default_delay = 0
+        nmap_channel.disabled = False
+
+        ips = ["1.1.1.1", "2.2.2.2", "3.3.3.3"]
+        skip = {"2.2.2.2", "3.3.3.3"}
+
+        phase = VerifyScanPhase(
+            ips=ips,
+            writer=MagicMock(),
+            reader=MagicMock(),
+            nmap_channel=nmap_channel,
+            no_validate=True,
+            skip_ips=skip,
+        )
+        result = phase.run()
+
+        dns_kwargs = MockBatchDnsVerify.call_args.kwargs
+        assert dns_kwargs["ips"] == ips
+
+        rc_kwargs = mock_run_concurrent.call_args.kwargs
+        assert rc_kwargs["ips"] == ["1.1.1.1"]
+        assert "2.2.2.2" not in rc_kwargs["ips"]
+        assert "3.3.3.3" not in rc_kwargs["ips"]
+
+        assert result.success is True
+
+    @patch("ip_info.pipeline.phases.phase4_verify_scan.run_concurrent")
+    @patch("ip_info.pipeline.phases.phase4_verify_scan.BatchDnsVerify")
+    def test_skip_ips_logs_count(self, MockBatchDnsVerify, mock_run_concurrent, caplog):
+        """skip_ips: 日志显示跳过的动态 IP 数量"""
+        mock_dns_instance = MagicMock()
+        mock_dns_instance.run.return_value = BatchResult(success_count=1)
+        MockBatchDnsVerify.return_value = mock_dns_instance
+        mock_run_concurrent.return_value = BatchResult(success_count=1)
+
+        nmap_channel = MagicMock()
+        nmap_channel.default_delay = 0
+        nmap_channel.disabled = False
+
+        ips = ["1.1.1.1", "2.2.2.2", "3.3.3.3"]
+        skip = {"2.2.2.2", "3.3.3.3"}
+
+        phase = VerifyScanPhase(
+            ips=ips,
+            writer=MagicMock(),
+            reader=MagicMock(),
+            nmap_channel=nmap_channel,
+            no_validate=True,
+            skip_ips=skip,
+        )
+
+        with caplog.at_level("INFO"):
+            phase.run()
+
+        assert any("跳过 2 个动态 IP" in r.message for r in caplog.records)
 
 
 class TestBasicCollectPhase:

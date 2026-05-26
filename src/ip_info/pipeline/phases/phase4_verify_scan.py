@@ -27,6 +27,7 @@ class VerifyScanPhase:
         dns_concurrency: int = 10,
         nmap_workers: int = 1,
         no_validate: bool = False,
+        skip_ips: set[str] | None = None,
         progress_tracker: ProgressTracker | None = None,
     ):
         self._ips = ips
@@ -40,6 +41,7 @@ class VerifyScanPhase:
         self._dns_concurrency = dns_concurrency
         self._nmap_workers = nmap_workers
         self._no_validate = no_validate
+        self._skip_ips = skip_ips or set()
         self._progress_tracker = progress_tracker
 
     @property
@@ -52,9 +54,12 @@ class VerifyScanPhase:
         if not self._ips:
             return PhaseResult(success=True, message="无 IP 需验证/扫描", elapsed=time.time() - start_time)
 
-        # 渠道验证（与其他 Phase 保持一致：先验证，再传 no_validate=True）
         if not self._no_validate:
             self._nmap_channel.validate()
+
+        scan_ips = [ip for ip in self._ips if ip not in self._skip_ips]
+        if self._skip_ips:
+            logger.info("跳过 %d 个动态 IP 的端口扫描", len(self._skip_ips))
 
         dns_result = None
         scan_result = None
@@ -74,7 +79,7 @@ class VerifyScanPhase:
 
         def run_port_scan():
             return run_concurrent(
-                ips=self._ips,
+                ips=scan_ips,
                 channel=self._nmap_channel,
                 writer=self._writer,
                 channel_name="port_scan",

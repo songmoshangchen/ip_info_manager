@@ -26,6 +26,7 @@ class DeepQueryPhase:
         aizhan_workers: int = 1,
         chinaz_workers: int = 1,
         fofa_workers: int = 1,
+        skip_ips: set[str] | None = None,
         progress_tracker: ProgressTracker | None = None,
     ):
         self._ips = ips
@@ -38,6 +39,7 @@ class DeepQueryPhase:
         self._aizhan_workers = aizhan_workers
         self._chinaz_workers = chinaz_workers
         self._fofa_workers = fofa_workers
+        self._skip_ips = skip_ips or set()
         self._progress_tracker = progress_tracker
 
     @property
@@ -50,7 +52,17 @@ class DeepQueryPhase:
         if not self._ips:
             return PhaseResult(success=True, message="无 IP 需深度查询", elapsed=time.time() - start_time)
 
-        # 渠道验证
+        query_ips = [ip for ip in self._ips if ip not in self._skip_ips]
+        if self._skip_ips:
+            logger.info("跳过 %d 个动态 IP 的深度查询", len(self._skip_ips))
+
+        if not query_ips:
+            return PhaseResult(
+                success=True,
+                message=f"全部 {len(self._skip_ips)} 个 IP 为动态 IP，跳过深度查询",
+                elapsed=time.time() - start_time,
+            )
+
         if not self._no_validate:
             self._aizhan_channel.validate()
             self._chinaz_channel.validate()
@@ -66,8 +78,8 @@ class DeepQueryPhase:
 
         def run_channel(name: str, channel: BaseChannelAdapter, workers: int) -> tuple[str, BatchResult | None]:
             if channel.disabled:
-                total = len(self._ips)
-                done = sum(1 for ip in self._ips if self._reader.get_channel_data(ip, name) is not None)
+                total = len(query_ips)
+                done = sum(1 for ip in query_ips if self._reader.get_channel_data(ip, name) is not None)
                 pending = total - done
                 logger.warning(
                     "%s 渠道已禁用，跳过 (共 %d 个 IP, 已有结果 %d, 剩余 %d 未查询)",
@@ -78,7 +90,7 @@ class DeepQueryPhase:
                 )
                 return (name, None)
             result = run_concurrent(
-                ips=self._ips,
+                ips=query_ips,
                 channel=channel,
                 writer=self._writer,
                 channel_name=name,
@@ -95,7 +107,6 @@ class DeepQueryPhase:
                 name, result = future.result()
                 results[name] = result
 
-        # 汇总结果
         total_success = sum(r.success_count for r in results.values() if r is not None)
         any_success = total_success > 0
         elapsed = time.time() - start_time

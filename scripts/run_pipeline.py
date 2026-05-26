@@ -1,8 +1,9 @@
 """Phase 1-4 完整运行脚本。
 
-用法: python scripts/run_pipeline.py <ip_file> <output_dir> [--skip channel1,channel2]
+用法: python scripts/run_pipeline.py <ip_file> <output_dir> [--skip channel1,channel2] [--no-skip-dynamic]
 例:   python scripts/run_pipeline.py data/0518-0524/ips.txt data/0518-0524
       python scripts/run_pipeline.py data/0518-0524/ips.txt data/0518-0524 --skip aizhan,fofa_host,port_scan
+      python scripts/run_pipeline.py data/0518-0524/ips.txt data/0518-0524 --no-skip-dynamic
 """
 
 import argparse
@@ -51,7 +52,7 @@ def main():
     from ip_info.channel.ipinfo_api import IpinfoApiChannel
     from ip_info.channel.port_scan import PortScanChannel
     from ip_info.channel.rdns_ptr import RdnsPtrChannel
-    from ip_info.pipeline.filter_ips import filter_ips_by_classification
+    from ip_info.pipeline.filter_ips import filter_dynamic_ips, filter_ips_by_classification
     from ip_info.pipeline.phases import (
         BasicCollectPhase,
         ClassifyTagPhase,
@@ -67,6 +68,7 @@ def main():
     parser.add_argument("ip_file", help="IP 列表文件路径")
     parser.add_argument("output_dir", help="输出目录")
     parser.add_argument("--skip", default="", help="跳过的渠道，逗号分隔 (如: aizhan,fofa_host,port_scan)")
+    parser.add_argument("--no-skip-dynamic", action="store_true", help="强制对动态 IP 也执行深度查询")
     args = parser.parse_args()
 
     skip_names = {s.strip() for s in args.skip.split(",") if s.strip()}
@@ -137,6 +139,14 @@ def main():
     filtered_ips = filter_ips_by_classification(ips, reader)
     logger.info("过滤: %d/%d IP 需深度查询", len(filtered_ips), len(ips))
 
+    # 识别动态 IP
+    dynamic_ips: set[str] = set()
+    if not args.no_skip_dynamic and filtered_ips:
+        dynamic_list, _non_dynamic_list = filter_dynamic_ips(filtered_ips, reader)
+        dynamic_ips = set(dynamic_list)
+        if dynamic_ips:
+            logger.info("动态 IP: %d 个将跳过深度查询 (使用 --no-skip-dynamic 强制查询)", len(dynamic_ips))
+
     # Phase 3: 深度查询
     if filtered_ips:
         logger.info("=" * 60)
@@ -157,6 +167,7 @@ def main():
             aizhan_workers=1,
             chinaz_workers=2,
             fofa_workers=2,
+            skip_ips=dynamic_ips,
             progress_tracker=progress_tracker,
         )
         r3 = phase3.run()
@@ -181,6 +192,7 @@ def main():
             dns_timeout=3.0,
             dns_concurrency=10,
             nmap_workers=3,
+            skip_ips=dynamic_ips,
             progress_tracker=progress_tracker,
         )
         r4 = phase4.run()
