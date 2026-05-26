@@ -32,10 +32,17 @@ class BaseChannelAdapter(ABC):
         raise NotImplementedError(msg)
 
     def validate(self) -> bool:
-        """验证渠道配置是否有效，成功返回 True 并重置 disabled"""
+        """验证渠道配置是否有效。
+
+        验证成功时，仅当渠道未被手动禁用才重置 disabled=False。
+        验证失败时，始终设置 disabled=True。
+        """
+        was_disabled = self.disabled
         try:
             self._validate_key()
-            self.disabled = False
+            # 手动禁用的渠道，验证成功后仍保持禁用
+            if not was_disabled:
+                self.disabled = False
             return True
         except Exception as e:
             self.disabled = True

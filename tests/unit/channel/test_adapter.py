@@ -69,6 +69,20 @@ class TestBaseChannelAdapterValidate:
         assert adapter.validate() is True
         assert adapter.disabled is False
 
+    def test_validate成功不重置手动禁用(self):
+        """手动禁用的渠道，validate 成功后仍保持禁用。"""
+        adapter = SimpleAdapter()
+        adapter.disabled = True  # 手动禁用
+        assert adapter.validate() is True  # 验证成功
+        assert adapter.disabled is True  # 仍然禁用
+
+    def test_validate失败覆盖手动禁用(self):
+        """验证失败时，即使之前手动禁用，也设置 disabled=True。"""
+        adapter = FailingValidateAdapter()
+        adapter.disabled = True
+        assert adapter.validate() is False
+        assert adapter.disabled is True
+
 
 class TestBaseChannelAdapterFetch:
     def test_fetch标准调用链包含query_time(self):
