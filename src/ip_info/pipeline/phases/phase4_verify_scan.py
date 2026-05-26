@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import TYPE_CHECKING
 
 from ip_info.batch.core.concurrent import run_concurrent
 from ip_info.channel.port_scan import PortScanChannel
@@ -9,6 +12,9 @@ from ip_info.processors.dns_verify.runner import BatchDnsVerify
 from ip_info.store.protocols import IPDataReader, IPDataWriter
 from ip_info.utils.progress import ProgressTracker
 
+if TYPE_CHECKING:
+    from ip_info.pipeline.context import PipelineContext
+
 logger = logging.getLogger(__name__)
 
 
@@ -16,10 +22,11 @@ class VerifyScanPhase:
     def __init__(
         self,
         ips: list[str],
-        writer: IPDataWriter,
-        reader: IPDataReader,
-        nmap_channel: PortScanChannel,
+        writer: IPDataWriter | None = None,
+        reader: IPDataReader | None = None,
+        nmap_channel: PortScanChannel | None = None,
         *,
+        context: PipelineContext | None = None,
         domain_cache=None,
         force_days: int | None = None,
         max_age_days: int = 7,
@@ -30,6 +37,11 @@ class VerifyScanPhase:
         skip_ips: set[str] | None = None,
         progress_tracker: ProgressTracker | None = None,
     ):
+        if context is not None:
+            writer = writer or context.writer
+            reader = reader or context.reader
+            progress_tracker = progress_tracker or context.progress_tracker
+            domain_cache = domain_cache or context.domain_cache
         self._ips = ips
         self._writer = writer
         self._reader = reader

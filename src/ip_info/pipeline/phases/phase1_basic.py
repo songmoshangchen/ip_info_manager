@@ -1,12 +1,18 @@
+from __future__ import annotations
+
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import TYPE_CHECKING
 
 from ip_info.batch.core.concurrent import run_concurrent
 from ip_info.channel.adapter import BaseChannelAdapter
 from ip_info.pipeline.phase import PhaseResult
 from ip_info.store.protocols import IPDataReader, IPDataWriter
 from ip_info.utils.progress import ProgressTracker
+
+if TYPE_CHECKING:
+    from ip_info.pipeline.context import PipelineContext
 
 logger = logging.getLogger(__name__)
 
@@ -15,16 +21,21 @@ class BasicCollectPhase:
     def __init__(
         self,
         ips: list[str],
-        writer: IPDataWriter,
-        reader: IPDataReader,
-        ipinfo_channel: BaseChannelAdapter,
-        rdns_channel: BaseChannelAdapter,
+        writer: IPDataWriter | None = None,
+        reader: IPDataReader | None = None,
+        ipinfo_channel: BaseChannelAdapter | None = None,
+        rdns_channel: BaseChannelAdapter | None = None,
         *,
+        context: PipelineContext | None = None,
         no_validate: bool = False,
         ipinfo_workers: int = 1,
         rdns_workers: int = 1,
         progress_tracker: ProgressTracker | None = None,
     ):
+        if context is not None:
+            writer = writer or context.writer
+            reader = reader or context.reader
+            progress_tracker = progress_tracker or context.progress_tracker
         self._ips = ips
         self._writer = writer
         self._reader = reader

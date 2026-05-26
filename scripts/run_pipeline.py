@@ -52,6 +52,7 @@ def main():
     from ip_info.channel.ipinfo_api import IpinfoApiChannel
     from ip_info.channel.port_scan import PortScanChannel
     from ip_info.channel.rdns_ptr import RdnsPtrChannel
+    from ip_info.pipeline.context import PipelineContext
     from ip_info.pipeline.filter_ips import filter_dynamic_ips, filter_ips_by_classification
     from ip_info.pipeline.phases import (
         BasicCollectPhase,
@@ -100,6 +101,13 @@ def main():
     reader = IPReader(storage_file)
     domain_cache = SqliteDomainCache(domain_cache_db)
 
+    ctx = PipelineContext(
+        writer=writer,
+        reader=reader,
+        progress_tracker=progress_tracker,
+        domain_cache=domain_cache,
+    )
+
     # Phase 1: 基础情报采集
     logger.info("=" * 60)
     logger.info("Phase 1: 基础情报采集 (%d IP)", len(ips))
@@ -109,13 +117,11 @@ def main():
     _disable_channels([ipinfo_ch, rdns_ch], skip_names)
     phase1 = BasicCollectPhase(
         ips=ips,
-        writer=writer,
-        reader=reader,
         ipinfo_channel=ipinfo_ch,
         rdns_channel=rdns_ch,
+        context=ctx,
         ipinfo_workers=2,
         rdns_workers=3,
-        progress_tracker=progress_tracker,
     )
     r1 = phase1.run()
     logger.info("Phase 1 完成: %s, 耗时 %.1fs", r1.message, r1.elapsed)
@@ -126,8 +132,7 @@ def main():
     logger.info("=" * 60)
     phase2 = ClassifyTagPhase(
         ips=ips,
-        writer=writer,
-        reader=reader,
+        context=ctx,
         rules_dir=rules_dir,
         tagger_config_dir=tagger_config_dir,
     )
@@ -159,16 +164,14 @@ def main():
         _disable_channels(all_phase3_channels, skip_names)
         phase3 = DeepQueryPhase(
             ips=filtered_ips,
-            writer=writer,
-            reader=reader,
             aizhan_channel=aizhan_ch or chinaz_ch,
             chinaz_channel=chinaz_ch,
             fofa_channel=fofa_ch or chinaz_ch,
+            context=ctx,
             aizhan_workers=1,
             chinaz_workers=2,
             fofa_workers=2,
             skip_ips=dynamic_ips,
-            progress_tracker=progress_tracker,
         )
         r3 = phase3.run()
         logger.info("Phase 3 完成: %s, 耗时 %.1fs", r3.message, r3.elapsed)
@@ -184,16 +187,13 @@ def main():
         _disable_channels([nmap_ch], skip_names)
         phase4 = VerifyScanPhase(
             ips=filtered_ips,
-            writer=writer,
-            reader=reader,
             nmap_channel=nmap_ch,
-            domain_cache=domain_cache,
+            context=ctx,
             max_age_days=7,
             dns_timeout=3.0,
             dns_concurrency=10,
             nmap_workers=3,
             skip_ips=dynamic_ips,
-            progress_tracker=progress_tracker,
         )
         r4 = phase4.run()
         logger.info("Phase 4 完成: %s, 耗时 %.1fs", r4.message, r4.elapsed)

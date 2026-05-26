@@ -1,10 +1,16 @@
+from __future__ import annotations
+
 import logging
 import time
+from typing import TYPE_CHECKING
 
 from ip_info.pipeline.phase import PhaseResult
 from ip_info.processors.classifier.runner import BatchClassifier
 from ip_info.processors.tagger.runner import BatchTagger
 from ip_info.store.protocols import IPDataReader, IPDataWriter
+
+if TYPE_CHECKING:
+    from ip_info.pipeline.context import PipelineContext
 
 logger = logging.getLogger(__name__)
 
@@ -13,14 +19,18 @@ class ClassifyTagPhase:
     def __init__(
         self,
         ips: list[str],
-        writer: IPDataWriter,
-        reader: IPDataReader,
-        rules_dir: str,
-        tagger_config_dir: str,
+        writer: IPDataWriter | None = None,
+        reader: IPDataReader | None = None,
+        rules_dir: str = "",
+        tagger_config_dir: str = "",
         *,
+        context: PipelineContext | None = None,
         no_tagger: bool = False,
         tagger_level: int | None = None,
     ):
+        if context is not None:
+            writer = writer or context.writer
+            reader = reader or context.reader
         self._ips = ips
         self._writer = writer
         self._reader = reader

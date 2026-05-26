@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import TYPE_CHECKING
 
 from ip_info.batch.core.concurrent import run_concurrent
 from ip_info.batch.core.query import BatchResult
@@ -9,6 +12,9 @@ from ip_info.pipeline.phase import PhaseResult
 from ip_info.store.protocols import IPDataReader, IPDataWriter
 from ip_info.utils.progress import ProgressTracker
 
+if TYPE_CHECKING:
+    from ip_info.pipeline.context import PipelineContext
+
 logger = logging.getLogger(__name__)
 
 
@@ -16,12 +22,13 @@ class DeepQueryPhase:
     def __init__(
         self,
         ips: list[str],
-        writer: IPDataWriter,
-        reader: IPDataReader,
-        aizhan_channel: BaseChannelAdapter,
-        chinaz_channel: BaseChannelAdapter,
-        fofa_channel: BaseChannelAdapter,
+        writer: IPDataWriter | None = None,
+        reader: IPDataReader | None = None,
+        aizhan_channel: BaseChannelAdapter | None = None,
+        chinaz_channel: BaseChannelAdapter | None = None,
+        fofa_channel: BaseChannelAdapter | None = None,
         *,
+        context: PipelineContext | None = None,
         no_validate: bool = False,
         aizhan_workers: int = 1,
         chinaz_workers: int = 1,
@@ -29,6 +36,10 @@ class DeepQueryPhase:
         skip_ips: set[str] | None = None,
         progress_tracker: ProgressTracker | None = None,
     ):
+        if context is not None:
+            writer = writer or context.writer
+            reader = reader or context.reader
+            progress_tracker = progress_tracker or context.progress_tracker
         self._ips = ips
         self._writer = writer
         self._reader = reader
