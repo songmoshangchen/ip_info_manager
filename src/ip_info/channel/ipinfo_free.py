@@ -12,6 +12,7 @@ class IpinfoFreeChannel(BaseChannelAdapter):
     def __init__(self, timeout: float | None = None, config: IpInfoFreeConfig | None = None):
         _config = config or IpInfoFreeConfig()
         self.timeout = timeout if timeout is not None else _config.ipinfo_query_timeout
+        self.default_delay = _config.ipinfo_query_delay
 
     def _request(self, ip: str, **kwargs) -> dict:
         timeout = kwargs.get("timeout", self.timeout)

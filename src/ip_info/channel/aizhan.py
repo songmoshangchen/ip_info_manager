@@ -51,6 +51,7 @@ class AizhanChannel(BaseChannelAdapter):
         _config = config or AizhanConfig()
         self.cookie = cookie or _config.aizhan_cookie
         self.timeout = timeout if timeout is not None else _config.aizhan_query_timeout
+        self.default_delay = _config.aizhan_query_delay
 
     def _validate_key(self) -> None:
         if not self.cookie or not self.cookie.strip():

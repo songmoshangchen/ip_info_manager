@@ -15,6 +15,7 @@ class ChinazChannel(BaseChannelAdapter):
         _config = config or ChinazConfig()
         self.cookie = cookie or _config.chinaz_cookie
         self.timeout = timeout if timeout is not None else _config.chinaz_query_timeout
+        self.default_delay = _config.chinaz_query_delay
 
     def _validate_key(self) -> None:
         if not self.cookie or not self.cookie.strip():

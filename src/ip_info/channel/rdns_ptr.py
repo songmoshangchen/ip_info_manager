@@ -12,6 +12,7 @@ class RdnsPtrChannel(BaseChannelAdapter):
     def __init__(self, timeout: float | None = None, config: RdnsConfig | None = None):
         _config = config or RdnsConfig()
         self.timeout = timeout if timeout is not None else _config.rdns_query_timeout
+        self.default_delay = _config.rdns_query_delay
 
     def _request(self, ip: str, **kwargs) -> dict:
         timeout = kwargs.get("timeout", self.timeout)

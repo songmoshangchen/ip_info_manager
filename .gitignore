@@ -20,3 +20,4 @@ custom_rules.json
 *.egg-info/
 .pytest_cache/
 .pytest_cache2/
+issues/

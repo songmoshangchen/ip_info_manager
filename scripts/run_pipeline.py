@@ -1,9 +1,11 @@
 """Phase 1-4 完整运行脚本。
 
-用法: python scripts/run_pipeline.py <ip_file> <output_dir>
+用法: python scripts/run_pipeline.py <ip_file> <output_dir> [--skip channel1,channel2]
 例:   python scripts/run_pipeline.py data/0518-0524/ips.txt data/0518-0524
+      python scripts/run_pipeline.py data/0518-0524/ips.txt data/0518-0524 --skip aizhan,fofa_host,port_scan
 """
 
+import argparse
 import logging
 import os
 import sys
@@ -36,6 +38,14 @@ def _try_channel(name):
     return None
 
 
+def _disable_channels(channels: list, skip_names: set[str]) -> None:
+    """手动禁用指定渠道。"""
+    for ch in channels:
+        if ch.channel_name in skip_names:
+            ch.disabled = True
+            logger.info("手动禁用渠道: %s", ch.channel_name)
+
+
 def main():
     from ip_info.channel.chinaz import ChinazChannel
     from ip_info.channel.ipinfo_api import IpinfoApiChannel
@@ -53,12 +63,18 @@ def main():
     from ip_info.utils.load_ips import load_ips
     from ip_info.utils.progress import SqliteProgressTracker
 
-    if len(sys.argv) < 3:
-        print("用法: python scripts/run_pipeline.py <ip_file> <output_dir>")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="IP 信息采集流水线")
+    parser.add_argument("ip_file", help="IP 列表文件路径")
+    parser.add_argument("output_dir", help="输出目录")
+    parser.add_argument("--skip", default="", help="跳过的渠道，逗号分隔 (如: aizhan,fofa_host,port_scan)")
+    args = parser.parse_args()
 
-    ip_file = sys.argv[1]
-    output_dir = sys.argv[2]
+    skip_names = {s.strip() for s in args.skip.split(",") if s.strip()}
+    if skip_names:
+        logger.info("将跳过渠道: %s", ", ".join(sorted(skip_names)))
+
+    ip_file = args.ip_file
+    output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)
 
     storage_file = os.path.join(output_dir, "ip_data.json")
@@ -86,12 +102,15 @@ def main():
     logger.info("=" * 60)
     logger.info("Phase 1: 基础情报采集 (%d IP)", len(ips))
     logger.info("=" * 60)
+    ipinfo_ch = IpinfoApiChannel()
+    rdns_ch = RdnsPtrChannel()
+    _disable_channels([ipinfo_ch, rdns_ch], skip_names)
     phase1 = BasicCollectPhase(
         ips=ips,
         writer=writer,
         reader=reader,
-        ipinfo_channel=IpinfoApiChannel(),
-        rdns_channel=RdnsPtrChannel(),
+        ipinfo_channel=ipinfo_ch,
+        rdns_channel=rdns_ch,
         ipinfo_workers=2,
         rdns_workers=3,
         progress_tracker=progress_tracker,
@@ -125,13 +144,16 @@ def main():
         logger.info("=" * 60)
         aizhan_ch = _try_channel("aizhan")
         fofa_ch = _try_channel("fofa")
+        chinaz_ch = ChinazChannel()
+        all_phase3_channels = [ch for ch in [aizhan_ch, chinaz_ch, fofa_ch] if ch is not None]
+        _disable_channels(all_phase3_channels, skip_names)
         phase3 = DeepQueryPhase(
             ips=filtered_ips,
             writer=writer,
             reader=reader,
-            aizhan_channel=aizhan_ch or ChinazChannel(),
-            chinaz_channel=ChinazChannel(),
-            fofa_channel=fofa_ch or ChinazChannel(),
+            aizhan_channel=aizhan_ch or chinaz_ch,
+            chinaz_channel=chinaz_ch,
+            fofa_channel=fofa_ch or chinaz_ch,
             aizhan_workers=1,
             chinaz_workers=2,
             fofa_workers=2,
@@ -147,11 +169,13 @@ def main():
         logger.info("=" * 60)
         logger.info("Phase 4: 验证 + Nmap 扫描 (%d IP)", len(filtered_ips))
         logger.info("=" * 60)
+        nmap_ch = PortScanChannel()
+        _disable_channels([nmap_ch], skip_names)
         phase4 = VerifyScanPhase(
             ips=filtered_ips,
             writer=writer,
             reader=reader,
-            nmap_channel=PortScanChannel(),
+            nmap_channel=nmap_ch,
             domain_cache=domain_cache,
             max_age_days=7,
             dns_timeout=3.0,

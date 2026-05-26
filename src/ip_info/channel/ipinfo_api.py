@@ -13,6 +13,7 @@ class IpinfoApiChannel(BaseChannelAdapter):
         _config = config or IpInfoApiConfig()
         self.token = token or _config.ipinfo_access_token
         self.timeout = timeout if timeout is not None else _config.ipinfo_query_timeout
+        self.default_delay = _config.ipinfo_query_delay
 
     def _validate_key(self) -> None:
         if not self.token or not self.token.strip():

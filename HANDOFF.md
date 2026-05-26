@@ -1,6 +1,6 @@
 # Handoff 文档 — ip_info_manager 重构项目
 
-> 生成时间: 2026-05-26（第十二次更新）
+> 生成时间: 2026-05-26（第十四次更新）
 > 项目路径: `E:\12_trae_skills\ip_info_manager`
 
 ---
@@ -8,70 +8,68 @@
 ## 一、已完成工作总览
 
 ### 1. 存储层 ✅
-- `src/ip_info/store/` — IPDataWriter/IPDataReader/DomainCache 协议 + JSON/InMemory 实现
-- **DomainCache 具体实现未写**（计划用 SQLite，目前只有 InMemoryDomainCache）
+- `src/ip_info/store/` — IPDataWriter/IPDataReader/DomainCache 协议 + JSON/InMemory/SQLite 实现
+- SqliteDomainCache: threading.local + WAL 模式 + INSERT OR REPLACE
 
 ### 2. 渠道层 ✅
 - `src/ip_info/channel/` — BaseChannelAdapter + 10 个渠道 + ChannelConfig 配置系统
-- fofa key 已更新为 `d6741fd4f6cae5736ea8b640ee242f51`（验证可用）
+- **default_delay 已修复**：所有 9 个 Channel 的 default_delay 从 Config 读取（不再硬编码）
+- timeout 也从 Config 读取（一直正常）
+- fofa key: `d6741fd4f6cae5736ea8b640ee242f51`
 
 ### 3. 通用工具层 ✅
-- `src/ip_info/utils/` — `load_ips()`（含 # 注释行过滤）+ ProgressTracker 协议 + 实现
+- `src/ip_info/utils/` — `load_ips()`（含 IP 格式校验）+ ProgressTracker 协议 + 实现
 
 ### 4. 批量查询层 ✅
-- BaseBatchQuery（串行）+ run_concurrent（并发）+ BatchRunner Protocol
-- 13 个 batch CLI 脚本（含 batch_dns_verify）
+- BaseBatchQuery + run_concurrent + BatchRunner Protocol
+- 13 个 batch CLI 脚本
 
 ### 5. Processors 层 ✅
-- **tagger**: BatchTagger（59 测试），流式双指针匹配，35 个威胁情报源
-- **classifier**: BatchClassifier（78 测试），7 类规则，5 种匹配，全量重处理
-- **dns_verify**: BatchDnsVerify（48 测试），过期仅提示/--force N/DomainCache Protocol/并发安全
+- **processors/core/base.py**: BaseProcessor 基类
+- **tagger/classifier/dns_verify**: 均继承 BaseProcessor
 
 ### 6. Pipeline 编排框架 ✅
-- `src/ip_info/pipeline/phase.py` — Phase Protocol + PhaseResult
-- `src/ip_info/pipeline/pipeline.py` — Pipeline 类 + PipelineResult
-- 15 个测试，支持 register/run/from_phase/only_phase/skip_phases/失败停止
+- Phase Protocol + PhaseResult + Pipeline 类
+- Phase 1-4 具体实现完成
+- Phase 2-3 之间有 filter_ips_by_classification
 
-### 7. 测试现状
-- **637 个测试全部通过**
+### 7. 分渠道断点续传 ✅
+- ProgressTracker 协议: `is_processed(ip, channel="")` / `mark_processed(ip, channel="")`
+- FileProgressTracker（deprecated）+ InMemoryProgressTracker + **SqliteProgressTracker**
+
+### 8. SqliteProgressTracker ✅ (本会话完成)
+- 表结构: `progress(ip TEXT, channel TEXT, PRIMARY KEY(ip, channel))`
+- 缓冲区 + flush 批量写入
+- threading.local + WAL 模式，并发安全
+- 支持 `import_from` 从旧 FileProgressTracker 文件导入
+- run_concurrent / BaseBatchQuery 新增 `flush_interval` 参数
+
+### 9. run_pipeline.py 增强 ✅ (本会话完成)
+- `--skip` 参数支持临时禁用渠道
+- 使用 SqliteProgressTracker 替代 FileProgressTracker
+
+### 10. 测试现状
+- **710 个测试全部通过**
 - 运行命令：`python -m pytest tests/unit/ -q`
 
 ---
 
-## 二、当前任务：实现 Phase 1-5 具体阶段逻辑
+## 二、待处理 Issue（新建）
 
-### Spec 状态
-- **已创建**：`.trae/specs/implement-pipeline-phases/` — spec.md / tasks.md / checklist.md
-- **待审批**：用户尚未确认 spec
+Issue 存放在 `issues/` 目录（已加入 .gitignore）。
 
-### Phase 1-5 设计概要
+### Issue 1: 临时 IP 快速查询脚本
+- **文件**: `issues/001-quick-query-script.md`
+- **目标**: 创建 `scripts/quick_query.py`
+- **功能**: 命令行直接传 IP，自动生成独立输出目录，不与已有数据冲突
+- **用法**: `python scripts/quick_query.py 8.8.8.8 1.1.1.1 --phase 1,3 --skip aizhan`
 
-| Phase | 类名 | 内部逻辑 | 阶段内执行方式 |
-|-------|------|---------|--------------|
-| 1 | BasicCollectPhase | ipinfo_api + rdns_ptr | ThreadPoolExecutor 并行 BaseBatchQuery/run_concurrent |
-| 2 | ClassifyFilterPhase | BatchClassifier → BatchTagger → need_deep_query 过滤 | 顺序执行，输出 filtered_ips |
-| 3 | DeepQueryPhase | aizhan + chinaz + fofa_host | ThreadPoolExecutor 并行 BaseBatchQuery |
-| 4 | DnsVerifyPhase | 委托 BatchDnsVerify | 单处理器批量 |
-| 5 | PortScanPhase | 委托 run_concurrent | 并发查询 |
-
-### 关键设计决策
-
-1. **Phase 构造函数接收渠道实例**：Phase 不负责创建渠道，由调用方（CLI 脚本）注入
-2. **阶段间数据传递**：Phase 2 的 `PhaseResult.data["filtered_ips"]` 传递给 Phase 3-5
-3. **过滤逻辑**：`need_deep_query == True` 的 IP 保留（cloud_provider/residential/other），过滤掉 invalid_rdns/cdn/crawler_scanner
-4. **测试策略**：mock 到存储层，渠道使用 MagicMock 模拟
-5. **SqliteDomainCache**：threading.local + WAL 模式 + INSERT OR REPLACE
-
-### 分类规则（need_deep_query 映射）
-
-| 分类 | need_deep_query | Phase 2 过滤 |
-|------|----------------|-------------|
-| cloud_provider | True | 保留 |
-| residential | True | 保留 |
-| other（默认） | True | 保留 |
-| invalid_rdns | False | 过滤 |
-| cdn | False | 过滤 |
-| crawler_scanner | False | 过滤 |
+### Issue 2: IP-域名映射验证脚本
+- **文件**: `issues/002-verify-ip-domain-mapping.md`
+- **目标**: 创建 `scripts/verify_mapping.py`
+- **功能**: 给定 IP-域名对，验证域名是否仍然解析到该 IP
+- **输入方式**: 命令行 IP-域名对 / 文件 / 已有 ip_data.json
+- **复用**: `processors/dns_verify/verifier.py` 的 `verify_one()` 函数
 
 ---
 
@@ -80,23 +78,39 @@
 ```
 src/ip_info/
   ├── utils/                      # 通用工具 ✅
-  ├── store/                      # 存储层 ✅ (DomainCache SQLite 实现待写)
+  │   ├── progress.py             # ProgressTracker 协议 + File/InMemory/Sqlite 实现
+  │   └── load_ips.py             # IP 加载 + 格式校验 ✅
+  ├── store/                      # 存储层 ✅
+  │   ├── protocols.py            # IPDataWriter/IPDataReader/DomainCache 协议
+  │   ├── json_store.py           # JSON 实现（progress_tracker 返回 SqliteProgressTracker）
+  │   ├── in_memory.py            # InMemory 实现
+  │   └── sqlite_cache.py         # SqliteDomainCache
   ├── channel/                    # 渠道层 ✅ (10 个渠道)
+  │   ├── config.py               # ChannelConfig（pydantic-settings, .env 读取）
+  │   └── *.py                    # 各渠道（default_delay 从 Config 读取）
   ├── processors/                 # 非渠道批量处理器 ✅
-  │   ├── tagger/                 # 标签打标 ✅
-  │   ├── classifier/             # 自动分类 ✅
-  │   └── dns_verify/             # DNS 域名验证 ✅
-  ├── batch/                      # 批量查询层 ✅ (13 个脚本)
-  └── pipeline/                   # 流水线层
-      ├── phase.py                # Phase Protocol + PhaseResult ✅
-      ├── pipeline.py             # Pipeline 编排器 ✅
-      └── phases/                 # 具体阶段实现（待实现）
-          ├── __init__.py
+  │   ├── core/base.py            # BaseProcessor 基类
+  │   ├── tagger/                 # BatchTagger
+  │   ├── classifier/             # BatchClassifier
+  │   └── dns_verify/             # BatchDnsVerify + verifier.py（verify_one）
+  ├── batch/                      # 批量查询层 ✅
+  │   └── core/
+  │       ├── query.py            # BaseBatchQuery（含 flush_interval）
+  │       └── concurrent.py       # run_concurrent（含 flush_interval）
+  └── pipeline/                   # 流水线层 ✅
+      ├── phase.py                # Phase Protocol + PhaseResult
+      ├── pipeline.py             # Pipeline 编排器
+      ├── filter_ips.py           # filter_ips_by_classification
+      └── phases/
           ├── phase1_basic.py     # BasicCollectPhase
-          ├── phase2_classify.py  # ClassifyFilterPhase
+          ├── phase2_classify.py  # ClassifyTagPhase
           ├── phase3_deep.py      # DeepQueryPhase
-          ├── phase4_dns.py       # DnsVerifyPhase
-          └── phase5_portscan.py  # PortScanPhase
+          └── phase4_verify_scan.py # VerifyScanPhase
+scripts/
+  └── run_pipeline.py             # 完整流水线（支持 --skip 渠道禁用）
+issues/                           # Issue 跟踪（.gitignore）
+  ├── 001-quick-query-script.md
+  └── 002-verify-ip-domain-mapping.md
 ```
 
 ---
@@ -105,49 +119,51 @@ src/ip_info/
 
 | 文件 | 说明 |
 |------|------|
-| `.trae/specs/implement-pipeline-phases/spec.md` | Phase 1-5 详细 spec（待审批） |
-| `.trae/specs/implement-pipeline-phases/tasks.md` | 7 个任务分解 |
-| `.trae/specs/implement-pipeline-phases/checklist.md` | 26 个验证点 |
-| `src/ip_info/pipeline/phase.py` | Phase Protocol + PhaseResult |
-| `src/ip_info/pipeline/pipeline.py` | Pipeline 编排器 |
-| `src/ip_info/store/protocols.py` | IPDataWriter/IPDataReader/DomainCache 协议 |
-| `src/ip_info/store/in_memory.py` | InMemoryIPWriter/InMemoryIPReader/InMemoryDomainCache |
-| `src/ip_info/batch/core/query.py` | BaseBatchQuery + BatchResult |
-| `src/ip_info/batch/core/concurrent.py` | run_concurrent 并发查询 |
-| `src/ip_info/processors/classifier/runner.py` | BatchClassifier |
-| `src/ip_info/processors/tagger/runner.py` | BatchTagger |
-| `src/ip_info/processors/dns_verify/runner.py` | BatchDnsVerify |
-| `config/classifier/builtin_rules.json` | 分类规则（7 类，need_deep_query 映射） |
-| `legacy/scenarios/trace_ip/pipeline.py` | 遗留 7 阶段流水线（迁移参考） |
+| `src/ip_info/utils/progress.py` | ProgressTracker 协议 + Sqlite/File/InMemory 三种实现 |
+| `src/ip_info/processors/core/base.py` | BaseProcessor 基类（含 _flush_progress） |
+| `src/ip_info/batch/core/concurrent.py` | run_concurrent（含 flush_interval） |
+| `src/ip_info/batch/core/query.py` | BaseBatchQuery（含 flush_interval） |
+| `src/ip_info/processors/dns_verify/verifier.py` | verify_one() — 单域名 DNS 验证（Issue 2 需要复用） |
+| `src/ip_info/channel/config.py` | ChannelConfig — pydantic-settings 从 .env 读取 |
+| `scripts/run_pipeline.py` | 完整流水线脚本（--skip 支持） |
 
 ---
 
-## 五、提交记录
+## 五、提交记录（最新）
 
 ```
-0f91417 feat(pipeline): 实现 Pipeline 编排框架 (TDD)
-3fc8456 docs: 更新 HANDOFF.md
-7bb8e6f fix(dns_verify): 无渠道数据时 WARNING 告警
-4d6d5aa test(dns_verify): 强化结果导向测试
-198dfab test(dns_verify): 添加 DomainCache 并发安全测试
-8cd04a4 fix(store): InMemoryDomainCache 添加 threading.Lock
-72b4771 refactor(dns_verify): 过期仅提示不覆盖 + --force N + DomainCache Protocol
-bdccd42 feat(dns_verify): 迁移 DNS 域名验证模块
-57f9d1c feat(classifier): 迁移 IP 自动分类模块
-3bbae48 feat(tagger): 迁移 IP 标签打标模块
+7045f32 feat(progress): 实现 SqliteProgressTracker + flush_interval 批量写入
+cdbec0f test(progress): 分渠道断点续传测试 + Phase delay/tracker 测试
+4319294 refactor(progress): 分渠道断点续传 + processors/core 基类抽取
 ```
+
+**未提交**: Channel default_delay 修复（9 个文件）、run_pipeline.py --skip 支持、.gitignore 更新
 
 ---
 
 ## 六、Git 提交规范
 
 - 中文翻译的 conventional commit 格式
-- 按逻辑分组提交，每个提交只做一件事
-- PowerShell 用分号 `;` 分隔命令，`-m` 多次传 body
+- PowerShell 用分号 `;` 分隔命令
 
 ---
 
 ## 七、建议的下一步技能
 
-- **tdd**: Phase 1-5 实现时使用 TDD
-- **brainstorming**: DomainCache SQLite 实现设计（如需进一步讨论）
+- **tdd**: 用 TDD 实现 Issue 1（quick_query.py）或 Issue 2（verify_mapping.py）
+- **git-commit**: 先提交未提交的 default_delay 修复和 --skip 支持
+
+---
+
+## 八、0518-0524 任务命令
+
+用户需要继续跑 0518-0524 的 IP 列表：
+
+```powershell
+cd E:\12_trae_skills\ip_info_manager; python scripts/run_pipeline.py "E:\07数据\xwechat_files\wxid_ryizq74rvwt022_8600\msg\file\2026-05\0518-0524IP.txt" data/0518-0524
+```
+
+可选跳过渠道：
+```powershell
+--skip aizhan,fofa_host,port_scan
+```

@@ -17,6 +17,7 @@ class FofaSearchChannel(BaseChannelAdapter):
         _config = config or FofaSearchConfig()
         self.key = key or _config.fofa_api_key
         self.timeout = timeout if timeout is not None else _config.fofa_query_timeout
+        self.default_delay = _config.fofa_query_delay
 
     def _validate_key(self) -> None:
         if not self.key or not self.key.strip():

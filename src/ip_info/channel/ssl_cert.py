@@ -85,6 +85,7 @@ class SslCertChannel(BaseChannelAdapter):
         self.port = port if port is not None else _config.ssl_cert_port
         self.timeout = timeout if timeout is not None else _config.ssl_cert_timeout
         self.openssl_timeout = openssl_timeout if openssl_timeout is not None else _config.ssl_cert_openssl_timeout
+        self.default_delay = _config.ssl_cert_query_delay
         self._last_port = self.port
 
     def _request(self, ip: str, **kwargs):

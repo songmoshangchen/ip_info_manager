@@ -40,6 +40,7 @@ class WhoisQueryChannel(BaseChannelAdapter):
     def __init__(self, timeout: float | None = None, config: WhoisConfig | None = None):
         _config = config or WhoisConfig()
         self.timeout = timeout if timeout is not None else _config.whois_query_timeout
+        self.default_delay = _config.whois_query_delay
 
     def _request(self, ip: str, **kwargs):
         timeout = kwargs.get("timeout", self.timeout)
