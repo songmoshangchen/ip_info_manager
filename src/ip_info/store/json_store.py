@@ -2,7 +2,7 @@ import json
 import os
 import threading
 
-from ip_info.utils.progress import FileProgressTracker, ProgressTracker
+from ip_info.utils.progress import ProgressTracker, SqliteProgressTracker
 
 
 class IPWriter:
@@ -66,8 +66,8 @@ class IPWriter:
         base = self._storage_file
         if base.endswith(".json"):
             base = base[:-5]
-        progress_path = f"{base}.{channel_name}.progress"
-        return FileProgressTracker(progress_path)
+        db_path = f"{base}.progress.db"
+        return SqliteProgressTracker(db_path)
 
 
 class IPReader:

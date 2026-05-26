@@ -12,6 +12,13 @@ from ip_info.utils.progress import ProgressTracker
 logger = logging.getLogger(__name__)
 
 
+def _try_flush(tracker: ProgressTracker) -> None:
+    """尝试刷新进度到持久化存储（如果 tracker 支持 flush）。"""
+    flush = getattr(tracker, "flush", None)
+    if callable(flush):
+        flush()
+
+
 def run_concurrent(
     ips: list[str],
     channel: BaseChannelAdapter,
@@ -22,6 +29,7 @@ def run_concurrent(
     delay: float = 0,
     no_validate: bool = False,
     progress_tracker: ProgressTracker | None = None,
+    flush_interval: int = 1,
     max_consecutive_network_failures: int = 5,
 ) -> BatchResult:
     """并发批量查询，封装 ThreadPoolExecutor + 熔断保护 + 进度跟踪。
@@ -67,6 +75,7 @@ def run_concurrent(
             delay=delay,
             no_validate=True,  # 已验证
             progress_tracker=progress_tracker,
+            flush_interval=flush_interval,
             max_consecutive_network_failures=max_consecutive_network_failures,
         )
         return query.run()
@@ -157,9 +166,15 @@ def run_concurrent(
                 )
             if progress_tracker is not None:
                 progress_tracker.mark_processed(ip, channel_name)
+                if flush_interval > 0 and success_count % flush_interval == 0:
+                    _try_flush(progress_tracker)
 
     # 取消剩余任务
     stop_event.set()
+
+    # 最终 flush
+    if progress_tracker is not None:
+        _try_flush(progress_tracker)
 
     total_elapsed = time.time() - start_time
     stopped_early = bool(stop_reason)

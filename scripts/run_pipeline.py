@@ -51,7 +51,7 @@ def main():
     from ip_info.store.json_store import IPReader, IPWriter
     from ip_info.store.sqlite_cache import SqliteDomainCache
     from ip_info.utils.load_ips import load_ips
-    from ip_info.utils.progress import FileProgressTracker
+    from ip_info.utils.progress import SqliteProgressTracker
 
     if len(sys.argv) < 3:
         print("用法: python scripts/run_pipeline.py <ip_file> <output_dir>")
@@ -63,10 +63,10 @@ def main():
 
     storage_file = os.path.join(output_dir, "ip_data.json")
     domain_cache_db = os.path.join(output_dir, "domain_cache.db")
-    progress_file = os.path.join(output_dir, "progress.txt")
+    progress_db = os.path.join(output_dir, "progress.db")
     rules_dir = os.path.join(project_root, "config", "classifier")
     tagger_config_dir = os.path.join(project_root, "config", "ip_tagger")
-    progress_tracker = FileProgressTracker(progress_file)
+    progress_tracker = SqliteProgressTracker(progress_db)
 
     start = time.time()
 

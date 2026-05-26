@@ -31,6 +31,7 @@ class BaseBatchQuery:
         delay: float = 0,
         no_validate: bool = False,
         progress_tracker: ProgressTracker | None = None,
+        flush_interval: int = 1,
         max_consecutive_network_failures: int = 5,
     ):
         self._channel_name = channel_name
@@ -39,6 +40,7 @@ class BaseBatchQuery:
         self._delay = delay
         self._no_validate = no_validate
         self._progress_tracker = progress_tracker
+        self._flush_interval = flush_interval
         self._max_failures = max_consecutive_network_failures
         seen: set[str] = set()
         self._all_ips: list[str] = []
@@ -60,6 +62,13 @@ class BaseBatchQuery:
         if self._progress_tracker is None:
             return list(self._all_ips)
         return [ip for ip in self._all_ips if not self._progress_tracker.is_processed(ip, self._channel_name)]
+
+    def _try_flush(self) -> None:
+        """尝试刷新进度到持久化存储。"""
+        if self._progress_tracker is not None:
+            flush = getattr(self._progress_tracker, "flush", None)
+            if callable(flush):
+                flush()
 
     def run(self) -> BatchResult:
         start_time = time.time()
@@ -130,6 +139,11 @@ class BaseBatchQuery:
             )
             if self._progress_tracker is not None:
                 self._progress_tracker.mark_processed(ip, self._channel_name)
+                if self._flush_interval > 0 and success_count % self._flush_interval == 0:
+                    self._try_flush()
+
+        # 最终 flush
+        self._try_flush()
 
         if self._channel.disabled:
             stop_reason = "permanent_error"
