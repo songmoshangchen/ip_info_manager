@@ -187,3 +187,46 @@ class SqliteProgressTracker:
             # 更新内存缓存
             cache = self._load_cache()
             cache.update(records)
+
+    def unmark_processed(self, ip: str, channel: str = "") -> None:
+        """删除指定 (ip, channel) 的进度记录，允许重新查询。"""
+        key = (ip, channel)
+        # 从缓冲区移除
+        if key in self._buffer:
+            self._buffer.remove(key)
+        # 从数据库删除
+        conn = self._get_conn()
+        conn.execute(
+            "DELETE FROM progress WHERE ip = ? AND channel = ?",
+            (ip, channel),
+        )
+        conn.commit()
+        # 从内存缓存移除
+        cache = self._load_cache()
+        cache.discard(key)
+
+    def unmark_channel(self, channel: str) -> int:
+        """删除指定渠道的所有进度记录，允许重新查询整个渠道。返回删除数量。"""
+        # 从缓冲区移除
+        self._buffer = [k for k in self._buffer if k[1] != channel]
+        # 从数据库删除
+        conn = self._get_conn()
+        cursor = conn.execute(
+            "DELETE FROM progress WHERE channel = ?",
+            (channel,),
+        )
+        conn.commit()
+        deleted = cursor.rowcount
+        # 清除内存缓存，下次重新加载
+        self._cache = None
+        return deleted
+
+    def unmark_all(self) -> int:
+        """删除所有进度记录。返回删除数量。"""
+        self._buffer.clear()
+        conn = self._get_conn()
+        cursor = conn.execute("DELETE FROM progress")
+        conn.commit()
+        deleted = cursor.rowcount
+        self._cache = None
+        return deleted

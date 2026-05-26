@@ -452,3 +452,73 @@ class TestRoundTrip:
         conn.close()
         assert row[0] == "dns.google"
         assert json.loads(row[2]) == ["8.8.8.8", "8.8.4.4"]
+
+
+class TestDeleteProgress:
+    def test_delete_channel(self, tmp_path):
+        """删除指定渠道的进度记录。"""
+        from ip_info.utils.cache_converter import delete_progress_channel
+
+        db_path = str(tmp_path / "progress.db")
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS progress (ip TEXT NOT NULL, channel TEXT NOT NULL, PRIMARY KEY (ip, channel))"
+        )
+        conn.executemany(
+            "INSERT INTO progress (ip, channel) VALUES (?, ?)",
+            [("1.1.1.1", "port_scan"), ("2.2.2.2", "port_scan"), ("1.1.1.1", "ipinfo_api")],
+        )
+        conn.commit()
+        conn.close()
+
+        deleted = delete_progress_channel(db_path, "port_scan")
+        assert deleted == 2
+
+        conn = sqlite3.connect(db_path)
+        rows = conn.execute("SELECT ip, channel FROM progress").fetchall()
+        conn.close()
+        assert len(rows) == 1
+        assert rows[0] == ("1.1.1.1", "ipinfo_api")
+
+    def test_delete_channel_nonexistent(self, tmp_path):
+        """删除不存在的渠道返回 0。"""
+        from ip_info.utils.cache_converter import delete_progress_channel
+
+        db_path = str(tmp_path / "progress.db")
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS progress (ip TEXT NOT NULL, channel TEXT NOT NULL, PRIMARY KEY (ip, channel))"
+        )
+        conn.executemany(
+            "INSERT INTO progress (ip, channel) VALUES (?, ?)",
+            [("1.1.1.1", "ipinfo_api")],
+        )
+        conn.commit()
+        conn.close()
+
+        deleted = delete_progress_channel(db_path, "nonexistent")
+        assert deleted == 0
+
+    def test_delete_all(self, tmp_path):
+        """删除所有进度记录。"""
+        from ip_info.utils.cache_converter import delete_progress_all
+
+        db_path = str(tmp_path / "progress.db")
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS progress (ip TEXT NOT NULL, channel TEXT NOT NULL, PRIMARY KEY (ip, channel))"
+        )
+        conn.executemany(
+            "INSERT INTO progress (ip, channel) VALUES (?, ?)",
+            [("1.1.1.1", "ipinfo_api"), ("2.2.2.2", "rdns_ptr")],
+        )
+        conn.commit()
+        conn.close()
+
+        deleted = delete_progress_all(db_path)
+        assert deleted == 2
+
+        conn = sqlite3.connect(db_path)
+        count = conn.execute("SELECT COUNT(*) FROM progress").fetchone()[0]
+        conn.close()
+        assert count == 0

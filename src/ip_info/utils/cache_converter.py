@@ -256,3 +256,23 @@ def import_domain_cache_from_json(json_path: str, db_path: str) -> ConvertStats:
     skipped = len(records) - imported
 
     return ConvertStats(imported=imported, skipped=skipped)
+
+
+def delete_progress_channel(db_path: str, channel: str) -> int:
+    """删除 progress.db 中指定渠道的所有记录。返回删除数量。"""
+    conn = sqlite3.connect(db_path)
+    cursor = conn.execute("DELETE FROM progress WHERE channel = ?", (channel,))
+    conn.commit()
+    deleted = cursor.rowcount
+    conn.close()
+    return deleted
+
+
+def delete_progress_all(db_path: str) -> int:
+    """删除 progress.db 中所有记录。返回删除数量。"""
+    conn = sqlite3.connect(db_path)
+    cursor = conn.execute("DELETE FROM progress")
+    conn.commit()
+    deleted = cursor.rowcount
+    conn.close()
+    return deleted

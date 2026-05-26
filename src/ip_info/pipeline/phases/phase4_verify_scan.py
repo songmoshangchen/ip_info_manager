@@ -52,6 +52,10 @@ class VerifyScanPhase:
         if not self._ips:
             return PhaseResult(success=True, message="无 IP 需验证/扫描", elapsed=time.time() - start_time)
 
+        # 渠道验证（与其他 Phase 保持一致：先验证，再传 no_validate=True）
+        if not self._no_validate:
+            self._nmap_channel.validate()
+
         dns_result = None
         scan_result = None
 
@@ -76,7 +80,7 @@ class VerifyScanPhase:
                 channel_name="port_scan",
                 workers=self._nmap_workers,
                 delay=self._nmap_channel.default_delay,
-                no_validate=self._no_validate,
+                no_validate=True,
                 progress_tracker=self._progress_tracker,
             )
 

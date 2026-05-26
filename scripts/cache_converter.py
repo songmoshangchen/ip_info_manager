@@ -30,6 +30,8 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(project_root, "src"))
 
 from ip_info.utils.cache_converter import (  # noqa: E402
+    delete_progress_all,
+    delete_progress_channel,
     export_domain_cache_to_json,
     export_progress_to_json,
     import_domain_cache_from_json,
@@ -57,6 +59,16 @@ def cmd_progress_import_text(args):
 def cmd_progress_merge(args):
     stats = merge_progress_dbs(args.src_db, args.dst_db)
     print(f"[progress merge] {stats}")
+
+
+def cmd_progress_delete_channel(args):
+    deleted = delete_progress_channel(args.db_path, args.channel)
+    print(f"[progress delete-channel] 已删除 {deleted} 条 {args.channel} 渠道记录")
+
+
+def cmd_progress_delete_all(args):
+    deleted = delete_progress_all(args.db_path)
+    print(f"[progress delete-all] 已删除 {deleted} 条记录")
 
 
 def cmd_domain_export(args):
@@ -102,6 +114,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_merge.add_argument("src_db", help="源 progress.db 文件路径")
     p_merge.add_argument("dst_db", help="目标 progress.db 文件路径")
     p_merge.set_defaults(func=cmd_progress_merge)
+
+    # progress delete-channel
+    p_del_ch = progress_sub.add_parser("delete-channel", help="删除指定渠道的进度记录")
+    p_del_ch.add_argument("db_path", help="progress.db 文件路径")
+    p_del_ch.add_argument("channel", help="要删除的渠道名称")
+    p_del_ch.set_defaults(func=cmd_progress_delete_channel)
+
+    # progress delete-all
+    p_del_all = progress_sub.add_parser("delete-all", help="删除所有进度记录")
+    p_del_all.add_argument("db_path", help="progress.db 文件路径")
+    p_del_all.set_defaults(func=cmd_progress_delete_all)
 
     # === domain 子命令 ===
     domain_parser = subparsers.add_parser("domain", help="域名缓存操作")

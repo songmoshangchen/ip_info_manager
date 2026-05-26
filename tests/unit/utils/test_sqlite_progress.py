@@ -147,3 +147,88 @@ class TestSqliteProgressTracker:
         assert tracker.is_processed("1.1.1.1", "") is True
         assert tracker.is_processed("2.2.2.2", "ipinfo_api") is True
         assert tracker.is_processed("1.1.1.1", "ipinfo_api") is False
+
+
+class TestSqliteProgressUnmark:
+    """测试进度删除接口。"""
+
+    def test_unmark_processed_single(self, tmp_path: pathlib.Path):
+        """删除单条进度记录后，is_processed 返回 False。"""
+        from ip_info.utils.progress import SqliteProgressTracker
+
+        tracker = SqliteProgressTracker(str(tmp_path / "progress.db"))
+        tracker.mark_processed("1.1.1.1", "ipinfo_api")
+        tracker.mark_processed("1.1.1.1", "rdns_ptr")
+        tracker.flush()
+
+        assert tracker.is_processed("1.1.1.1", "ipinfo_api") is True
+        tracker.unmark_processed("1.1.1.1", "ipinfo_api")
+        assert tracker.is_processed("1.1.1.1", "ipinfo_api") is False
+        assert tracker.is_processed("1.1.1.1", "rdns_ptr") is True
+
+    def test_unmark_processed_persists(self, tmp_path: pathlib.Path):
+        """删除后新实例也看不到被删除的记录。"""
+        from ip_info.utils.progress import SqliteProgressTracker
+
+        db_path = str(tmp_path / "progress.db")
+        tracker_a = SqliteProgressTracker(db_path)
+        tracker_a.mark_processed("1.1.1.1", "ipinfo_api")
+        tracker_a.flush()
+
+        tracker_a.unmark_processed("1.1.1.1", "ipinfo_api")
+
+        tracker_b = SqliteProgressTracker(db_path)
+        assert tracker_b.is_processed("1.1.1.1", "ipinfo_api") is False
+
+    def test_unmark_channel(self, tmp_path: pathlib.Path):
+        """删除整个渠道的进度记录。"""
+        from ip_info.utils.progress import SqliteProgressTracker
+
+        tracker = SqliteProgressTracker(str(tmp_path / "progress.db"))
+        tracker.mark_processed("1.1.1.1", "port_scan")
+        tracker.mark_processed("2.2.2.2", "port_scan")
+        tracker.mark_processed("1.1.1.1", "ipinfo_api")
+        tracker.flush()
+
+        deleted = tracker.unmark_channel("port_scan")
+        assert deleted == 2
+        assert tracker.is_processed("1.1.1.1", "port_scan") is False
+        assert tracker.is_processed("2.2.2.2", "port_scan") is False
+        assert tracker.is_processed("1.1.1.1", "ipinfo_api") is True
+
+    def test_unmark_channel_nonexistent(self, tmp_path: pathlib.Path):
+        """删除不存在的渠道返回 0。"""
+        from ip_info.utils.progress import SqliteProgressTracker
+
+        tracker = SqliteProgressTracker(str(tmp_path / "progress.db"))
+        tracker.mark_processed("1.1.1.1", "ipinfo_api")
+        tracker.flush()
+
+        deleted = tracker.unmark_channel("nonexistent")
+        assert deleted == 0
+
+    def test_unmark_all(self, tmp_path: pathlib.Path):
+        """删除所有进度记录。"""
+        from ip_info.utils.progress import SqliteProgressTracker
+
+        tracker = SqliteProgressTracker(str(tmp_path / "progress.db"))
+        tracker.mark_processed("1.1.1.1", "ipinfo_api")
+        tracker.mark_processed("2.2.2.2", "rdns_ptr")
+        tracker.flush()
+
+        deleted = tracker.unmark_all()
+        assert deleted == 2
+        assert tracker.is_processed("1.1.1.1", "ipinfo_api") is False
+        assert tracker.is_processed("2.2.2.2", "rdns_ptr") is False
+
+    def test_unmark_processed_from_buffer(self, tmp_path: pathlib.Path):
+        """删除缓冲区中尚未 flush 的记录。"""
+        from ip_info.utils.progress import SqliteProgressTracker
+
+        tracker = SqliteProgressTracker(str(tmp_path / "progress.db"))
+        tracker.mark_processed("1.1.1.1", "ipinfo_api")
+        # 不 flush
+
+        assert tracker.is_processed("1.1.1.1", "ipinfo_api") is True
+        tracker.unmark_processed("1.1.1.1", "ipinfo_api")
+        assert tracker.is_processed("1.1.1.1", "ipinfo_api") is False
