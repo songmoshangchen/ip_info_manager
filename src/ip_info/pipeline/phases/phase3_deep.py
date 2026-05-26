@@ -66,7 +66,16 @@ class DeepQueryPhase:
 
         def run_channel(name: str, channel: BaseChannelAdapter, workers: int) -> tuple[str, BatchResult | None]:
             if channel.disabled:
-                logger.warning("%s 渠道已禁用，跳过", name)
+                total = len(self._ips)
+                done = sum(1 for ip in self._ips if self._reader.get_channel_data(ip, name) is not None)
+                pending = total - done
+                logger.warning(
+                    "%s 渠道已禁用，跳过 (共 %d 个 IP, 已有结果 %d, 剩余 %d 未查询)",
+                    name,
+                    total,
+                    done,
+                    pending,
+                )
                 return (name, None)
             result = run_concurrent(
                 ips=self._ips,

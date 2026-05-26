@@ -192,6 +192,73 @@ class TestDeepQueryPhase:
         for call in mock_run.call_args_list:
             assert call.kwargs["progress_tracker"] is tracker
 
+    def test_disabled_channel_logs_pending_count(self, caplog):
+        """aizhan 渠道禁用时，日志显示待查询 IP 数量"""
+        aizhan = _make_channel(disabled=True)
+        chinaz = _make_channel()
+        fofa = _make_channel()
+        writer = InMemoryIPWriter()
+        reader = InMemoryIPReader()
+        ips = ["1.2.3.4", "5.6.7.8", "9.10.11.12"]
+
+        phase = DeepQueryPhase(
+            ips=ips,
+            writer=writer,
+            reader=reader,
+            aizhan_channel=aizhan,
+            chinaz_channel=chinaz,
+            fofa_channel=fofa,
+            no_validate=True,
+        )
+
+        with caplog.at_level("WARNING"):
+            phase.run()
+
+        # aizhan 渠道禁用，应包含 "共 3 个 IP, 已有结果 0, 剩余 3 未查询"
+        assert any(
+            "aizhan" in r.message
+            and "共 3 个 IP" in r.message
+            and "已有结果 0" in r.message
+            and "剩余 3 未查询" in r.message
+            for r in caplog.records
+        )
+
+    def test_disabled_channel_logs_pending_count_with_existing_results(self, caplog):
+        """渠道禁用时，已有部分结果，日志显示正确的待查询数量"""
+        aizhan = _make_channel(disabled=True)
+        chinaz = _make_channel()
+        fofa = _make_channel()
+        writer = InMemoryIPWriter()
+        # reader 中已有 1.2.3.4 的 aizhan 数据
+        reader = InMemoryIPReader(
+            data={
+                "1.2.3.4": {"ip": "1.2.3.4", "aizhan": {"data": "test"}},
+            }
+        )
+        ips = ["1.2.3.4", "5.6.7.8", "9.10.11.12"]
+
+        phase = DeepQueryPhase(
+            ips=ips,
+            writer=writer,
+            reader=reader,
+            aizhan_channel=aizhan,
+            chinaz_channel=chinaz,
+            fofa_channel=fofa,
+            no_validate=True,
+        )
+
+        with caplog.at_level("WARNING"):
+            phase.run()
+
+        # aizhan 渠道禁用，应包含 "共 3 个 IP, 已有结果 1, 剩余 2 未查询"
+        assert any(
+            "aizhan" in r.message
+            and "共 3 个 IP" in r.message
+            and "已有结果 1" in r.message
+            and "剩余 2 未查询" in r.message
+            for r in caplog.records
+        )
+
 
 class TestVerifyScanPhase:
     """VerifyScanPhase (Phase 4) 单元测试"""
@@ -529,6 +596,89 @@ class TestBasicCollectPhase:
         # 两次调用都传了同一个 tracker
         assert calls_by_channel["ipinfo_api"].kwargs["progress_tracker"] is tracker
         assert calls_by_channel["rdns_ptr"].kwargs["progress_tracker"] is tracker
+
+    def test_disabled_channel_logs_pending_count_ipinfo(self, caplog):
+        """ipinfo_api 渠道禁用时，日志显示待查询 IP 数量"""
+        ipinfo_channel = _make_channel(disabled=True)
+        rdns_channel = _make_channel()
+        writer = InMemoryIPWriter()
+        reader = InMemoryIPReader()
+        ips = ["1.2.3.4", "5.6.7.8", "9.10.11.12"]
+
+        phase = BasicCollectPhase(
+            ips=ips,
+            writer=writer,
+            reader=reader,
+            ipinfo_channel=ipinfo_channel,
+            rdns_channel=rdns_channel,
+            no_validate=True,
+        )
+
+        with caplog.at_level("WARNING"):
+            phase.run()
+
+        # 应包含 "共 3 个 IP, 已有结果 0, 剩余 3 未查询"
+        assert any(
+            "共 3 个 IP" in r.message and "已有结果 0" in r.message and "剩余 3 未查询" in r.message
+            for r in caplog.records
+        )
+
+    def test_disabled_channel_logs_pending_count_with_existing_results(self, caplog):
+        """ipinfo_api 渠道禁用时，已有部分结果，日志显示正确的待查询数量"""
+        ipinfo_channel = _make_channel(disabled=True)
+        rdns_channel = _make_channel()
+        writer = InMemoryIPWriter()
+        # reader 中已有 1.2.3.4 的 ipinfo_api 数据
+        reader = InMemoryIPReader(
+            data={
+                "1.2.3.4": {"ip": "1.2.3.4", "ipinfo_api": {"country": "US"}},
+            }
+        )
+        ips = ["1.2.3.4", "5.6.7.8", "9.10.11.12"]
+
+        phase = BasicCollectPhase(
+            ips=ips,
+            writer=writer,
+            reader=reader,
+            ipinfo_channel=ipinfo_channel,
+            rdns_channel=rdns_channel,
+            no_validate=True,
+        )
+
+        with caplog.at_level("WARNING"):
+            phase.run()
+
+        # 应包含 "共 3 个 IP, 已有结果 1, 剩余 2 未查询"
+        assert any(
+            "共 3 个 IP" in r.message and "已有结果 1" in r.message and "剩余 2 未查询" in r.message
+            for r in caplog.records
+        )
+
+    def test_disabled_channel_logs_pending_count_rdns(self, caplog):
+        """rdns_ptr 渠道禁用时，日志显示待查询 IP 数量"""
+        ipinfo_channel = _make_channel()
+        rdns_channel = _make_channel(disabled=True)
+        writer = InMemoryIPWriter()
+        reader = InMemoryIPReader()
+        ips = ["1.2.3.4", "5.6.7.8"]
+
+        phase = BasicCollectPhase(
+            ips=ips,
+            writer=writer,
+            reader=reader,
+            ipinfo_channel=ipinfo_channel,
+            rdns_channel=rdns_channel,
+            no_validate=True,
+        )
+
+        with caplog.at_level("WARNING"):
+            phase.run()
+
+        # rdns_ptr 渠道禁用，应包含 "共 2 个 IP, 已有结果 0, 剩余 2 未查询"
+        assert any(
+            "共 2 个 IP" in r.message and "已有结果 0" in r.message and "剩余 2 未查询" in r.message
+            for r in caplog.records
+        )
 
 
 class TestClassifyTagPhase:

@@ -57,9 +57,15 @@ def run_concurrent(
         channel.validate()
 
     if channel.disabled:
+        pending = len(pending_ips)
+        total = len(unique_ips)
+        done = skip_count
         logger.warning(
-            "[%s] 渠道已禁用，跳过查询",
+            "[%s] 渠道已禁用，跳过查询 (共 %d 个 IP, 已有结果 %d, 剩余 %d 未查询)",
             channel_name,
+            total,
+            done,
+            pending,
         )
         return BatchResult(fail_count=len(pending_ips), skip_count=skip_count)
 

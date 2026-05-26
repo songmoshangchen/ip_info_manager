@@ -81,9 +81,15 @@ class BaseBatchQuery:
             self._channel.validate()
 
         if self._channel.disabled:
+            pending = self.pending_count
+            total = self.total_count
+            done = total - pending
             logger.warning(
-                "[%s] 渠道已禁用，跳过查询",
+                "[%s] 渠道已禁用，跳过查询 (共 %d 个 IP, 已有结果 %d, 剩余 %d 未查询)",
                 self._channel_name,
+                total,
+                done,
+                pending,
             )
             total_elapsed = time.time() - start_time
             return BatchResult(

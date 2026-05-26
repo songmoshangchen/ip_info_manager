@@ -55,7 +55,15 @@ class BasicCollectPhase:
 
         def run_ipinfo():
             if self._ipinfo_channel.disabled:
-                logger.warning("ipinfo_api 渠道已禁用，跳过")
+                total = len(self._ips)
+                done = sum(1 for ip in self._ips if self._reader.get_channel_data(ip, "ipinfo_api") is not None)
+                pending = total - done
+                logger.warning(
+                    "ipinfo_api 渠道已禁用，跳过 (共 %d 个 IP, 已有结果 %d, 剩余 %d 未查询)",
+                    total,
+                    done,
+                    pending,
+                )
                 return None
             return run_concurrent(
                 ips=self._ips,
@@ -70,7 +78,15 @@ class BasicCollectPhase:
 
         def run_rdns():
             if self._rdns_channel.disabled:
-                logger.warning("rdns_ptr 渠道已禁用，跳过")
+                total = len(self._ips)
+                done = sum(1 for ip in self._ips if self._reader.get_channel_data(ip, "rdns_ptr") is not None)
+                pending = total - done
+                logger.warning(
+                    "rdns_ptr 渠道已禁用，跳过 (共 %d 个 IP, 已有结果 %d, 剩余 %d 未查询)",
+                    total,
+                    done,
+                    pending,
+                )
                 return None
             return run_concurrent(
                 ips=self._ips,

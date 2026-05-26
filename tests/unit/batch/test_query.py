@@ -365,6 +365,39 @@ class TestRunDependencyCheck:
         assert len(writer.writes) == 0
         assert "渠道已禁用" in caplog.text
 
+    def test_run_disabled_logs_pending_count(self, caplog):
+        """渠道禁用时，日志显示待查询 IP 数量"""
+        ch = _FakeChannel()
+        ch.disabled = True
+        q, _, _ = _make_query(["1.1.1.1", "2.2.2.2", "3.3.3.3"], channel=ch, no_validate=True)
+        with caplog.at_level("WARNING"):
+            result = q.run()
+        assert result.success_count == 0
+        assert result.fail_count == 3
+        assert any("共 3 个 IP" in r.message and "剩余 3 未查询" in r.message for r in caplog.records)
+
+    def test_run_disabled_logs_pending_count_with_tracker(self, caplog):
+        """渠道禁用时，有进度跟踪器，日志显示正确的待查询数量"""
+        tracker = InMemoryProgressTracker()
+        tracker.mark_processed("1.1.1.1", "test")
+        ch = _FakeChannel()
+        ch.disabled = True
+        q, _, _ = _make_query(
+            ["1.1.1.1", "2.2.2.2", "3.3.3.3"],
+            channel=ch,
+            no_validate=True,
+            progress_tracker=tracker,
+        )
+        with caplog.at_level("WARNING"):
+            result = q.run()
+        # 1 个已跳过，2 个待查询
+        assert result.skip_count == 1
+        assert result.fail_count == 2
+        assert any(
+            "共 3 个 IP" in r.message and "已有结果 1" in r.message and "剩余 2 未查询" in r.message
+            for r in caplog.records
+        )
+
     def test_run_validate_failure_skips_all_queries(self, caplog):
         ch = _FakeChannel()
         ch._validate_should_fail = True
