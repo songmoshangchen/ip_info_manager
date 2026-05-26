@@ -522,3 +522,101 @@ class TestDeleteProgress:
         count = conn.execute("SELECT COUNT(*) FROM progress").fetchone()[0]
         conn.close()
         assert count == 0
+
+
+class TestCleanChannelForIps:
+    def _setup_project(self, tmp_path):
+        """创建测试项目：progress.db + ip_data.json。"""
+        db_path = str(tmp_path / "progress.db")
+        json_path = str(tmp_path / "ip_data.json")
+
+        # progress.db
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS progress (ip TEXT NOT NULL, channel TEXT NOT NULL, PRIMARY KEY (ip, channel))"
+        )
+        conn.executemany(
+            "INSERT INTO progress (ip, channel) VALUES (?, ?)",
+            [
+                ("1.1.1.1", "port_scan"),
+                ("2.2.2.2", "port_scan"),
+                ("3.3.3.3", "port_scan"),
+                ("1.1.1.1", "ipinfo_api"),
+                ("2.2.2.2", "ipinfo_api"),
+            ],
+        )
+        conn.commit()
+        conn.close()
+
+        # ip_data.json
+        data = {
+            "1.1.1.1": {"ip": "1.1.1.1", "port_scan": {"ports": [80]}, "ipinfo_api": {"country": "US"}},
+            "2.2.2.2": {"ip": "2.2.2.2", "port_scan": {"ports": [443]}, "ipinfo_api": {"country": "AU"}},
+            "3.3.3.3": {"ip": "3.3.3.3", "port_scan": {"ports": [22]}},
+        }
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+
+        return db_path, json_path
+
+    def test_clean_all_ips_for_channel(self, tmp_path):
+        """清空所有 IP 的指定渠道（形式3）。"""
+        from ip_info.utils.cache_converter import clean_channel_for_ips
+
+        db_path, json_path = self._setup_project(tmp_path)
+
+        result = clean_channel_for_ips(json_path, db_path, "port_scan")
+
+        assert result["progress_deleted"] == 3
+        assert result["data_deleted"] == 3
+
+        # 验证 progress.db
+        conn = sqlite3.connect(db_path)
+        rows = conn.execute("SELECT ip, channel FROM progress ORDER BY ip, channel").fetchall()
+        conn.close()
+        assert len(rows) == 2  # 只剩 ipinfo_api
+        assert all(r[1] == "ipinfo_api" for r in rows)
+
+        # 验证 ip_data.json
+        with open(json_path, encoding="utf-8") as f:
+            data = json.load(f)
+        assert "port_scan" not in data["1.1.1.1"]
+        assert "port_scan" not in data["2.2.2.2"]
+        assert "port_scan" not in data["3.3.3.3"]
+        assert "ipinfo_api" in data["1.1.1.1"]
+
+    def test_clean_specific_ips_for_channel(self, tmp_path):
+        """指定 IP 清理渠道（形式2）。"""
+        from ip_info.utils.cache_converter import clean_channel_for_ips
+
+        db_path, json_path = self._setup_project(tmp_path)
+
+        result = clean_channel_for_ips(json_path, db_path, "port_scan", ips=["1.1.1.1", "2.2.2.2"])
+
+        assert result["progress_deleted"] == 2
+        assert result["data_deleted"] == 2
+
+        # 验证 progress.db
+        conn = sqlite3.connect(db_path)
+        rows = conn.execute("SELECT ip, channel FROM progress WHERE channel = 'port_scan'").fetchall()
+        conn.close()
+        assert len(rows) == 1  # 3.3.3.3 保留
+        assert rows[0][0] == "3.3.3.3"
+
+        # 验证 ip_data.json
+        with open(json_path, encoding="utf-8") as f:
+            data = json.load(f)
+        assert "port_scan" not in data["1.1.1.1"]
+        assert "port_scan" not in data["2.2.2.2"]
+        assert "port_scan" in data["3.3.3.3"]
+
+    def test_clean_nonexistent_channel(self, tmp_path):
+        """清理不存在的渠道返回 0。"""
+        from ip_info.utils.cache_converter import clean_channel_for_ips
+
+        db_path, json_path = self._setup_project(tmp_path)
+
+        result = clean_channel_for_ips(json_path, db_path, "nonexistent")
+
+        assert result["progress_deleted"] == 0
+        assert result["data_deleted"] == 0

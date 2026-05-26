@@ -61,6 +61,32 @@ class IPWriter:
             self._save_data(store)
         return True
 
+    def delete_channel_batch(self, ips: list[str], channel: str) -> int:
+        """批量删除多个 IP 的指定渠道数据，返回实际删除数量"""
+        with self._lock:
+            store = self._load_data()
+            deleted = 0
+            for ip in ips:
+                if ip in store and channel in store[ip]:
+                    del store[ip][channel]
+                    deleted += 1
+            if deleted:
+                self._save_data(store)
+        return deleted
+
+    def delete_channel_all(self, channel: str) -> int:
+        """删除所有 IP 的指定渠道数据，返回实际删除数量"""
+        with self._lock:
+            store = self._load_data()
+            deleted = 0
+            for ip in list(store.keys()):
+                if channel in store[ip]:
+                    del store[ip][channel]
+                    deleted += 1
+            if deleted:
+                self._save_data(store)
+        return deleted
+
     def progress_tracker(self, channel_name: str) -> ProgressTracker:
         """为指定渠道返回进度跟踪器"""
         base = self._storage_file

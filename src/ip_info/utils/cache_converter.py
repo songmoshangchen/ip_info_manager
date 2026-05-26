@@ -276,3 +276,45 @@ def delete_progress_all(db_path: str) -> int:
     deleted = cursor.rowcount
     conn.close()
     return deleted
+
+
+def clean_channel_for_ips(json_path: str, db_path: str, channel: str, ips: list[str] | None = None) -> dict:
+    """清理渠道数据：同时删除 progress.db 记录和 ip_data.json 数据。
+
+    Args:
+        json_path: ip_data.json 文件路径
+        db_path: progress.db 文件路径
+        channel: 渠道名称
+        ips: 指定 IP 列表。为 None 时清理所有 IP
+
+    Returns:
+        {"progress_deleted": int, "data_deleted": int}
+    """
+    # 删除 progress 记录
+    if ips is not None:
+        # 指定 IP 清理
+        conn = sqlite3.connect(db_path)
+        placeholders = ",".join("?" for _ in ips)
+        cursor = conn.execute(
+            f"DELETE FROM progress WHERE channel = ? AND ip IN ({placeholders})",
+            [channel] + list(ips),
+        )
+        conn.commit()
+        progress_deleted = cursor.rowcount
+        conn.close()
+
+        # 删除 ip_data.json 数据
+        from ip_info.store.json_store import IPWriter
+
+        writer = IPWriter(json_path)
+        data_deleted = writer.delete_channel_batch(ips, channel)
+    else:
+        # 清空所有 IP 的渠道
+        progress_deleted = delete_progress_channel(db_path, channel)
+
+        from ip_info.store.json_store import IPWriter
+
+        writer = IPWriter(json_path)
+        data_deleted = writer.delete_channel_all(channel)
+
+    return {"progress_deleted": progress_deleted, "data_deleted": data_deleted}
