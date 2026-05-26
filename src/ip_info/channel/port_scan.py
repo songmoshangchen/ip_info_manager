@@ -15,6 +15,8 @@ class PortScanChannel(BaseChannelAdapter):
         _config = config or PortScanConfig()
         self.nmap_path = nmap_path or _config.port_scan_nmap_path
         self.timeout = timeout if timeout is not None else float(_config.port_scan_timeout)
+        self._arguments = _config.port_scan_arguments
+        self._port_list = _config.port_scan_port_list
         self._historical_ports = []
 
     def _validate_key(self) -> None:
@@ -32,10 +34,12 @@ class PortScanChannel(BaseChannelAdapter):
         except nmap.PortScannerError as e:
             raise ChannelError(f"nmap 扫描错误: {ip} - {e}") from e
 
-        arguments = "-sT -T4 -Pn --open"
+        arguments = f"{self._arguments} --host-timeout {int(self.timeout)}s"
         scan_kwargs = {"arguments": arguments}
         if port_string:
             scan_kwargs["ports"] = port_string
+        elif self._port_list:
+            scan_kwargs["ports"] = self._port_list
 
         try:
             nm.scan(ip, **scan_kwargs)

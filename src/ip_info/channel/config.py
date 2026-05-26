@@ -75,3 +75,4 @@ class PortScanConfig(ChannelConfig):
     port_scan_nmap_path: str = Field(default="nmap", description="nmap 可执行文件路径")
     port_scan_timeout: int = Field(default=90, description="单 IP 端口扫描超时秒数")
     port_scan_port_list: str = Field(default="config/port_scan/top1000.txt", description="端口列表文件路径")
+    port_scan_arguments: str = Field(default="-sV -T4 -Pn --open", description="nmap 扫描参数")

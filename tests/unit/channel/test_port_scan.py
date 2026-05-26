@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 import nmap
 import pytest
 
+from ip_info.channel.config import PortScanConfig
 from ip_info.channel.errors import ChannelError
 from ip_info.channel.port_scan import PortScanChannel
 from ip_info.channel.protocols import ChannelProtocol
@@ -215,3 +216,77 @@ class TestPortScanProtocol:
     def test_disabled默认False(self):
         channel = PortScanChannel()
         assert channel.disabled is False
+
+
+class TestPortScanConfigIntegration:
+    """测试 PortScanChannel 从 PortScanConfig 读取配置"""
+
+    def test_默认arguments来自配置(self):
+        config = PortScanConfig(_env_file=None)
+        channel = PortScanChannel(config=config)
+        assert channel._arguments == "-sV -T4 -Pn --open"
+
+    def test_自定义arguments来自配置(self):
+        config = PortScanConfig(_env_file=None, port_scan_arguments="-sT -T4 -Pn --open")
+        channel = PortScanChannel(config=config)
+        assert channel._arguments == "-sT -T4 -Pn --open"
+
+    def test_默认timeout来自配置(self):
+        config = PortScanConfig(_env_file=None)
+        channel = PortScanChannel(config=config)
+        assert channel.timeout == 90.0
+
+    def test_自定义timeout来自配置(self):
+        config = PortScanConfig(_env_file=None, port_scan_timeout=120)
+        channel = PortScanChannel(config=config)
+        assert channel.timeout == 120.0
+
+    def test_默认port_list来自配置(self):
+        config = PortScanConfig(_env_file=None)
+        channel = PortScanChannel(config=config)
+        assert channel._port_list == "config/port_scan/top1000.txt"
+
+    def test_自定义port_list来自配置(self):
+        config = PortScanConfig(_env_file=None, port_scan_port_list="custom_ports.txt")
+        channel = PortScanChannel(config=config)
+        assert channel._port_list == "custom_ports.txt"
+
+    def test_request使用配置中的arguments(self):
+        mock_nm = _make_mock_nm(
+            hosts_data={
+                "1.2.3.4": {
+                    "state": "up",
+                    "tcp_ports": [80],
+                    "port_data": [
+                        {"port": 80, "name": "http", "product": "nginx", "version": "1.18.0"},
+                    ],
+                }
+            }
+        )
+        config = PortScanConfig(_env_file=None, port_scan_arguments="-sV -T4 -Pn --open")
+        channel = PortScanChannel(config=config)
+        with patch("ip_info.channel.port_scan.nmap.PortScanner", return_value=mock_nm):
+            channel.fetch("1.2.3.4")
+
+        mock_nm.scan.assert_called_once()
+        call_kwargs = mock_nm.scan.call_args
+        assert "-sV" in call_kwargs.kwargs.get("arguments", call_kwargs[1].get("arguments", ""))
+
+    def test_request使用配置中的timeout(self):
+        mock_nm = _make_mock_nm(
+            hosts_data={
+                "1.2.3.4": {
+                    "state": "up",
+                    "tcp_ports": [],
+                    "port_data": [],
+                }
+            }
+        )
+        config = PortScanConfig(_env_file=None, port_scan_timeout=60)
+        channel = PortScanChannel(config=config)
+        with patch("ip_info.channel.port_scan.nmap.PortScanner", return_value=mock_nm):
+            channel.fetch("1.2.3.4")
+
+        mock_nm.scan.assert_called_once()
+        call_kwargs = mock_nm.scan.call_args
+        assert "--host-timeout" in call_kwargs.kwargs.get("arguments", call_kwargs[1].get("arguments", ""))

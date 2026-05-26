@@ -171,6 +171,11 @@ class TestPortScanConfig:
         assert config.port_scan_nmap_path == "nmap"
         assert config.port_scan_timeout == 90
         assert config.port_scan_port_list == "config/port_scan/top1000.txt"
+        assert config.port_scan_arguments == "-sV -T4 -Pn --open"
+
+    def test_custom_arguments(self):
+        config = PortScanConfig(**_no_env_file(port_scan_arguments="-sT -T4 -Pn --open"))
+        assert config.port_scan_arguments == "-sT -T4 -Pn --open"
 
 
 class TestEnvOverride:
