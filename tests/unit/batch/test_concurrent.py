@@ -142,7 +142,7 @@ class TestRunConcurrentMultiWorkers:
 class TestRunConcurrentProgressTracking:
     def test_tracker_excludes_processed(self):
         tracker = InMemoryProgressTracker()
-        tracker.mark_processed("1.1.1.1")
+        tracker.mark_processed("1.1.1.1", "test")
         result, _, writer = _run(
             ["1.1.1.1", "2.2.2.2"],
             workers=2,
@@ -156,19 +156,19 @@ class TestRunConcurrentProgressTracking:
     def test_success_marks_progress(self):
         tracker = InMemoryProgressTracker()
         _run(["1.1.1.1", "2.2.2.2"], workers=2, progress_tracker=tracker)
-        assert tracker.is_processed("1.1.1.1") is True
-        assert tracker.is_processed("2.2.2.2") is True
+        assert tracker.is_processed("1.1.1.1", "test") is True
+        assert tracker.is_processed("2.2.2.2", "test") is True
 
     def test_channel_error_no_progress(self):
         tracker = InMemoryProgressTracker()
         ch = _FakeChannel()
         ch._results["1.1.1.1"] = ChannelError("temp")
         _run(["1.1.1.1"], workers=2, progress_tracker=tracker, channel=ch)
-        assert tracker.is_processed("1.1.1.1") is False
+        assert tracker.is_processed("1.1.1.1", "test") is False
 
     def test_skip_count_with_tracker(self):
         tracker = InMemoryProgressTracker()
-        tracker.mark_processed("1.1.1.1")
+        tracker.mark_processed("1.1.1.1", "test")
         result, _, _ = _run(
             ["1.1.1.1", "2.2.2.2", "3.3.3.3"],
             workers=2,
@@ -184,8 +184,8 @@ class TestRunConcurrentProgressTracking:
 
     def test_all_skipped(self):
         tracker = InMemoryProgressTracker()
-        tracker.mark_processed("1.1.1.1")
-        tracker.mark_processed("2.2.2.2")
+        tracker.mark_processed("1.1.1.1", "test")
+        tracker.mark_processed("2.2.2.2", "test")
         result, _, _ = _run(
             ["1.1.1.1", "2.2.2.2"],
             workers=2,
@@ -194,6 +194,37 @@ class TestRunConcurrentProgressTracking:
         assert result.skip_count == 2
         assert result.success_count == 0
         assert result.fail_count == 0
+
+    def test_channel_level_isolation(self):
+        """分渠道断点续传：不同渠道的进度互不影响"""
+        tracker = InMemoryProgressTracker()
+        # ipinfo_api 渠道已处理
+        tracker.mark_processed("1.1.1.1", "ipinfo_api")
+        # run_concurrent 用 channel_name="rdns_ptr" 运行
+        ch = _FakeChannel()
+        writer = _FakeWriter()
+        result = run_concurrent(
+            ips=["1.1.1.1", "2.2.2.2"],
+            channel=ch,
+            writer=writer,
+            channel_name="rdns_ptr",
+            workers=1,
+            progress_tracker=tracker,
+        )
+        # 1.1.1.1 在 rdns_ptr 渠道未被标记，应该被查询
+        assert result.success_count == 2
+        written_ips = {w[0] for w in writer.writes}
+        assert "1.1.1.1" in written_ips
+        assert "2.2.2.2" in written_ips
+
+    def test_channel_level_marks_correct_channel(self):
+        """成功后标记的是当前渠道名"""
+        tracker = InMemoryProgressTracker()
+        _run(["1.1.1.1"], workers=1, progress_tracker=tracker)
+        # channel_name="test"，应该标记在 "test" 渠道
+        assert tracker.is_processed("1.1.1.1", "test") is True
+        # 其他渠道不应被标记
+        assert tracker.is_processed("1.1.1.1", "other_channel") is False
 
 
 class TestRunConcurrentErrorHandling:

@@ -7,15 +7,17 @@ from ip_info.pipeline.phases.phase2_classify import ClassifyTagPhase
 from ip_info.pipeline.phases.phase3_deep import DeepQueryPhase
 from ip_info.pipeline.phases.phase4_verify_scan import VerifyScanPhase
 from ip_info.store.in_memory import InMemoryIPReader, InMemoryIPWriter
+from ip_info.utils.progress import InMemoryProgressTracker
 
 RULES_DIR = "config/classifier"
 TAGGER_CONFIG_DIR = "config/ip_tagger"
 
 
-def _make_channel(disabled: bool = False) -> MagicMock:
+def _make_channel(disabled: bool = False, default_delay: float = 1.0) -> MagicMock:
     """创建一个 mock 渠道，默认不禁用"""
     ch = MagicMock()
     ch.disabled = disabled
+    ch.default_delay = default_delay
     ch.validate.return_value = not disabled
     ch.fetch.return_value = {"data": "mock"}
     return ch
@@ -134,6 +136,62 @@ class TestDeepQueryPhase:
         assert isinstance(phase, Phase)
         assert phase.name == "深度查询"
 
+    def test_delay_auto_passed(self):
+        """delay 自动传递：run_concurrent 被调用时 delay=channel.default_delay"""
+        aizhan = _make_channel(default_delay=2.0)
+        chinaz = _make_channel(default_delay=2.0)
+        fofa = _make_channel(default_delay=2.0)
+        writer = InMemoryIPWriter()
+        reader = InMemoryIPReader()
+
+        phase = DeepQueryPhase(
+            ips=["1.2.3.4"],
+            writer=writer,
+            reader=reader,
+            aizhan_channel=aizhan,
+            chinaz_channel=chinaz,
+            fofa_channel=fofa,
+            no_validate=True,
+        )
+
+        mock_batch_result = BatchResult(success_count=1, fail_count=0, skip_count=0, total_elapsed=0.1)
+
+        with patch("ip_info.pipeline.phases.phase3_deep.run_concurrent") as mock_run:
+            mock_run.return_value = mock_batch_result
+            phase.run()
+
+        for call in mock_run.call_args_list:
+            assert call.kwargs["delay"] == 2.0
+
+    def test_progress_tracker_passed(self):
+        """progress_tracker 传递：run_concurrent 被调用时 progress_tracker=提供的 tracker"""
+        aizhan = _make_channel()
+        chinaz = _make_channel()
+        fofa = _make_channel()
+        writer = InMemoryIPWriter()
+        reader = InMemoryIPReader()
+        tracker = InMemoryProgressTracker()
+
+        phase = DeepQueryPhase(
+            ips=["1.2.3.4"],
+            writer=writer,
+            reader=reader,
+            aizhan_channel=aizhan,
+            chinaz_channel=chinaz,
+            fofa_channel=fofa,
+            no_validate=True,
+            progress_tracker=tracker,
+        )
+
+        mock_batch_result = BatchResult(success_count=1, fail_count=0, skip_count=0, total_elapsed=0.1)
+
+        with patch("ip_info.pipeline.phases.phase3_deep.run_concurrent") as mock_run:
+            mock_run.return_value = mock_batch_result
+            phase.run()
+
+        for call in mock_run.call_args_list:
+            assert call.kwargs["progress_tracker"] is tracker
+
 
 class TestVerifyScanPhase:
     """VerifyScanPhase (Phase 4) 单元测试"""
@@ -214,6 +272,58 @@ class TestVerifyScanPhase:
         """VerifyScanPhase 满足 Phase Protocol"""
         phase = self._make_phase(ips=[])
         assert isinstance(phase, Phase)
+
+    @patch("ip_info.pipeline.phases.phase4_verify_scan.run_concurrent")
+    @patch("ip_info.pipeline.phases.phase4_verify_scan.BatchDnsVerify")
+    def test_delay_auto_passed(self, MockBatchDnsVerify, mock_run_concurrent):
+        """delay 自动传递：run_concurrent 被调用时 delay=nmap_channel.default_delay"""
+        mock_dns_instance = MagicMock()
+        mock_dns_instance.run.return_value = BatchResult(success_count=1)
+        MockBatchDnsVerify.return_value = mock_dns_instance
+        mock_run_concurrent.return_value = BatchResult(success_count=1)
+
+        nmap_channel = MagicMock()
+        nmap_channel.default_delay = 0.5
+        nmap_channel.disabled = False
+
+        phase = VerifyScanPhase(
+            ips=["1.1.1.1"],
+            writer=MagicMock(),
+            reader=MagicMock(),
+            nmap_channel=nmap_channel,
+            no_validate=True,
+        )
+        phase.run()
+
+        rc_kwargs = mock_run_concurrent.call_args.kwargs
+        assert rc_kwargs["delay"] == 0.5
+
+    @patch("ip_info.pipeline.phases.phase4_verify_scan.run_concurrent")
+    @patch("ip_info.pipeline.phases.phase4_verify_scan.BatchDnsVerify")
+    def test_progress_tracker_passed(self, MockBatchDnsVerify, mock_run_concurrent):
+        """progress_tracker 传递：run_concurrent 被调用时 progress_tracker=提供的 tracker"""
+        mock_dns_instance = MagicMock()
+        mock_dns_instance.run.return_value = BatchResult(success_count=1)
+        MockBatchDnsVerify.return_value = mock_dns_instance
+        mock_run_concurrent.return_value = BatchResult(success_count=1)
+
+        tracker = InMemoryProgressTracker()
+        nmap_channel = MagicMock()
+        nmap_channel.default_delay = 0
+        nmap_channel.disabled = False
+
+        phase = VerifyScanPhase(
+            ips=["1.1.1.1"],
+            writer=MagicMock(),
+            reader=MagicMock(),
+            nmap_channel=nmap_channel,
+            no_validate=True,
+            progress_tracker=tracker,
+        )
+        phase.run()
+
+        rc_kwargs = mock_run_concurrent.call_args.kwargs
+        assert rc_kwargs["progress_tracker"] is tracker
 
 
 class TestBasicCollectPhase:
@@ -335,6 +445,90 @@ class TestBasicCollectPhase:
             rdns_channel=rdns_channel,
         )
         assert isinstance(phase, Phase)
+
+    @patch("ip_info.pipeline.phases.phase1_basic.run_concurrent")
+    def test_delay_auto_passed(self, mock_run):
+        """delay 自动传递：run_concurrent 被调用时 delay=channel.default_delay"""
+        ipinfo_channel = _make_channel(default_delay=1.2)
+        rdns_channel = _make_channel(default_delay=0.1)
+        writer = InMemoryIPWriter()
+        reader = InMemoryIPReader()
+
+        phase = BasicCollectPhase(
+            ips=["1.2.3.4"],
+            writer=writer,
+            reader=reader,
+            ipinfo_channel=ipinfo_channel,
+            rdns_channel=rdns_channel,
+            no_validate=True,
+        )
+
+        mock_run.return_value = BatchResult(success_count=1, fail_count=0, skip_count=0, total_elapsed=0.1)
+
+        phase.run()
+
+        # 验证两次 run_concurrent 调用的 delay 分别对应各自渠道的 default_delay
+        delays = {call.kwargs["channel_name"]: call.kwargs["delay"] for call in mock_run.call_args_list}
+        assert delays["ipinfo_api"] == 1.2
+        assert delays["rdns_ptr"] == 0.1
+
+    @patch("ip_info.pipeline.phases.phase1_basic.run_concurrent")
+    def test_progress_tracker_passed(self, mock_run):
+        """progress_tracker 传递：run_concurrent 被调用时 progress_tracker=提供的 tracker"""
+        ipinfo_channel, rdns_channel = self._make_channels()
+        writer = InMemoryIPWriter()
+        reader = InMemoryIPReader()
+        tracker = InMemoryProgressTracker()
+
+        phase = BasicCollectPhase(
+            ips=["1.2.3.4"],
+            writer=writer,
+            reader=reader,
+            ipinfo_channel=ipinfo_channel,
+            rdns_channel=rdns_channel,
+            no_validate=True,
+            progress_tracker=tracker,
+        )
+
+        mock_run.return_value = BatchResult(success_count=1, fail_count=0, skip_count=0, total_elapsed=0.1)
+
+        phase.run()
+
+        for call in mock_run.call_args_list:
+            assert call.kwargs["progress_tracker"] is tracker
+
+    @patch("ip_info.pipeline.phases.phase1_basic.run_concurrent")
+    def test_channel_level_resume(self, mock_run):
+        """分渠道断点续传：ipinfo_api 已处理但 rdns_ptr 未处理，rdns_ptr 仍会执行"""
+        ipinfo_channel, rdns_channel = self._make_channels()
+        writer = InMemoryIPWriter()
+        reader = InMemoryIPReader()
+        tracker = InMemoryProgressTracker()
+
+        # 模拟 ipinfo_api 已处理
+        tracker.mark_processed("1.2.3.4", "ipinfo_api")
+
+        phase = BasicCollectPhase(
+            ips=["1.2.3.4"],
+            writer=writer,
+            reader=reader,
+            ipinfo_channel=ipinfo_channel,
+            rdns_channel=rdns_channel,
+            no_validate=True,
+            progress_tracker=tracker,
+        )
+
+        mock_run.return_value = BatchResult(success_count=1, fail_count=0, skip_count=0, total_elapsed=0.1)
+
+        phase.run()
+
+        # 验证 run_concurrent 被调用两次，各自带正确的 channel_name
+        calls_by_channel = {call.kwargs["channel_name"]: call for call in mock_run.call_args_list}
+        assert "ipinfo_api" in calls_by_channel
+        assert "rdns_ptr" in calls_by_channel
+        # 两次调用都传了同一个 tracker
+        assert calls_by_channel["ipinfo_api"].kwargs["progress_tracker"] is tracker
+        assert calls_by_channel["rdns_ptr"].kwargs["progress_tracker"] is tracker
 
 
 class TestClassifyTagPhase:

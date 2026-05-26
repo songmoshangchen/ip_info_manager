@@ -261,7 +261,7 @@ class TestProgressTrackerSkip:
         )
         writer = InMemoryIPWriter()
         tracker = InMemoryProgressTracker()
-        tracker.mark_processed("10.0.0.1")
+        tracker.mark_processed("10.0.0.1", "tagger")
 
         tagger = BatchTagger(
             ips=["10.0.0.1", "10.0.0.2"],
@@ -284,7 +284,7 @@ class TestProgressTrackerSkip:
         )
         writer = InMemoryIPWriter()
         tracker = InMemoryProgressTracker()
-        tracker.mark_processed("10.0.0.1")
+        tracker.mark_processed("10.0.0.1", "tagger")
 
         tagger = BatchTagger(
             ips=["10.0.0.1"],
@@ -317,7 +317,7 @@ class TestProgressTrackerSkip:
 
         tagger.run()
 
-        assert tracker.is_processed("10.0.0.1")
+        assert tracker.is_processed("10.0.0.1", "tagger")
 
     def test_unmatched_ips_also_marked_processed(self, tmp_path):
         """未匹配的 IP 也应标记为已处理（已处理过，只是没有命中）。"""
@@ -338,7 +338,7 @@ class TestProgressTrackerSkip:
 
         tagger.run()
 
-        assert tracker.is_processed("192.168.1.1")
+        assert tracker.is_processed("192.168.1.1", "tagger")
 
 
 class TestEmptyInput:

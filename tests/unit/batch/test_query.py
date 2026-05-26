@@ -120,14 +120,14 @@ class TestPendingCount:
 
     def test_with_tracker_one_processed(self):
         tracker = InMemoryProgressTracker()
-        tracker.mark_processed("1.1.1.1")
+        tracker.mark_processed("1.1.1.1", "test")
         q, _, _ = _make_query(["1.1.1.1", "2.2.2.2"], progress_tracker=tracker)
         assert q.pending_count == 1
 
     def test_with_tracker_all_processed(self):
         tracker = InMemoryProgressTracker()
-        tracker.mark_processed("1.1.1.1")
-        tracker.mark_processed("2.2.2.2")
+        tracker.mark_processed("1.1.1.1", "test")
+        tracker.mark_processed("2.2.2.2", "test")
         q, _, _ = _make_query(["1.1.1.1", "2.2.2.2"], progress_tracker=tracker)
         assert q.pending_count == 0
 
@@ -186,7 +186,7 @@ class TestRunProgressTracking:
 
     def test_run_tracker_excludes_processed(self):
         tracker = InMemoryProgressTracker()
-        tracker.mark_processed("1.1.1.1")
+        tracker.mark_processed("1.1.1.1", "test")
         q, _, writer = _make_query(["1.1.1.1", "2.2.2.2"], progress_tracker=tracker)
         result = q.run()
         assert result.success_count == 1
@@ -198,8 +198,8 @@ class TestRunProgressTracking:
         tracker = InMemoryProgressTracker()
         q, _, _ = _make_query(["1.1.1.1", "2.2.2.2"], progress_tracker=tracker)
         q.run()
-        assert tracker.is_processed("1.1.1.1") is True
-        assert tracker.is_processed("2.2.2.2") is True
+        assert tracker.is_processed("1.1.1.1", "test") is True
+        assert tracker.is_processed("2.2.2.2", "test") is True
 
     def test_run_channel_error_no_progress(self):
         tracker = InMemoryProgressTracker()
@@ -207,7 +207,7 @@ class TestRunProgressTracking:
         ch._results["1.1.1.1"] = ChannelError("temp")
         q, _, _ = _make_query(["1.1.1.1"], progress_tracker=tracker, channel=ch)
         q.run()
-        assert tracker.is_processed("1.1.1.1") is False
+        assert tracker.is_processed("1.1.1.1", "test") is False
 
     def test_run_permanent_error_no_progress(self):
         tracker = InMemoryProgressTracker()
@@ -215,11 +215,11 @@ class TestRunProgressTracking:
         ch._results["1.1.1.1"] = ChannelPermanentError("permanent")
         q, _, _ = _make_query(["1.1.1.1"], progress_tracker=tracker, channel=ch)
         q.run()
-        assert tracker.is_processed("1.1.1.1") is False
+        assert tracker.is_processed("1.1.1.1", "test") is False
 
     def test_run_skip_count_with_tracker(self):
         tracker = InMemoryProgressTracker()
-        tracker.mark_processed("1.1.1.1")
+        tracker.mark_processed("1.1.1.1", "test")
         q, _, _ = _make_query(["1.1.1.1", "2.2.2.2", "3.3.3.3"], progress_tracker=tracker)
         result = q.run()
         assert result.skip_count == 1
@@ -233,8 +233,8 @@ class TestRunProgressTracking:
 
     def test_run_all_skipped(self):
         tracker = InMemoryProgressTracker()
-        tracker.mark_processed("1.1.1.1")
-        tracker.mark_processed("2.2.2.2")
+        tracker.mark_processed("1.1.1.1", "test")
+        tracker.mark_processed("2.2.2.2", "test")
         q, _, _ = _make_query(["1.1.1.1", "2.2.2.2"], progress_tracker=tracker)
         result = q.run()
         assert result.skip_count == 2
