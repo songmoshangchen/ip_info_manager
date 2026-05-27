@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from ip_info.channel.adapter import BaseChannelAdapter
 from ip_info.channel.errors import ChannelError, ChannelPermanentError
 from ip_info.store.protocols import IPDataWriter
-from ip_info.utils.progress import ProgressTracker
+from ip_info.utils.progress import ProgressTracker, flush_progress
 
 logger = logging.getLogger(__name__)
 
@@ -65,10 +65,7 @@ class BaseBatchQuery:
 
     def _try_flush(self) -> None:
         """尝试刷新进度到持久化存储。"""
-        if self._progress_tracker is not None:
-            flush = getattr(self._progress_tracker, "flush", None)
-            if callable(flush):
-                flush()
+        flush_progress(self._progress_tracker)
 
     def run(self) -> BatchResult:
         start_time = time.time()

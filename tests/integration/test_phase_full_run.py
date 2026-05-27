@@ -11,6 +11,7 @@ import pytest
 
 from ip_info.batch.core.query import BatchResult
 from ip_info.channel.adapter import BaseChannelAdapter
+from ip_info.pipeline.context import PipelineContext
 from ip_info.pipeline.filter_ips import filter_ips_by_classification
 from ip_info.pipeline.phases.phase1_basic import BasicCollectPhase
 from ip_info.pipeline.phases.phase2_classify import ClassifyTagPhase
@@ -101,27 +102,36 @@ def _create_dns_mock(writer, ips):
     return mock
 
 
+def _make_context(writer=None, reader=None, tracker=None):
+    w = writer or InMemoryIPWriter()
+    r = reader or InMemoryIPReader(data=w._store)
+    return PipelineContext(
+        writer=w,
+        reader=r,
+        progress_tracker=tracker or InMemoryProgressTracker(),
+    )
+
+
 class TestFullPipelineMockMode:
     def test_phase1_through_phase4(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
         tracker = InMemoryProgressTracker()
+        ctx = _make_context(writer=writer, reader=reader, tracker=tracker)
         ips = ["8.8.8.8", "1.1.1.1"]
 
         phase1 = BasicCollectPhase(
             ips=ips,
-            writer=writer,
-            reader=reader,
+            context=ctx,
             ipinfo_channel=FakeChannel(response={"country": "US", "org": "Google"}),
             rdns_channel=FakeChannel(response={"ptr": "dns.google"}),
             no_validate=True,
-            progress_tracker=tracker,
         )
         r1 = phase1.run()
         assert r1.success is True
         for ip in ips:
-            assert writer.get_channel_data(ip, "ipinfo_api") is not None
-            assert writer.get_channel_data(ip, "rdns_ptr") is not None
+            assert reader.get_channel_data(ip, "ipinfo_api") is not None
+            assert reader.get_channel_data(ip, "rdns_ptr") is not None
 
         with (
             patch("ip_info.pipeline.phases.phase2_classify.BatchClassifier") as MockClassifier,
@@ -132,8 +142,7 @@ class TestFullPipelineMockMode:
 
             phase2 = ClassifyTagPhase(
                 ips=ips,
-                writer=writer,
-                reader=reader,
+                context=ctx,
                 rules_dir=RULES_DIR,
                 tagger_config_dir=TAGGER_CONFIG_DIR,
             )
@@ -141,16 +150,15 @@ class TestFullPipelineMockMode:
 
         assert r2.success is True
         for ip in ips:
-            assert writer.get_channel_data(ip, "classifier") is not None
-            assert writer.get_channel_data(ip, "tagger") is not None
+            assert reader.get_channel_data(ip, "classifier") is not None
+            assert reader.get_channel_data(ip, "tagger") is not None
 
-        filtered = filter_ips_by_classification(ips, writer)
+        filtered = filter_ips_by_classification(ips, reader)
         assert set(filtered) == set(ips)
 
         phase3 = DeepQueryPhase(
             ips=filtered,
-            writer=writer,
-            reader=writer,
+            context=ctx,
             aizhan_channel=FakeChannel(
                 response={
                     "query_ip": "8.8.8.8",
@@ -167,31 +175,28 @@ class TestFullPipelineMockMode:
             ),
             fofa_channel=FakeChannel(),
             no_validate=True,
-            progress_tracker=tracker,
         )
         r3 = phase3.run()
         assert r3.success is True
         for ip in ips:
-            assert writer.get_channel_data(ip, "aizhan") is not None
-            assert writer.get_channel_data(ip, "chinaz") is not None
+            assert reader.get_channel_data(ip, "aizhan") is not None
+            assert reader.get_channel_data(ip, "chinaz") is not None
 
         with patch("ip_info.pipeline.phases.phase4_verify_scan.BatchDnsVerify") as MockDns:
             MockDns.return_value = _create_dns_mock(writer, filtered)
 
             phase4 = VerifyScanPhase(
                 ips=filtered,
-                writer=writer,
-                reader=writer,
+                context=ctx,
                 nmap_channel=FakeChannel(response={"ports": [80, 443]}),
                 no_validate=True,
-                progress_tracker=tracker,
             )
             r4 = phase4.run()
 
         assert r4.success is True
         for ip in ips:
-            assert writer.get_channel_data(ip, "domain_verify") is not None
-            assert writer.get_channel_data(ip, "port_scan") is not None
+            assert reader.get_channel_data(ip, "domain_verify") is not None
+            assert reader.get_channel_data(ip, "port_scan") is not None
 
         assert tracker.is_processed("8.8.8.8", "ipinfo_api")
         assert tracker.is_processed("8.8.8.8", "aizhan")
@@ -199,14 +204,14 @@ class TestFullPipelineMockMode:
 
     def test_phase_execution_order(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
         ips = ["1.2.3.4"]
         execution_order = []
 
         phase1 = BasicCollectPhase(
             ips=ips,
-            writer=writer,
-            reader=reader,
+            context=ctx,
             ipinfo_channel=FakeChannel(),
             rdns_channel=FakeChannel(),
             no_validate=True,
@@ -224,8 +229,7 @@ class TestFullPipelineMockMode:
 
             phase2 = ClassifyTagPhase(
                 ips=ips,
-                writer=writer,
-                reader=reader,
+                context=ctx,
                 rules_dir=RULES_DIR,
                 tagger_config_dir=TAGGER_CONFIG_DIR,
             )
@@ -235,8 +239,7 @@ class TestFullPipelineMockMode:
 
         phase3 = DeepQueryPhase(
             ips=ips,
-            writer=writer,
-            reader=writer,
+            context=ctx,
             aizhan_channel=FakeChannel(),
             chinaz_channel=FakeChannel(),
             fofa_channel=FakeChannel(),
@@ -250,8 +253,7 @@ class TestFullPipelineMockMode:
             MockDns.return_value = _create_dns_mock(writer, ips)
             phase4 = VerifyScanPhase(
                 ips=ips,
-                writer=writer,
-                reader=writer,
+                context=ctx,
                 nmap_channel=FakeChannel(),
                 no_validate=True,
             )
@@ -263,18 +265,18 @@ class TestFullPipelineMockMode:
 
     def test_data_accumulation_across_phases(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
         ip = "1.2.3.4"
 
         BasicCollectPhase(
             ips=[ip],
-            writer=writer,
-            reader=reader,
+            context=ctx,
             ipinfo_channel=FakeChannel(),
             rdns_channel=FakeChannel(),
             no_validate=True,
         ).run()
-        assert set(writer.list_ip_channels(ip)) == {"ipinfo_api", "rdns_ptr"}
+        assert set(reader.list_ip_channels(ip)) == {"ipinfo_api", "rdns_ptr"}
 
         with (
             patch("ip_info.pipeline.phases.phase2_classify.BatchClassifier") as MC,
@@ -284,25 +286,23 @@ class TestFullPipelineMockMode:
             MT.return_value = _create_tagger_mock(writer, [ip])
             ClassifyTagPhase(
                 ips=[ip],
-                writer=writer,
-                reader=reader,
+                context=ctx,
                 rules_dir=RULES_DIR,
                 tagger_config_dir=TAGGER_CONFIG_DIR,
             ).run()
-        channels = set(writer.list_ip_channels(ip))
+        channels = set(reader.list_ip_channels(ip))
         assert "classifier" in channels
         assert "tagger" in channels
 
         DeepQueryPhase(
             ips=[ip],
-            writer=writer,
-            reader=writer,
+            context=ctx,
             aizhan_channel=FakeChannel(),
             chinaz_channel=FakeChannel(),
             fofa_channel=FakeChannel(),
             no_validate=True,
         ).run()
-        channels = set(writer.list_ip_channels(ip))
+        channels = set(reader.list_ip_channels(ip))
         assert "aizhan" in channels
         assert "chinaz" in channels
         assert "fofa_host" in channels
@@ -311,16 +311,15 @@ class TestFullPipelineMockMode:
             MD.return_value = _create_dns_mock(writer, [ip])
             VerifyScanPhase(
                 ips=[ip],
-                writer=writer,
-                reader=writer,
+                context=ctx,
                 nmap_channel=FakeChannel(),
                 no_validate=True,
             ).run()
-        channels = set(writer.list_ip_channels(ip))
+        channels = set(reader.list_ip_channels(ip))
         assert "domain_verify" in channels
         assert "port_scan" in channels
 
-        ip_data = writer.get_ip_data(ip)
+        ip_data = reader.get_ip_data(ip)
         assert len([k for k in ip_data if k != "ip"]) >= 8
 
 
@@ -358,43 +357,41 @@ def _run_live():
     domain_cache = SqliteDomainCache(cache_db)
     tracker = SqliteProgressTracker(progress_db)
 
+    ctx = PipelineContext(
+        writer=writer,
+        reader=reader,
+        progress_tracker=tracker,
+        domain_cache=domain_cache,
+    )
+
     start = time.time()
 
     BasicCollectPhase(
         ips=ips,
-        writer=writer,
-        reader=reader,
+        context=ctx,
         ipinfo_channel=IpinfoApiChannel(),
         rdns_channel=RdnsPtrChannel(),
-        progress_tracker=tracker,
     ).run()
 
-    ClassifyTagPhase(
-        ips=ips, writer=writer, reader=reader, rules_dir=RULES_DIR, tagger_config_dir=TAGGER_CONFIG_DIR
-    ).run()
+    ClassifyTagPhase(ips=ips, context=ctx, rules_dir=RULES_DIR, tagger_config_dir=TAGGER_CONFIG_DIR).run()
 
     filtered = filter_ips_by_classification(ips, reader)
     if filtered:
         DeepQueryPhase(
             ips=filtered,
-            writer=writer,
-            reader=reader,
+            context=ctx,
             aizhan_channel=ChinazChannel(),
             chinaz_channel=ChinazChannel(),
             fofa_channel=ChinazChannel(),
-            progress_tracker=tracker,
         ).run()
         VerifyScanPhase(
             ips=filtered,
-            writer=writer,
-            reader=reader,
+            context=ctx,
             nmap_channel=PortScanChannel(),
-            domain_cache=domain_cache,
-            progress_tracker=tracker,
         ).run()
 
     elapsed = time.time() - start
-    print(f"\n全流程完成! 耗时: {elapsed:.1f}s")
+    print(f"\n全流程完成! 耗时: {elapsed:.1fs}")
     for ip in reader.list_all_ips():
         print(f"  {ip}: {reader.list_ip_channels(ip)}")
 

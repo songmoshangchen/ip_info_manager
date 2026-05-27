@@ -6,7 +6,7 @@ import time
 
 from ip_info.batch.core.query import BatchResult
 from ip_info.store.protocols import IPDataReader, IPDataWriter
-from ip_info.utils.progress import ProgressTracker
+from ip_info.utils.progress import ProgressTracker, flush_progress
 
 
 class BaseProcessor:
@@ -51,10 +51,7 @@ class BaseProcessor:
 
     def _flush_progress(self) -> None:
         """刷新进度到持久化存储（如果 tracker 支持 flush）。"""
-        if self._progress_tracker is not None:
-            flush = getattr(self._progress_tracker, "flush", None)
-            if callable(flush):
-                flush()
+        flush_progress(self._progress_tracker)
 
     def run(self) -> BatchResult:
         """通用执行流程：过滤 → 处理 → 刷新进度。"""

@@ -2,6 +2,7 @@ from unittest.mock import MagicMock, patch
 
 from ip_info.batch.core.query import BatchResult
 from ip_info.channel.adapter import BaseChannelAdapter
+from ip_info.pipeline.context import PipelineContext
 from ip_info.pipeline.filter_ips import filter_dynamic_ips, filter_ips_by_classification
 from ip_info.pipeline.phases.phase1_basic import BasicCollectPhase
 from ip_info.pipeline.phases.phase2_classify import ClassifyTagPhase
@@ -82,20 +83,30 @@ def _create_dns_mock(writer, ips):
     return mock
 
 
+def _make_context(writer=None, reader=None, tracker=None):
+    w = writer or InMemoryIPWriter()
+    r = reader or InMemoryIPReader(data=w._store)
+    return PipelineContext(
+        writer=w,
+        reader=r,
+        progress_tracker=tracker or InMemoryProgressTracker(),
+    )
+
+
 def _run_phase1(ips, writer, reader, tracker=None):
+    ctx = _make_context(writer=writer, reader=reader, tracker=tracker)
     phase = BasicCollectPhase(
         ips=ips,
-        writer=writer,
-        reader=reader,
+        context=ctx,
         ipinfo_channel=FakeChannel(response={"country": "US", "org": "Test Corp"}),
         rdns_channel=FakeChannel(response={"ptr": "test.example.com"}),
         no_validate=True,
-        progress_tracker=tracker,
     )
     return phase.run()
 
 
 def _run_phase2(ips, writer, reader, classify_fn, tagger=True):
+    ctx = _make_context(writer=writer, reader=reader)
     with (
         patch("ip_info.pipeline.phases.phase2_classify.BatchClassifier") as MockClassifier,
         patch("ip_info.pipeline.phases.phase2_classify.BatchTagger") as MockTagger,
@@ -106,8 +117,7 @@ def _run_phase2(ips, writer, reader, classify_fn, tagger=True):
 
         phase = ClassifyTagPhase(
             ips=ips,
-            writer=writer,
-            reader=reader,
+            context=ctx,
             rules_dir=RULES_DIR,
             tagger_config_dir=TAGGER_CONFIG_DIR,
             no_tagger=not tagger,
@@ -116,32 +126,30 @@ def _run_phase2(ips, writer, reader, classify_fn, tagger=True):
 
 
 def _run_phase3(ips, writer, reader, skip_ips=None, tracker=None):
+    ctx = _make_context(writer=writer, reader=reader, tracker=tracker)
     phase = DeepQueryPhase(
         ips=ips,
-        writer=writer,
-        reader=reader,
+        context=ctx,
         aizhan_channel=FakeChannel(response={"domain": "aizhan.example.com"}),
         chinaz_channel=FakeChannel(response={"domain": "chinaz.example.com"}),
         fofa_channel=FakeChannel(response={"domain": "fofa.example.com"}),
         no_validate=True,
         skip_ips=skip_ips,
-        progress_tracker=tracker,
     )
     return phase.run()
 
 
 def _run_phase4(ips, writer, reader, skip_ips=None, tracker=None):
+    ctx = _make_context(writer=writer, reader=reader, tracker=tracker)
     with patch("ip_info.pipeline.phases.phase4_verify_scan.BatchDnsVerify") as MockDns:
         MockDns.side_effect = lambda *a, **kw: _create_dns_mock(writer, kw.get("ips", []))
 
         phase = VerifyScanPhase(
             ips=ips,
-            writer=writer,
-            reader=reader,
+            context=ctx,
             nmap_channel=FakeChannel(response={"ports": [80, 443]}),
             no_validate=True,
             skip_ips=skip_ips,
-            progress_tracker=tracker,
         )
         return phase.run()
 
@@ -149,7 +157,7 @@ def _run_phase4(ips, writer, reader, skip_ips=None, tracker=None):
 class TestFullPipelineDataFlow:
     def test_phase1_to_phase4_full_flow(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
         tracker = InMemoryProgressTracker()
         ips = ["1.2.3.4", "5.6.7.8"]
 
@@ -165,14 +173,14 @@ class TestFullPipelineDataFlow:
         r1 = _run_phase1(ips, writer, reader, tracker)
         assert r1.success is True
         for ip in ips:
-            assert writer.get_channel_data(ip, "ipinfo_api") is not None
-            assert writer.get_channel_data(ip, "rdns_ptr") is not None
+            assert reader.get_channel_data(ip, "ipinfo_api") is not None
+            assert reader.get_channel_data(ip, "rdns_ptr") is not None
 
         r2 = _run_phase2(ips, writer, reader, classify_as_cloud)
         assert r2.success is True
         for ip in ips:
-            assert writer.get_channel_data(ip, "classifier") is not None
-            assert writer.get_channel_data(ip, "tagger") is not None
+            assert reader.get_channel_data(ip, "classifier") is not None
+            assert reader.get_channel_data(ip, "tagger") is not None
 
         filtered = filter_ips_by_classification(ips, reader)
         assert set(filtered) == set(ips)
@@ -180,15 +188,15 @@ class TestFullPipelineDataFlow:
         r3 = _run_phase3(filtered, writer, reader, tracker=tracker)
         assert r3.success is True
         for ip in ips:
-            assert writer.get_channel_data(ip, "aizhan") is not None
-            assert writer.get_channel_data(ip, "chinaz") is not None
-            assert writer.get_channel_data(ip, "fofa_host") is not None
+            assert reader.get_channel_data(ip, "aizhan") is not None
+            assert reader.get_channel_data(ip, "chinaz") is not None
+            assert reader.get_channel_data(ip, "fofa_host") is not None
 
         r4 = _run_phase4(filtered, writer, reader, tracker=tracker)
         assert r4.success is True
         for ip in ips:
-            assert writer.get_channel_data(ip, "domain_verify") is not None
-            assert writer.get_channel_data(ip, "port_scan") is not None
+            assert reader.get_channel_data(ip, "domain_verify") is not None
+            assert reader.get_channel_data(ip, "port_scan") is not None
 
         assert tracker.is_processed("1.2.3.4", "ipinfo_api")
         assert tracker.is_processed("1.2.3.4", "rdns_ptr")
@@ -197,7 +205,7 @@ class TestFullPipelineDataFlow:
 
     def test_classifier_result_carried_across_phases(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
         ips = ["1.2.3.4"]
 
         _run_phase1(ips, writer, reader)
@@ -213,18 +221,18 @@ class TestFullPipelineDataFlow:
 
         _run_phase2(ips, writer, reader, classify_as_cloud)
 
-        classifier_data = writer.get_channel_data("1.2.3.4", "classifier")
+        classifier_data = reader.get_channel_data("1.2.3.4", "classifier")
         assert classifier_data["category"] == "cloud_provider"
         assert classifier_data["need_deep_query"] is True
 
-        filtered = filter_ips_by_classification(ips, writer)
+        filtered = filter_ips_by_classification(ips, reader)
         assert "1.2.3.4" in filtered
 
 
 class TestClassificationFilterFlow:
     def test_invalid_rdns_excluded_from_deep_query(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
         ips = ["1.2.3.4", "5.6.7.8"]
 
         _run_phase1(ips, writer, reader)
@@ -248,20 +256,20 @@ class TestClassificationFilterFlow:
 
         _run_phase2(ips, writer, reader, classify_mixed)
 
-        assert writer.get_channel_data("5.6.7.8", "classifier")["category"] == "invalid_rdns"
+        assert reader.get_channel_data("5.6.7.8", "classifier")["category"] == "invalid_rdns"
 
-        filtered = filter_ips_by_classification(ips, writer)
+        filtered = filter_ips_by_classification(ips, reader)
         assert "1.2.3.4" in filtered
         assert "5.6.7.8" not in filtered
 
         _run_phase3(filtered, writer, reader)
 
-        assert writer.get_channel_data("1.2.3.4", "aizhan") is not None
-        assert writer.get_channel_data("5.6.7.8", "aizhan") is None
+        assert reader.get_channel_data("1.2.3.4", "aizhan") is not None
+        assert reader.get_channel_data("5.6.7.8", "aizhan") is None
 
     def test_cdn_excluded_from_deep_query(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
         ips = ["1.1.1.1"]
 
         _run_phase1(ips, writer, reader)
@@ -277,14 +285,14 @@ class TestClassificationFilterFlow:
 
         _run_phase2(ips, writer, reader, classify_as_cdn)
 
-        filtered = filter_ips_by_classification(ips, writer)
+        filtered = filter_ips_by_classification(ips, reader)
         assert len(filtered) == 0
 
 
 class TestDynamicIpSkipFlow:
     def test_dynamic_ip_skipped_in_deep_query(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
         ips = ["1.2.3.4", "5.6.7.8", "9.10.11.12"]
 
         _run_phase1(ips, writer, reader)
@@ -316,20 +324,20 @@ class TestDynamicIpSkipFlow:
 
         _run_phase2(ips, writer, reader, classify_with_dynamic)
 
-        dynamic_ips, non_dynamic_ips = filter_dynamic_ips(ips, writer)
+        dynamic_ips, non_dynamic_ips = filter_dynamic_ips(ips, reader)
         assert set(dynamic_ips) == {"5.6.7.8", "9.10.11.12"}
         assert non_dynamic_ips == ["1.2.3.4"]
 
         skip_set = set(dynamic_ips)
         _run_phase3(non_dynamic_ips, writer, reader, skip_ips=skip_set)
 
-        assert writer.get_channel_data("1.2.3.4", "aizhan") is not None
-        assert writer.get_channel_data("5.6.7.8", "aizhan") is None
-        assert writer.get_channel_data("9.10.11.12", "aizhan") is None
+        assert reader.get_channel_data("1.2.3.4", "aizhan") is not None
+        assert reader.get_channel_data("5.6.7.8", "aizhan") is None
+        assert reader.get_channel_data("9.10.11.12", "aizhan") is None
 
     def test_dynamic_ip_dns_still_runs(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
         ips = ["1.2.3.4", "5.6.7.8"]
 
         _run_phase1(ips, writer, reader)
@@ -353,22 +361,22 @@ class TestDynamicIpSkipFlow:
 
         _run_phase2(ips, writer, reader, classify_one_dynamic)
 
-        dynamic_ips, _ = filter_dynamic_ips(ips, writer)
+        dynamic_ips, _ = filter_dynamic_ips(ips, reader)
         skip_set = set(dynamic_ips)
 
         _run_phase3(ips, writer, reader, skip_ips=skip_set)
         _run_phase4(ips, writer, reader, skip_ips=skip_set)
 
-        assert writer.get_channel_data("5.6.7.8", "domain_verify") is not None
-        assert writer.get_channel_data("5.6.7.8", "port_scan") is None
-        assert writer.get_channel_data("1.2.3.4", "domain_verify") is not None
-        assert writer.get_channel_data("1.2.3.4", "port_scan") is not None
+        assert reader.get_channel_data("5.6.7.8", "domain_verify") is not None
+        assert reader.get_channel_data("5.6.7.8", "port_scan") is None
+        assert reader.get_channel_data("1.2.3.4", "domain_verify") is not None
+        assert reader.get_channel_data("1.2.3.4", "port_scan") is not None
 
 
 class TestResumeFlow:
     def test_partial_data_only_processes_remaining(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
         ips = ["1.2.3.4", "5.6.7.8"]
 
         writer.add_or_update_ip("1.2.3.4", "ipinfo_api", {"country": "US"})
@@ -377,13 +385,13 @@ class TestResumeFlow:
         r1 = _run_phase1(ips, writer, reader)
         assert r1.success is True
 
-        assert writer.get_channel_data("1.2.3.4", "ipinfo_api") is not None
-        assert writer.get_channel_data("5.6.7.8", "ipinfo_api") is not None
-        assert writer.get_channel_data("5.6.7.8", "rdns_ptr") is not None
+        assert reader.get_channel_data("1.2.3.4", "ipinfo_api") is not None
+        assert reader.get_channel_data("5.6.7.8", "ipinfo_api") is not None
+        assert reader.get_channel_data("5.6.7.8", "rdns_ptr") is not None
 
     def test_tracker_prevents_reprocessing(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
         tracker = InMemoryProgressTracker()
         ips = ["1.2.3.4", "5.6.7.8"]
 
@@ -392,16 +400,16 @@ class TestResumeFlow:
 
         _run_phase1(ips, writer, reader, tracker)
 
-        assert writer.get_channel_data("1.2.3.4", "ipinfo_api") is None
-        assert writer.get_channel_data("5.6.7.8", "ipinfo_api") is not None
-        assert writer.get_channel_data("5.6.7.8", "rdns_ptr") is not None
+        assert reader.get_channel_data("1.2.3.4", "ipinfo_api") is None
+        assert reader.get_channel_data("5.6.7.8", "ipinfo_api") is not None
+        assert reader.get_channel_data("5.6.7.8", "rdns_ptr") is not None
 
     def test_no_classifier_data_ip_kept_in_flow(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
         ips = ["1.2.3.4"]
 
         _run_phase1(ips, writer, reader)
 
-        filtered = filter_ips_by_classification(ips, writer)
+        filtered = filter_ips_by_classification(ips, reader)
         assert "1.2.3.4" in filtered

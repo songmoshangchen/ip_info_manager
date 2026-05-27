@@ -39,12 +39,25 @@ def _try_channel(name):
     return None
 
 
-def _disable_channels(channels: list, skip_names: set[str]) -> None:
-    """手动禁用指定渠道。"""
-    for ch in channels:
-        if ch.channel_name in skip_names:
-            ch.disabled = True
-            logger.info("手动禁用渠道: %s", ch.channel_name)
+def filter_by_classification_for_pipeline(ips, context):
+    """Pipeline filter: 根据分类结果过滤 IP，返回需要深度查询的 IP。"""
+    from ip_info.pipeline.filter_ips import filter_ips_by_classification
+
+    return filter_ips_by_classification(ips, context.reader)
+
+
+def filter_dynamic_ips_for_pipeline(ips, context):
+    """Pipeline filter: 识别动态 IP，存储到 context，返回非动态 IP。
+
+    动态 IP 会被写入 context.config['dynamic_ips'] 以便后续 Phase 使用。
+    """
+    from ip_info.pipeline.filter_ips import filter_dynamic_ips
+
+    dynamic_list, non_dynamic_list = filter_dynamic_ips(ips, context.reader)
+    if context.config is None:
+        context.config = {}
+    context.config["dynamic_ips"] = set(dynamic_list)
+    return non_dynamic_list
 
 
 def main():
@@ -52,8 +65,8 @@ def main():
     from ip_info.channel.ipinfo_api import IpinfoApiChannel
     from ip_info.channel.port_scan import PortScanChannel
     from ip_info.channel.rdns_ptr import RdnsPtrChannel
+    from ip_info.pipeline.builder import PipelineBuilder
     from ip_info.pipeline.context import PipelineContext
-    from ip_info.pipeline.filter_ips import filter_dynamic_ips, filter_ips_by_classification
     from ip_info.pipeline.phases import (
         BasicCollectPhase,
         ClassifyTagPhase,
@@ -108,62 +121,61 @@ def main():
         domain_cache=domain_cache,
     )
 
-    # Phase 1: 基础情报采集
-    logger.info("=" * 60)
-    logger.info("Phase 1: 基础情报采集 (%d IP)", len(ips))
-    logger.info("=" * 60)
+    # 初始化渠道
     ipinfo_ch = IpinfoApiChannel()
     rdns_ch = RdnsPtrChannel()
-    _disable_channels([ipinfo_ch, rdns_ch], skip_names)
-    phase1 = BasicCollectPhase(
-        ips=ips,
-        ipinfo_channel=ipinfo_ch,
-        rdns_channel=rdns_ch,
-        context=ctx,
-        ipinfo_workers=2,
-        rdns_workers=3,
+    aizhan_ch = _try_channel("aizhan")
+    fofa_ch = _try_channel("fofa")
+    chinaz_ch = ChinazChannel()
+    nmap_ch = PortScanChannel()
+
+    # 使用 PipelineBuilder 构建流水线
+    builder = PipelineBuilder(ctx)
+    builder.with_ips(ips)
+    builder.with_channel("ipinfo_api", ipinfo_ch)
+    builder.with_channel("rdns_ptr", rdns_ch)
+    builder.with_channel("aizhan", aizhan_ch or chinaz_ch)
+    builder.with_channel("chinaz", chinaz_ch)
+    builder.with_channel("fofa_host", fofa_ch or chinaz_ch)
+    builder.with_channel("port_scan", nmap_ch)
+
+    # 跳过指定渠道
+    for name in skip_names:
+        builder.skip_channel(name)
+
+    # 注册 Phase 1: 基础情报采集
+    builder.add_phase(
+        BasicCollectPhase(
+            ips=ips,
+            ipinfo_channel=ipinfo_ch,
+            rdns_channel=rdns_ch,
+            context=ctx,
+            ipinfo_workers=2,
+            rdns_workers=3,
+        )
     )
-    r1 = phase1.run()
-    logger.info("Phase 1 完成: %s, 耗时 %.1fs", r1.message, r1.elapsed)
 
-    # Phase 2: 分类 + 标签
-    logger.info("=" * 60)
-    logger.info("Phase 2: 分类 + 标签 (%d IP)", len(ips))
-    logger.info("=" * 60)
-    phase2 = ClassifyTagPhase(
-        ips=ips,
-        context=ctx,
-        rules_dir=rules_dir,
-        tagger_config_dir=tagger_config_dir,
+    # 注册 Phase 2: 分类 + 标签
+    builder.add_phase(
+        ClassifyTagPhase(
+            ips=ips,
+            context=ctx,
+            rules_dir=rules_dir,
+            tagger_config_dir=tagger_config_dir,
+        )
     )
-    r2 = phase2.run()
-    logger.info("Phase 2 完成: %s, 耗时 %.1fs", r2.message, r2.elapsed)
 
-    # 过滤 IP
-    logger.info("=" * 60)
-    filtered_ips = filter_ips_by_classification(ips, reader)
-    logger.info("过滤: %d/%d IP 需深度查询", len(filtered_ips), len(ips))
+    # 注册过滤器: 分类后过滤 IP
+    builder.with_filter("分类与标签", filter_by_classification_for_pipeline)
 
-    # 识别动态 IP
-    dynamic_ips: set[str] = set()
-    if not args.no_skip_dynamic and filtered_ips:
-        dynamic_list, _non_dynamic_list = filter_dynamic_ips(filtered_ips, reader)
-        dynamic_ips = set(dynamic_list)
-        if dynamic_ips:
-            logger.info("动态 IP: %d 个将跳过深度查询 (使用 --no-skip-dynamic 强制查询)", len(dynamic_ips))
+    # 注册过滤器: 识别动态 IP (除非 --no-skip-dynamic)
+    if not args.no_skip_dynamic:
+        builder.with_filter("分类与标签", filter_dynamic_ips_for_pipeline)
 
-    # Phase 3: 深度查询
-    if filtered_ips:
-        logger.info("=" * 60)
-        logger.info("Phase 3: 深度查询 (%d IP)", len(filtered_ips))
-        logger.info("=" * 60)
-        aizhan_ch = _try_channel("aizhan")
-        fofa_ch = _try_channel("fofa")
-        chinaz_ch = ChinazChannel()
-        all_phase3_channels = [ch for ch in [aizhan_ch, chinaz_ch, fofa_ch] if ch is not None]
-        _disable_channels(all_phase3_channels, skip_names)
-        phase3 = DeepQueryPhase(
-            ips=filtered_ips,
+    # 注册 Phase 3: 深度查询
+    builder.add_phase(
+        DeepQueryPhase(
+            ips=ips,
             aizhan_channel=aizhan_ch or chinaz_ch,
             chinaz_channel=chinaz_ch,
             fofa_channel=fofa_ch or chinaz_ch,
@@ -171,34 +183,25 @@ def main():
             aizhan_workers=1,
             chinaz_workers=2,
             fofa_workers=2,
-            skip_ips=dynamic_ips,
         )
-        r3 = phase3.run()
-        logger.info("Phase 3 完成: %s, 耗时 %.1fs", r3.message, r3.elapsed)
-    else:
-        logger.info("无 IP 需深度查询，跳过 Phase 3")
+    )
 
-    # Phase 4: 验证 + Nmap 扫描
-    if filtered_ips:
-        logger.info("=" * 60)
-        logger.info("Phase 4: 验证 + Nmap 扫描 (%d IP)", len(filtered_ips))
-        logger.info("=" * 60)
-        nmap_ch = PortScanChannel()
-        _disable_channels([nmap_ch], skip_names)
-        phase4 = VerifyScanPhase(
-            ips=filtered_ips,
+    # 注册 Phase 4: 验证 + Nmap 扫描
+    builder.add_phase(
+        VerifyScanPhase(
+            ips=ips,
             nmap_channel=nmap_ch,
             context=ctx,
             max_age_days=7,
             dns_timeout=3.0,
             dns_concurrency=10,
             nmap_workers=3,
-            skip_ips=dynamic_ips,
         )
-        r4 = phase4.run()
-        logger.info("Phase 4 完成: %s, 耗时 %.1fs", r4.message, r4.elapsed)
-    else:
-        logger.info("无 IP 需验证/扫描，跳过 Phase 4")
+    )
+
+    # 构建并运行流水线
+    pipeline = builder.build()
+    pipeline.run()
 
     # 汇总
     total = time.time() - start

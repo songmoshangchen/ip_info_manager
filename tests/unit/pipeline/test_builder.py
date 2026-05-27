@@ -3,6 +3,7 @@ from ip_info.pipeline.builder import PipelineBuilder
 from ip_info.pipeline.context import PipelineContext
 from ip_info.pipeline.phases.phase1_basic import BasicCollectPhase
 from ip_info.pipeline.phases.phase3_deep import DeepQueryPhase
+from ip_info.pipeline.pipeline import Pipeline, PipelineResult
 from ip_info.store.in_memory import InMemoryIPReader, InMemoryIPWriter
 from ip_info.utils.progress import InMemoryProgressTracker
 
@@ -85,8 +86,8 @@ class TestPipelineBuilder:
             )
         )
         pipeline = builder.build()
-        assert pipeline is not None
-        assert len(pipeline.phases) == 1
+        assert isinstance(pipeline, Pipeline)
+        assert len(pipeline._phases) == 1
 
     def test_pipeline_run_executes_phases(self):
         ctx = _make_context()
@@ -101,9 +102,10 @@ class TestPipelineBuilder:
             )
         )
         pipeline = builder.build()
-        results = pipeline.run()
-        assert len(results) == 1
-        assert results[0].success is True
+        result = pipeline.run()
+        assert isinstance(result, PipelineResult)
+        assert result.success is True
+        assert len(result.phase_results) == 1
 
     def test_multiple_phases_sequential(self):
         ctx = _make_context()
@@ -131,6 +133,65 @@ class TestPipelineBuilder:
         )
 
         pipeline = builder.build()
-        results = pipeline.run()
-        assert len(results) == 2
-        assert all(r.success for r in results)
+        result = pipeline.run()
+        assert isinstance(result, PipelineResult)
+        assert result.success is True
+        assert len(result.phase_results) == 2
+
+
+class TestWithFilter:
+    def test_with_filter_returns_self(self):
+        ctx = _make_context()
+        builder = PipelineBuilder(ctx)
+
+        def my_filter(ips, context):
+            return ips
+
+        result = builder.with_filter("分类与标签", my_filter)
+        assert result is builder
+
+    def test_with_filter_stores_filter(self):
+        ctx = _make_context()
+        builder = PipelineBuilder(ctx)
+
+        def my_filter(ips, context):
+            return ips
+
+        builder.with_filter("分类与标签", my_filter)
+        assert len(builder._filters) == 1
+        assert builder._filters[0] == ("分类与标签", my_filter)
+
+    def test_with_filter_multiple_filters(self):
+        ctx = _make_context()
+        builder = PipelineBuilder(ctx)
+
+        def filter_a(ips, context):
+            return ips
+
+        def filter_b(ips, context):
+            return ips
+
+        builder.with_filter("分类与标签", filter_a)
+        builder.with_filter("分类与标签", filter_b)
+        assert len(builder._filters) == 2
+
+    def test_build_passes_filters_to_pipeline(self):
+        ctx = _make_context()
+        builder = PipelineBuilder(ctx).with_ips(["1.2.3.4"])
+
+        def my_filter(ips, context):
+            return ips
+
+        builder.with_filter("分类与标签", my_filter)
+        builder.add_phase(
+            BasicCollectPhase(
+                ips=["1.2.3.4"],
+                ipinfo_channel=FakeChannel(),
+                rdns_channel=FakeChannel(),
+                context=ctx,
+                no_validate=True,
+            )
+        )
+        pipeline = builder.build()
+        assert "分类与标签" in pipeline._filters
+        assert len(pipeline._filters["分类与标签"]) == 1

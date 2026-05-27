@@ -23,12 +23,6 @@ class TestIPReaderProtocolConformance:
         assert isinstance(reader, IPDataReader)
 
 
-class TestInMemoryWriterAlsoReader:
-    def test_in_memory_writer_is_also_ipdatareader(self):
-        writer = InMemoryIPWriter()
-        assert isinstance(writer, IPDataReader)
-
-
 class TestImportFromPackage:
     def test_import_from_store_init(self):
         from ip_info.store import (

@@ -1,27 +1,11 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 
 from ip_info.pipeline.context import PipelineContext
-from ip_info.pipeline.phase import PhaseResult
+from ip_info.pipeline.pipeline import FilterFn, Pipeline
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class Pipeline:
-    phases: list
-    context: PipelineContext
-
-    def run(self) -> list[PhaseResult]:
-        results = []
-        for phase in self.phases:
-            logger.info("执行阶段: %s", phase.name)
-            result = phase.run()
-            results.append(result)
-            logger.info("阶段完成: %s — %s", phase.name, result.message)
-        return results
 
 
 class PipelineBuilder:
@@ -32,6 +16,7 @@ class PipelineBuilder:
         self._channels: dict = {}
         self._skip_channels: set[str] = set()
         self._skip_dynamic: bool = False
+        self._filters: list[tuple[str, FilterFn]] = []
 
     @property
     def ips(self) -> list[str]:
@@ -70,5 +55,18 @@ class PipelineBuilder:
         self._phases.append(phase)
         return self
 
+    def with_filter(self, after_phase_name: str, filter_fn: FilterFn) -> PipelineBuilder:
+        """Register a filter that runs after the named phase.
+
+        Args:
+            after_phase_name: The Phase name after which the filter runs.
+            filter_fn: A callable(ips, context) -> filtered_ips.
+        """
+        self._filters.append((after_phase_name, filter_fn))
+        return self
+
     def build(self) -> Pipeline:
-        return Pipeline(phases=list(self._phases), context=self._context)
+        pipeline = Pipeline(filters=self._filters)
+        for phase in self._phases:
+            pipeline.register(phase)
+        return pipeline

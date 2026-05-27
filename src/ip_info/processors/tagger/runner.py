@@ -8,7 +8,7 @@ from ip_info.batch.core.query import BatchResult
 from ip_info.processors.core.base import BaseProcessor
 from ip_info.processors.tagger.manifest import load_manifest, validate_manifest
 from ip_info.processors.tagger.matcher import ip_to_int, match_sorted_ips_streaming
-from ip_info.store.protocols import IPDataWriter
+from ip_info.store.protocols import IPDataReader, IPDataWriter
 from ip_info.utils.progress import ProgressTracker
 
 logger = logging.getLogger(__name__)
@@ -24,11 +24,12 @@ class BatchTagger(BaseProcessor):
         ips: list[str],
         writer: IPDataWriter,
         config_dir: str,
+        reader: IPDataReader | None = None,
         level: int | None = None,
         mode: str = "accumulate",
         progress_tracker: ProgressTracker | None = None,
     ):
-        super().__init__(ips=ips, writer=writer, progress_tracker=progress_tracker)
+        super().__init__(ips=ips, writer=writer, reader=reader, progress_tracker=progress_tracker)
         self._config_dir = config_dir
         self._level = level
         self._mode = mode
@@ -115,10 +116,9 @@ class BatchTagger(BaseProcessor):
         )
 
     def _read_channel_data(self, ip: str) -> dict | None:
-        """读取 IP 的渠道数据（鸭子类型方式）。"""
-        get_channel_data = getattr(self._writer, "get_channel_data", None)
-        if callable(get_channel_data):
-            return get_channel_data(ip, self.channel_name)
+        """读取 IP 的渠道数据。"""
+        if self._reader is not None:
+            return self._reader.get_channel_data(ip, self.channel_name)
         return None
 
 

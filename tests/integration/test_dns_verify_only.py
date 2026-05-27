@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from unittest.mock import patch
 
 from ip_info.processors.dns_verify.runner import BatchDnsVerify
-from ip_info.store.in_memory import InMemoryDomainCache, InMemoryIPWriter
+from ip_info.store.in_memory import InMemoryDomainCache, InMemoryIPReader, InMemoryIPWriter
 
 
 def _fake_batch_verify(mappings, **kwargs):
@@ -23,6 +23,7 @@ def _fake_batch_verify(mappings, **kwargs):
 class TestDnsVerifyIntegration:
     def test_single_ip_verify(self):
         writer = InMemoryIPWriter()
+        reader = InMemoryIPReader(data=writer._store)
         ip = "8.8.8.8"
 
         writer.add_or_update_ip(
@@ -42,7 +43,7 @@ class TestDnsVerifyIntegration:
             runner = BatchDnsVerify(
                 ips=[ip],
                 writer=writer,
-                reader=writer,
+                reader=reader,
                 max_age_days=7,
                 force_days=0,
                 timeout=3.0,
@@ -51,7 +52,7 @@ class TestDnsVerifyIntegration:
             result = runner.run()
 
         assert result.success_count == 1
-        verify_data = writer.get_channel_data(ip, "domain_verify")
+        verify_data = reader.get_channel_data(ip, "domain_verify")
         assert verify_data is not None
         assert verify_data["total_domains"] >= 2
         assert verify_data["matched"] >= 2
@@ -61,6 +62,7 @@ class TestDnsVerifyIntegration:
 
     def test_verify_with_domain_cache(self):
         writer = InMemoryIPWriter()
+        reader = InMemoryIPReader(data=writer._store)
         cache = InMemoryDomainCache()
         ip = "8.8.8.8"
 
@@ -88,7 +90,7 @@ class TestDnsVerifyIntegration:
             runner = BatchDnsVerify(
                 ips=[ip],
                 writer=writer,
-                reader=writer,
+                reader=reader,
                 domain_cache=cache,
                 max_age_days=7,
                 force_days=0,
@@ -102,6 +104,7 @@ class TestDnsVerifyIntegration:
 
     def test_verify_no_domain_data(self):
         writer = InMemoryIPWriter()
+        reader = InMemoryIPReader(data=writer._store)
         ip = "1.2.3.4"
 
         writer.add_or_update_ip(ip, "ipinfo_api", {"country": "US"})
@@ -110,7 +113,7 @@ class TestDnsVerifyIntegration:
             runner = BatchDnsVerify(
                 ips=[ip],
                 writer=writer,
-                reader=writer,
+                reader=reader,
                 max_age_days=7,
                 force_days=0,
             )
@@ -121,6 +124,7 @@ class TestDnsVerifyIntegration:
 
     def test_each_domain_has_verify_time(self):
         writer = InMemoryIPWriter()
+        reader = InMemoryIPReader(data=writer._store)
         ip = "1.2.3.4"
 
         writer.add_or_update_ip(
@@ -141,13 +145,13 @@ class TestDnsVerifyIntegration:
             runner = BatchDnsVerify(
                 ips=[ip],
                 writer=writer,
-                reader=writer,
+                reader=reader,
                 max_age_days=7,
                 force_days=0,
             )
             runner.run()
 
-        verify_data = writer.get_channel_data(ip, "domain_verify")
+        verify_data = reader.get_channel_data(ip, "domain_verify")
         assert len(verify_data["results"]) == 3
         verify_times = [r["verify_time"] for r in verify_data["results"]]
         assert all(vt for vt in verify_times)

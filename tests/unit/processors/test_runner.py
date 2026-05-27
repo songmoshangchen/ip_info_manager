@@ -4,7 +4,7 @@ import logging
 from ip_info.batch.core.query import BatchResult
 from ip_info.batch.core.runner import BatchRunner
 from ip_info.processors.tagger.runner import CHANNEL_NAME, BatchTagger
-from ip_info.store.in_memory import InMemoryIPWriter
+from ip_info.store.in_memory import InMemoryIPReader, InMemoryIPWriter
 from ip_info.utils.progress import InMemoryProgressTracker
 
 
@@ -61,12 +61,13 @@ class TestNormalBatchTagging:
             ipset_contents={"malware.ipset": "10.0.0.0/24\n"},
         )
         writer = InMemoryIPWriter()
+        reader = InMemoryIPReader(data=writer._store)
         tagger = BatchTagger(ips=["10.0.0.1"], writer=writer, config_dir=config_dir)
 
         result = tagger.run()
 
         assert result.success_count == 1
-        channel_data = writer.get_channel_data("10.0.0.1", CHANNEL_NAME)
+        channel_data = reader.get_channel_data("10.0.0.1", CHANNEL_NAME)
         assert channel_data is not None
         assert "tags" in channel_data
         assert "恶意软件" in channel_data["tags"]
@@ -79,12 +80,13 @@ class TestNormalBatchTagging:
             ipset_contents={"malware.ipset": "10.0.0.0/24\n"},
         )
         writer = InMemoryIPWriter()
+        reader = InMemoryIPReader(data=writer._store)
         tagger = BatchTagger(ips=["192.168.1.1"], writer=writer, config_dir=config_dir)
 
         result = tagger.run()
 
         assert result.success_count == 0
-        assert writer.get_channel_data("192.168.1.1", CHANNEL_NAME) is None
+        assert reader.get_channel_data("192.168.1.1", CHANNEL_NAME) is None
 
     def test_multiple_tags_from_different_sources(self, tmp_path):
         """同一 IP 可从多个标签源获得多个标签。"""
@@ -100,12 +102,13 @@ class TestNormalBatchTagging:
             },
         )
         writer = InMemoryIPWriter()
+        reader = InMemoryIPReader(data=writer._store)
         tagger = BatchTagger(ips=["10.0.0.1"], writer=writer, config_dir=config_dir)
 
         result = tagger.run()
 
         assert result.success_count == 1
-        channel_data = writer.get_channel_data("10.0.0.1", CHANNEL_NAME)
+        channel_data = reader.get_channel_data("10.0.0.1", CHANNEL_NAME)
         assert set(channel_data["tags"]) == {"恶意软件", "代理"}
 
     def test_batch_result_has_correct_counts(self, tmp_path):
@@ -137,11 +140,12 @@ class TestNormalBatchTagging:
             ipset_contents={"test.ipset": "10.0.0.1\n"},
         )
         writer = InMemoryIPWriter()
+        reader = InMemoryIPReader(data=writer._store)
         tagger = BatchTagger(ips=["10.0.0.1"], writer=writer, config_dir=config_dir)
 
         tagger.run()
 
-        ip_data = writer.get_ip_data("10.0.0.1")
+        ip_data = reader.get_ip_data("10.0.0.1")
         assert ip_data is not None
         assert CHANNEL_NAME in ip_data
 
@@ -157,12 +161,14 @@ class TestAccumulateMode:
             ipset_contents={"proxy.ipset": "10.0.0.1\n"},
         )
         writer = InMemoryIPWriter()
+        reader = InMemoryIPReader(data=writer._store)
         # 预设已有标签
         writer.add_or_update_ip("10.0.0.1", CHANNEL_NAME, {"tags": ["恶意软件"]})
 
         tagger = BatchTagger(
             ips=["10.0.0.1"],
             writer=writer,
+            reader=reader,
             config_dir=config_dir,
             mode="accumulate",
         )
@@ -170,7 +176,7 @@ class TestAccumulateMode:
         result = tagger.run()
 
         assert result.success_count == 1
-        channel_data = writer.get_channel_data("10.0.0.1", CHANNEL_NAME)
+        channel_data = reader.get_channel_data("10.0.0.1", CHANNEL_NAME)
         assert set(channel_data["tags"]) == {"恶意软件", "代理"}
 
     def test_duplicate_tags_deduplicated(self, tmp_path):
@@ -181,12 +187,14 @@ class TestAccumulateMode:
             ipset_contents={"malware.ipset": "10.0.0.1\n"},
         )
         writer = InMemoryIPWriter()
+        reader = InMemoryIPReader(data=writer._store)
         # 预设已有相同标签
         writer.add_or_update_ip("10.0.0.1", CHANNEL_NAME, {"tags": ["恶意软件"]})
 
         tagger = BatchTagger(
             ips=["10.0.0.1"],
             writer=writer,
+            reader=reader,
             config_dir=config_dir,
             mode="accumulate",
         )
@@ -194,7 +202,7 @@ class TestAccumulateMode:
         result = tagger.run()
 
         assert result.success_count == 1
-        channel_data = writer.get_channel_data("10.0.0.1", CHANNEL_NAME)
+        channel_data = reader.get_channel_data("10.0.0.1", CHANNEL_NAME)
         assert channel_data["tags"] == ["恶意软件"]
 
     def test_no_existing_tags_just_sets_new(self, tmp_path):
@@ -205,6 +213,7 @@ class TestAccumulateMode:
             ipset_contents={"malware.ipset": "10.0.0.1\n"},
         )
         writer = InMemoryIPWriter()
+        reader = InMemoryIPReader(data=writer._store)
 
         tagger = BatchTagger(
             ips=["10.0.0.1"],
@@ -216,7 +225,7 @@ class TestAccumulateMode:
         result = tagger.run()
 
         assert result.success_count == 1
-        channel_data = writer.get_channel_data("10.0.0.1", CHANNEL_NAME)
+        channel_data = reader.get_channel_data("10.0.0.1", CHANNEL_NAME)
         assert channel_data["tags"] == ["恶意软件"]
 
 
@@ -231,6 +240,7 @@ class TestOverwriteMode:
             ipset_contents={"proxy.ipset": "10.0.0.1\n"},
         )
         writer = InMemoryIPWriter()
+        reader = InMemoryIPReader(data=writer._store)
         # 预设已有标签
         writer.add_or_update_ip("10.0.0.1", CHANNEL_NAME, {"tags": ["恶意软件"]})
 
@@ -244,7 +254,7 @@ class TestOverwriteMode:
         result = tagger.run()
 
         assert result.success_count == 1
-        channel_data = writer.get_channel_data("10.0.0.1", CHANNEL_NAME)
+        channel_data = reader.get_channel_data("10.0.0.1", CHANNEL_NAME)
         assert channel_data["tags"] == ["代理"]
         assert "恶意软件" not in channel_data["tags"]
 
@@ -427,6 +437,7 @@ class TestLevelFiltering:
             },
         )
         writer = InMemoryIPWriter()
+        reader = InMemoryIPReader(data=writer._store)
         tagger = BatchTagger(
             ips=["10.0.0.1"],
             writer=writer,
@@ -437,7 +448,7 @@ class TestLevelFiltering:
         result = tagger.run()
 
         assert result.success_count == 1
-        channel_data = writer.get_channel_data("10.0.0.1", CHANNEL_NAME)
+        channel_data = reader.get_channel_data("10.0.0.1", CHANNEL_NAME)
         assert set(channel_data["tags"]) == {"恶意软件", "代理"}
         assert "垃圾邮件" not in channel_data["tags"]
 
@@ -455,6 +466,7 @@ class TestLevelFiltering:
             },
         )
         writer = InMemoryIPWriter()
+        reader = InMemoryIPReader(data=writer._store)
         tagger = BatchTagger(
             ips=["10.0.0.1"],
             writer=writer,
@@ -465,5 +477,82 @@ class TestLevelFiltering:
         result = tagger.run()
 
         assert result.success_count == 1
-        channel_data = writer.get_channel_data("10.0.0.1", CHANNEL_NAME)
+        channel_data = reader.get_channel_data("10.0.0.1", CHANNEL_NAME)
         assert set(channel_data["tags"]) == {"恶意软件", "垃圾邮件"}
+
+
+class PureIPDataWriter:
+    """仅实现 IPDataWriter 协议的写入器，没有 get_channel_data 方法。"""
+
+    def __init__(self):
+        self._store: dict[str, dict] = {}
+
+    def add_or_update_ip(self, ip: str, channel: str, data: dict) -> bool:
+        if ip not in self._store:
+            self._store[ip] = {"ip": ip}
+        self._store[ip][channel] = data
+        return True
+
+    def delete_ip(self, ip: str) -> bool:
+        if ip in self._store:
+            del self._store[ip]
+            return True
+        return False
+
+    def delete_channel(self, ip: str, channel: str) -> bool:
+        if ip in self._store and channel in self._store[ip]:
+            del self._store[ip][channel]
+            return True
+        return False
+
+
+class TestAccumulateWithPureWriter:
+    """累加模式在纯 IPDataWriter（无 get_channel_data）下的测试。"""
+
+    def test_accumulate_with_pure_writer_and_reader(self, tmp_path):
+        """纯 IPDataWriter + 显式 reader 时，accumulate 模式应正确合并标签。"""
+        config_dir = _setup_config_dir(
+            tmp_path,
+            manifest_items=[{"file": "proxy.ipset", "label": "代理", "level": 1}],
+            ipset_contents={"proxy.ipset": "10.0.0.1\n"},
+        )
+        writer = PureIPDataWriter()
+        reader = InMemoryIPReader(
+            data={
+                "10.0.0.1": {"ip": "10.0.0.1", CHANNEL_NAME: {"tags": ["恶意软件"]}},
+            }
+        )
+
+        tagger = BatchTagger(
+            ips=["10.0.0.1"],
+            writer=writer,
+            reader=reader,
+            config_dir=config_dir,
+            mode="accumulate",
+        )
+
+        result = tagger.run()
+
+        assert result.success_count == 1
+        assert set(writer._store["10.0.0.1"][CHANNEL_NAME]["tags"]) == {"恶意软件", "代理"}
+
+    def test_accumulate_with_pure_writer_no_reader(self, tmp_path):
+        """纯 IPDataWriter 且无 reader 时，accumulate 模式应直接设置新标签。"""
+        config_dir = _setup_config_dir(
+            tmp_path,
+            manifest_items=[{"file": "malware.ipset", "label": "恶意软件", "level": 1}],
+            ipset_contents={"malware.ipset": "10.0.0.1\n"},
+        )
+        writer = PureIPDataWriter()
+
+        tagger = BatchTagger(
+            ips=["10.0.0.1"],
+            writer=writer,
+            config_dir=config_dir,
+            mode="accumulate",
+        )
+
+        result = tagger.run()
+
+        assert result.success_count == 1
+        assert writer._store["10.0.0.1"][CHANNEL_NAME]["tags"] == ["恶意软件"]

@@ -2,6 +2,7 @@ from unittest.mock import MagicMock, patch
 
 from ip_info.batch.core.query import BatchResult
 from ip_info.channel.adapter import BaseChannelAdapter
+from ip_info.pipeline.context import PipelineContext
 from ip_info.pipeline.phase import Phase
 from ip_info.pipeline.phases.phase1_basic import BasicCollectPhase
 from ip_info.pipeline.phases.phase2_classify import ClassifyTagPhase
@@ -73,10 +74,22 @@ def _create_tagger_mock(writer, ips):
     return mock
 
 
+def _make_context(writer=None, reader=None, tracker=None, domain_cache=None):
+    w = writer or InMemoryIPWriter()
+    r = reader or InMemoryIPReader(data=w._store)
+    return PipelineContext(
+        writer=w,
+        reader=r,
+        progress_tracker=tracker or InMemoryProgressTracker(),
+        domain_cache=domain_cache,
+    )
+
+
 class TestDeepQueryPhase:
     def test_normal_execution(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
         aizhan = FakeChannel(response={"source": "aizhan"})
         chinaz = FakeChannel(response={"source": "chinaz"})
         fofa = FakeChannel(response={"source": "fofa"})
@@ -84,8 +97,7 @@ class TestDeepQueryPhase:
 
         phase = DeepQueryPhase(
             ips=ips,
-            writer=writer,
-            reader=reader,
+            context=ctx,
             aizhan_channel=aizhan,
             chinaz_channel=chinaz,
             fofa_channel=fofa,
@@ -95,21 +107,21 @@ class TestDeepQueryPhase:
 
         assert result.success is True
         for ip in ips:
-            assert writer.get_channel_data(ip, "aizhan") is not None
-            assert writer.get_channel_data(ip, "chinaz") is not None
-            assert writer.get_channel_data(ip, "fofa_host") is not None
+            assert reader.get_channel_data(ip, "aizhan") is not None
+            assert reader.get_channel_data(ip, "chinaz") is not None
+            assert reader.get_channel_data(ip, "fofa_host") is not None
 
     def test_empty_input(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
         aizhan = FakeChannel()
         chinaz = FakeChannel()
         fofa = FakeChannel()
 
         phase = DeepQueryPhase(
             ips=[],
-            writer=writer,
-            reader=reader,
+            context=ctx,
             aizhan_channel=aizhan,
             chinaz_channel=chinaz,
             fofa_channel=fofa,
@@ -122,7 +134,8 @@ class TestDeepQueryPhase:
 
     def test_partial_channel_disabled(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
         aizhan = FakeChannel(disabled=True, response={"source": "aizhan"})
         chinaz = FakeChannel(response={"source": "chinaz"})
         fofa = FakeChannel(response={"source": "fofa"})
@@ -130,8 +143,7 @@ class TestDeepQueryPhase:
 
         phase = DeepQueryPhase(
             ips=ips,
-            writer=writer,
-            reader=reader,
+            context=ctx,
             aizhan_channel=aizhan,
             chinaz_channel=chinaz,
             fofa_channel=fofa,
@@ -140,21 +152,21 @@ class TestDeepQueryPhase:
         result = phase.run()
 
         assert result.success is True
-        assert writer.get_channel_data("1.2.3.4", "aizhan") is None
-        assert writer.get_channel_data("1.2.3.4", "chinaz") is not None
-        assert writer.get_channel_data("1.2.3.4", "fofa_host") is not None
+        assert reader.get_channel_data("1.2.3.4", "aizhan") is None
+        assert reader.get_channel_data("1.2.3.4", "chinaz") is not None
+        assert reader.get_channel_data("1.2.3.4", "fofa_host") is not None
 
     def test_phase_protocol(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
         aizhan = FakeChannel()
         chinaz = FakeChannel()
         fofa = FakeChannel()
 
         phase = DeepQueryPhase(
             ips=["1.2.3.4"],
-            writer=writer,
-            reader=reader,
+            context=ctx,
             aizhan_channel=aizhan,
             chinaz_channel=chinaz,
             fofa_channel=fofa,
@@ -165,15 +177,15 @@ class TestDeepQueryPhase:
 
     def test_delay_auto_passed(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
         aizhan = FakeChannel(default_delay=2.0)
         chinaz = FakeChannel(default_delay=2.0)
         fofa = FakeChannel(default_delay=2.0)
 
         phase = DeepQueryPhase(
             ips=["1.2.3.4"],
-            writer=writer,
-            reader=reader,
+            context=ctx,
             aizhan_channel=aizhan,
             chinaz_channel=chinaz,
             fofa_channel=fofa,
@@ -182,27 +194,26 @@ class TestDeepQueryPhase:
         result = phase.run()
 
         assert result.success is True
-        assert writer.get_channel_data("1.2.3.4", "aizhan") is not None
-        assert writer.get_channel_data("1.2.3.4", "chinaz") is not None
-        assert writer.get_channel_data("1.2.3.4", "fofa_host") is not None
+        assert reader.get_channel_data("1.2.3.4", "aizhan") is not None
+        assert reader.get_channel_data("1.2.3.4", "chinaz") is not None
+        assert reader.get_channel_data("1.2.3.4", "fofa_host") is not None
 
     def test_progress_tracker_passed(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
         tracker = InMemoryProgressTracker()
+        ctx = _make_context(writer=writer, reader=reader, tracker=tracker)
         aizhan = FakeChannel()
         chinaz = FakeChannel()
         fofa = FakeChannel()
 
         phase = DeepQueryPhase(
             ips=["1.2.3.4"],
-            writer=writer,
-            reader=reader,
+            context=ctx,
             aizhan_channel=aizhan,
             chinaz_channel=chinaz,
             fofa_channel=fofa,
             no_validate=True,
-            progress_tracker=tracker,
         )
         phase.run()
 
@@ -215,13 +226,13 @@ class TestDeepQueryPhase:
         chinaz = FakeChannel()
         fofa = FakeChannel()
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
         ips = ["1.2.3.4", "5.6.7.8", "9.10.11.12"]
 
         phase = DeepQueryPhase(
             ips=ips,
-            writer=writer,
-            reader=reader,
+            context=ctx,
             aizhan_channel=aizhan,
             chinaz_channel=chinaz,
             fofa_channel=fofa,
@@ -244,17 +255,15 @@ class TestDeepQueryPhase:
         chinaz = FakeChannel()
         fofa = FakeChannel()
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader(
-            data={
-                "1.2.3.4": {"ip": "1.2.3.4", "aizhan": {"data": "test"}},
-            }
-        )
+        reader = InMemoryIPReader(data=writer._store)
+        tracker = InMemoryProgressTracker()
+        tracker.mark_processed("1.2.3.4", "aizhan")
+        ctx = _make_context(writer=writer, reader=reader, tracker=tracker)
         ips = ["1.2.3.4", "5.6.7.8", "9.10.11.12"]
 
         phase = DeepQueryPhase(
             ips=ips,
-            writer=writer,
-            reader=reader,
+            context=ctx,
             aizhan_channel=aizhan,
             chinaz_channel=chinaz,
             fofa_channel=fofa,
@@ -265,16 +274,13 @@ class TestDeepQueryPhase:
             phase.run()
 
         assert any(
-            "aizhan" in r.message
-            and "共 3 个 IP" in r.message
-            and "已有结果 1" in r.message
-            and "剩余 2 未查询" in r.message
-            for r in caplog.records
+            "aizhan" in r.message and "已有结果 1" in r.message and "剩余 2 未查询" in r.message for r in caplog.records
         )
 
     def test_skip_ips_excludes_from_all_channels(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
         aizhan = FakeChannel()
         chinaz = FakeChannel()
         fofa = FakeChannel()
@@ -283,8 +289,7 @@ class TestDeepQueryPhase:
 
         phase = DeepQueryPhase(
             ips=ips,
-            writer=writer,
-            reader=reader,
+            context=ctx,
             aizhan_channel=aizhan,
             chinaz_channel=chinaz,
             fofa_channel=fofa,
@@ -294,15 +299,16 @@ class TestDeepQueryPhase:
         result = phase.run()
 
         assert result.success is True
-        assert writer.get_channel_data("5.6.7.8", "aizhan") is None
-        assert writer.get_channel_data("5.6.7.8", "chinaz") is None
-        assert writer.get_channel_data("5.6.7.8", "fofa_host") is None
-        assert writer.get_channel_data("1.2.3.4", "aizhan") is not None
-        assert writer.get_channel_data("9.10.11.12", "aizhan") is not None
+        assert reader.get_channel_data("5.6.7.8", "aizhan") is None
+        assert reader.get_channel_data("5.6.7.8", "chinaz") is None
+        assert reader.get_channel_data("5.6.7.8", "fofa_host") is None
+        assert reader.get_channel_data("1.2.3.4", "aizhan") is not None
+        assert reader.get_channel_data("9.10.11.12", "aizhan") is not None
 
     def test_skip_ips_logs_count(self, caplog):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
         aizhan = FakeChannel()
         chinaz = FakeChannel()
         fofa = FakeChannel()
@@ -311,8 +317,7 @@ class TestDeepQueryPhase:
 
         phase = DeepQueryPhase(
             ips=ips,
-            writer=writer,
-            reader=reader,
+            context=ctx,
             aizhan_channel=aizhan,
             chinaz_channel=chinaz,
             fofa_channel=fofa,
@@ -327,11 +332,17 @@ class TestDeepQueryPhase:
 
 
 class TestVerifyScanPhase:
-    def _make_phase(self, ips=None, writer=None, nmap_channel=None, **kwargs):
+    def _make_phase(self, ips=None, writer=None, reader=None, nmap_channel=None, **kwargs):
+        w = writer or InMemoryIPWriter()
+        r = reader or InMemoryIPReader(data=w._store)
+        ctx = _make_context(
+            writer=w,
+            reader=r,
+            domain_cache=kwargs.pop("domain_cache", None),
+        )
         return VerifyScanPhase(
             ips=ips if ips is not None else ["1.1.1.1", "2.2.2.2"],
-            writer=writer or InMemoryIPWriter(),
-            reader=InMemoryIPReader(),
+            context=ctx,
             nmap_channel=nmap_channel or FakeChannel(),
             **kwargs,
         )
@@ -339,6 +350,7 @@ class TestVerifyScanPhase:
     @patch("ip_info.pipeline.phases.phase4_verify_scan.BatchDnsVerify")
     def test_dns_and_nmap_run_in_parallel(self, MockBatchDnsVerify):
         writer = InMemoryIPWriter()
+        reader = InMemoryIPReader(data=writer._store)
         ips = ["1.1.1.1", "2.2.2.2"]
 
         MockBatchDnsVerify.side_effect = lambda *a, **kw: _create_dns_mock(writer, kw.get("ips", []))
@@ -349,8 +361,8 @@ class TestVerifyScanPhase:
 
         assert result.success is True
         for ip in ips:
-            assert writer.get_channel_data(ip, "domain_verify") is not None
-            assert writer.get_channel_data(ip, "port_scan") is not None
+            assert reader.get_channel_data(ip, "domain_verify") is not None
+            assert reader.get_channel_data(ip, "port_scan") is not None
 
     def test_empty_ip_list(self):
         phase = self._make_phase(ips=[])
@@ -362,13 +374,14 @@ class TestVerifyScanPhase:
     @patch("ip_info.pipeline.phases.phase4_verify_scan.BatchDnsVerify")
     def test_no_domain_cache(self, MockBatchDnsVerify):
         writer = InMemoryIPWriter()
+        reader = InMemoryIPReader(data=writer._store)
 
         MockBatchDnsVerify.side_effect = lambda *a, **kw: _create_dns_mock(writer, kw.get("ips", []))
 
         phase = self._make_phase(ips=["1.1.1.1"], writer=writer, domain_cache=None, no_validate=True)
         phase.run()
 
-        assert writer.get_channel_data("1.1.1.1", "domain_verify") is not None
+        assert reader.get_channel_data("1.1.1.1", "domain_verify") is not None
 
     def test_phase_protocol(self):
         phase = self._make_phase(ips=[])
@@ -377,6 +390,7 @@ class TestVerifyScanPhase:
     @patch("ip_info.pipeline.phases.phase4_verify_scan.BatchDnsVerify")
     def test_delay_auto_passed(self, MockBatchDnsVerify):
         writer = InMemoryIPWriter()
+        reader = InMemoryIPReader(data=writer._store)
 
         MockBatchDnsVerify.side_effect = lambda *a, **kw: _create_dns_mock(writer, kw.get("ips", []))
 
@@ -385,22 +399,22 @@ class TestVerifyScanPhase:
         result = phase.run()
 
         assert result.success is True
-        assert writer.get_channel_data("1.1.1.1", "port_scan") is not None
+        assert reader.get_channel_data("1.1.1.1", "port_scan") is not None
 
     @patch("ip_info.pipeline.phases.phase4_verify_scan.BatchDnsVerify")
     def test_progress_tracker_passed(self, MockBatchDnsVerify):
         writer = InMemoryIPWriter()
         tracker = InMemoryProgressTracker()
+        ctx = _make_context(writer=writer, tracker=tracker)
 
         MockBatchDnsVerify.side_effect = lambda *a, **kw: _create_dns_mock(writer, kw.get("ips", []))
 
         nmap_channel = FakeChannel()
-        phase = self._make_phase(
+        phase = VerifyScanPhase(
             ips=["1.1.1.1"],
-            writer=writer,
+            context=ctx,
             nmap_channel=nmap_channel,
             no_validate=True,
-            progress_tracker=tracker,
         )
         phase.run()
 
@@ -409,6 +423,7 @@ class TestVerifyScanPhase:
     @patch("ip_info.pipeline.phases.phase4_verify_scan.BatchDnsVerify")
     def test_skip_ips_excludes_from_port_scan_only(self, MockBatchDnsVerify):
         writer = InMemoryIPWriter()
+        reader = InMemoryIPReader(data=writer._store)
         ips = ["1.1.1.1", "2.2.2.2", "3.3.3.3"]
         skip = {"2.2.2.2", "3.3.3.3"}
 
@@ -425,12 +440,12 @@ class TestVerifyScanPhase:
         result = phase.run()
 
         assert result.success is True
-        assert writer.get_channel_data("1.1.1.1", "domain_verify") is not None
-        assert writer.get_channel_data("2.2.2.2", "domain_verify") is not None
-        assert writer.get_channel_data("3.3.3.3", "domain_verify") is not None
-        assert writer.get_channel_data("1.1.1.1", "port_scan") is not None
-        assert writer.get_channel_data("2.2.2.2", "port_scan") is None
-        assert writer.get_channel_data("3.3.3.3", "port_scan") is None
+        assert reader.get_channel_data("1.1.1.1", "domain_verify") is not None
+        assert reader.get_channel_data("2.2.2.2", "domain_verify") is not None
+        assert reader.get_channel_data("3.3.3.3", "domain_verify") is not None
+        assert reader.get_channel_data("1.1.1.1", "port_scan") is not None
+        assert reader.get_channel_data("2.2.2.2", "port_scan") is None
+        assert reader.get_channel_data("3.3.3.3", "port_scan") is None
 
     @patch("ip_info.pipeline.phases.phase4_verify_scan.BatchDnsVerify")
     def test_skip_ips_logs_count(self, MockBatchDnsVerify, caplog):
@@ -458,33 +473,33 @@ class TestVerifyScanPhase:
 class TestBasicCollectPhase:
     def test_normal_execution(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
         ipinfo_channel = FakeChannel()
         rdns_channel = FakeChannel()
 
         phase = BasicCollectPhase(
             ips=["1.2.3.4"],
-            writer=writer,
-            reader=reader,
+            context=ctx,
             ipinfo_channel=ipinfo_channel,
             rdns_channel=rdns_channel,
         )
         result = phase.run()
 
         assert result.success is True
-        assert writer.get_channel_data("1.2.3.4", "ipinfo_api") is not None
-        assert writer.get_channel_data("1.2.3.4", "rdns_ptr") is not None
+        assert reader.get_channel_data("1.2.3.4", "ipinfo_api") is not None
+        assert reader.get_channel_data("1.2.3.4", "rdns_ptr") is not None
 
     def test_empty_input(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
         ipinfo_channel = FakeChannel()
         rdns_channel = FakeChannel()
 
         phase = BasicCollectPhase(
             ips=[],
-            writer=writer,
-            reader=reader,
+            context=ctx,
             ipinfo_channel=ipinfo_channel,
             rdns_channel=rdns_channel,
         )
@@ -495,33 +510,33 @@ class TestBasicCollectPhase:
 
     def test_one_channel_disabled(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
         ipinfo_channel = FakeChannel(fail_validation=True)
         rdns_channel = FakeChannel()
 
         phase = BasicCollectPhase(
             ips=["1.2.3.4"],
-            writer=writer,
-            reader=reader,
+            context=ctx,
             ipinfo_channel=ipinfo_channel,
             rdns_channel=rdns_channel,
         )
         result = phase.run()
 
         assert result.success is True
-        assert writer.get_channel_data("1.2.3.4", "ipinfo_api") is None
-        assert writer.get_channel_data("1.2.3.4", "rdns_ptr") is not None
+        assert reader.get_channel_data("1.2.3.4", "ipinfo_api") is None
+        assert reader.get_channel_data("1.2.3.4", "rdns_ptr") is not None
 
     def test_both_channels_disabled(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
         ipinfo_channel = FakeChannel(fail_validation=True)
         rdns_channel = FakeChannel(fail_validation=True)
 
         phase = BasicCollectPhase(
             ips=["1.2.3.4"],
-            writer=writer,
-            reader=reader,
+            context=ctx,
             ipinfo_channel=ipinfo_channel,
             rdns_channel=rdns_channel,
         )
@@ -531,14 +546,14 @@ class TestBasicCollectPhase:
 
     def test_phase_protocol_conformance(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
         ipinfo_channel = FakeChannel()
         rdns_channel = FakeChannel()
 
         phase = BasicCollectPhase(
             ips=["1.2.3.4"],
-            writer=writer,
-            reader=reader,
+            context=ctx,
             ipinfo_channel=ipinfo_channel,
             rdns_channel=rdns_channel,
         )
@@ -546,14 +561,14 @@ class TestBasicCollectPhase:
 
     def test_delay_auto_passed(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
         ipinfo_channel = FakeChannel(default_delay=1.2)
         rdns_channel = FakeChannel(default_delay=0.1)
 
         phase = BasicCollectPhase(
             ips=["1.2.3.4"],
-            writer=writer,
-            reader=reader,
+            context=ctx,
             ipinfo_channel=ipinfo_channel,
             rdns_channel=rdns_channel,
             no_validate=True,
@@ -561,24 +576,23 @@ class TestBasicCollectPhase:
         result = phase.run()
 
         assert result.success is True
-        assert writer.get_channel_data("1.2.3.4", "ipinfo_api") is not None
-        assert writer.get_channel_data("1.2.3.4", "rdns_ptr") is not None
+        assert reader.get_channel_data("1.2.3.4", "ipinfo_api") is not None
+        assert reader.get_channel_data("1.2.3.4", "rdns_ptr") is not None
 
     def test_progress_tracker_passed(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
         tracker = InMemoryProgressTracker()
+        ctx = _make_context(writer=writer, reader=reader, tracker=tracker)
         ipinfo_channel = FakeChannel()
         rdns_channel = FakeChannel()
 
         phase = BasicCollectPhase(
             ips=["1.2.3.4"],
-            writer=writer,
-            reader=reader,
+            context=ctx,
             ipinfo_channel=ipinfo_channel,
             rdns_channel=rdns_channel,
             no_validate=True,
-            progress_tracker=tracker,
         )
         phase.run()
 
@@ -587,8 +601,9 @@ class TestBasicCollectPhase:
 
     def test_channel_level_resume(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
         tracker = InMemoryProgressTracker()
+        ctx = _make_context(writer=writer, reader=reader, tracker=tracker)
         ipinfo_channel = FakeChannel()
         rdns_channel = FakeChannel()
 
@@ -596,29 +611,27 @@ class TestBasicCollectPhase:
 
         phase = BasicCollectPhase(
             ips=["1.2.3.4"],
-            writer=writer,
-            reader=reader,
+            context=ctx,
             ipinfo_channel=ipinfo_channel,
             rdns_channel=rdns_channel,
             no_validate=True,
-            progress_tracker=tracker,
         )
         phase.run()
 
-        assert writer.get_channel_data("1.2.3.4", "ipinfo_api") is None
-        assert writer.get_channel_data("1.2.3.4", "rdns_ptr") is not None
+        assert reader.get_channel_data("1.2.3.4", "ipinfo_api") is None
+        assert reader.get_channel_data("1.2.3.4", "rdns_ptr") is not None
 
     def test_disabled_channel_logs_pending_count_ipinfo(self, caplog):
         ipinfo_channel = FakeChannel(disabled=True)
         rdns_channel = FakeChannel()
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
         ips = ["1.2.3.4", "5.6.7.8", "9.10.11.12"]
 
         phase = BasicCollectPhase(
             ips=ips,
-            writer=writer,
-            reader=reader,
+            context=ctx,
             ipinfo_channel=ipinfo_channel,
             rdns_channel=rdns_channel,
             no_validate=True,
@@ -636,17 +649,15 @@ class TestBasicCollectPhase:
         ipinfo_channel = FakeChannel(disabled=True)
         rdns_channel = FakeChannel()
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader(
-            data={
-                "1.2.3.4": {"ip": "1.2.3.4", "ipinfo_api": {"country": "US"}},
-            }
-        )
+        reader = InMemoryIPReader(data=writer._store)
+        tracker = InMemoryProgressTracker()
+        tracker.mark_processed("1.2.3.4", "ipinfo_api")
+        ctx = _make_context(writer=writer, reader=reader, tracker=tracker)
         ips = ["1.2.3.4", "5.6.7.8", "9.10.11.12"]
 
         phase = BasicCollectPhase(
             ips=ips,
-            writer=writer,
-            reader=reader,
+            context=ctx,
             ipinfo_channel=ipinfo_channel,
             rdns_channel=rdns_channel,
             no_validate=True,
@@ -656,7 +667,7 @@ class TestBasicCollectPhase:
             phase.run()
 
         assert any(
-            "共 3 个 IP" in r.message and "已有结果 1" in r.message and "剩余 2 未查询" in r.message
+            "ipinfo_api" in r.message and "已有结果 1" in r.message and "剩余 2 未查询" in r.message
             for r in caplog.records
         )
 
@@ -664,13 +675,13 @@ class TestBasicCollectPhase:
         ipinfo_channel = FakeChannel()
         rdns_channel = FakeChannel(disabled=True)
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
         ips = ["1.2.3.4", "5.6.7.8"]
 
         phase = BasicCollectPhase(
             ips=ips,
-            writer=writer,
-            reader=reader,
+            context=ctx,
             ipinfo_channel=ipinfo_channel,
             rdns_channel=rdns_channel,
             no_validate=True,
@@ -689,7 +700,8 @@ class TestClassifyTagPhase:
     def test_normal_execution(self):
         ips = ["1.2.3.4", "5.6.7.8"]
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
 
         with (
             patch("ip_info.pipeline.phases.phase2_classify.BatchClassifier") as MockClassifier,
@@ -700,8 +712,7 @@ class TestClassifyTagPhase:
 
             phase = ClassifyTagPhase(
                 ips=ips,
-                writer=writer,
-                reader=reader,
+                context=ctx,
                 rules_dir=RULES_DIR,
                 tagger_config_dir=TAGGER_CONFIG_DIR,
             )
@@ -711,13 +722,14 @@ class TestClassifyTagPhase:
         assert "分类" in result.message
         assert "标签" in result.message
         for ip in ips:
-            assert writer.get_channel_data(ip, "classifier") is not None
-            assert writer.get_channel_data(ip, "tagger") is not None
+            assert reader.get_channel_data(ip, "classifier") is not None
+            assert reader.get_channel_data(ip, "tagger") is not None
 
     def test_no_tagger(self):
         ips = ["1.2.3.4", "5.6.7.8"]
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
 
         with (
             patch("ip_info.pipeline.phases.phase2_classify.BatchClassifier") as MockClassifier,
@@ -727,8 +739,7 @@ class TestClassifyTagPhase:
 
             phase = ClassifyTagPhase(
                 ips=ips,
-                writer=writer,
-                reader=reader,
+                context=ctx,
                 rules_dir=RULES_DIR,
                 tagger_config_dir=TAGGER_CONFIG_DIR,
                 no_tagger=True,
@@ -737,13 +748,14 @@ class TestClassifyTagPhase:
 
         assert result.success is True
         for ip in ips:
-            assert writer.get_channel_data(ip, "classifier") is not None
-            assert writer.get_channel_data(ip, "tagger") is None
+            assert reader.get_channel_data(ip, "classifier") is not None
+            assert reader.get_channel_data(ip, "tagger") is None
         assert result.data["tagger_result"] is None
 
     def test_empty_input(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
 
         with (
             patch("ip_info.pipeline.phases.phase2_classify.BatchClassifier"),
@@ -751,8 +763,7 @@ class TestClassifyTagPhase:
         ):
             phase = ClassifyTagPhase(
                 ips=[],
-                writer=writer,
-                reader=reader,
+                context=ctx,
                 rules_dir=RULES_DIR,
                 tagger_config_dir=TAGGER_CONFIG_DIR,
             )
@@ -760,16 +771,16 @@ class TestClassifyTagPhase:
 
         assert result.success is True
         assert result.message == "无 IP 需分类"
-        assert len(writer.list_all_ips()) == 0
+        assert len(reader.list_all_ips()) == 0
 
     def test_phase_protocol(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
 
         phase = ClassifyTagPhase(
             ips=["1.2.3.4"],
-            writer=writer,
-            reader=reader,
+            context=ctx,
             rules_dir=RULES_DIR,
             tagger_config_dir=TAGGER_CONFIG_DIR,
         )

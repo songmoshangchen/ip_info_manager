@@ -3,17 +3,12 @@ from __future__ import annotations
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import TYPE_CHECKING
 
 from ip_info.batch.core.concurrent import run_concurrent
 from ip_info.batch.core.query import BatchResult
 from ip_info.channel.adapter import BaseChannelAdapter
+from ip_info.pipeline.context import PipelineContext
 from ip_info.pipeline.phase import PhaseResult
-from ip_info.store.protocols import IPDataReader, IPDataWriter
-from ip_info.utils.progress import ProgressTracker
-
-if TYPE_CHECKING:
-    from ip_info.pipeline.context import PipelineContext
 
 logger = logging.getLogger(__name__)
 
@@ -22,27 +17,22 @@ class DeepQueryPhase:
     def __init__(
         self,
         ips: list[str],
-        writer: IPDataWriter | None = None,
-        reader: IPDataReader | None = None,
+        context: PipelineContext,
         aizhan_channel: BaseChannelAdapter | None = None,
         chinaz_channel: BaseChannelAdapter | None = None,
         fofa_channel: BaseChannelAdapter | None = None,
         *,
-        context: PipelineContext | None = None,
         no_validate: bool = False,
         aizhan_workers: int = 1,
         chinaz_workers: int = 1,
         fofa_workers: int = 1,
         skip_ips: set[str] | None = None,
-        progress_tracker: ProgressTracker | None = None,
     ):
-        if context is not None:
-            writer = writer or context.writer
-            reader = reader or context.reader
-            progress_tracker = progress_tracker or context.progress_tracker
         self._ips = ips
-        self._writer = writer
-        self._reader = reader
+        self._context = context
+        self._writer = context.writer
+        self._reader = context.reader
+        self._progress_tracker = context.progress_tracker
         self._aizhan_channel = aizhan_channel
         self._chinaz_channel = chinaz_channel
         self._fofa_channel = fofa_channel
@@ -51,7 +41,6 @@ class DeepQueryPhase:
         self._chinaz_workers = chinaz_workers
         self._fofa_workers = fofa_workers
         self._skip_ips = skip_ips or set()
-        self._progress_tracker = progress_tracker
 
     @property
     def name(self) -> str:
@@ -88,18 +77,6 @@ class DeepQueryPhase:
         results: dict[str, BatchResult | None] = {}
 
         def run_channel(name: str, channel: BaseChannelAdapter, workers: int) -> tuple[str, BatchResult | None]:
-            if channel.disabled:
-                total = len(query_ips)
-                done = sum(1 for ip in query_ips if self._reader.get_channel_data(ip, name) is not None)
-                pending = total - done
-                logger.warning(
-                    "%s 渠道已禁用，跳过 (共 %d 个 IP, 已有结果 %d, 剩余 %d 未查询)",
-                    name,
-                    total,
-                    done,
-                    pending,
-                )
-                return (name, None)
             result = run_concurrent(
                 ips=query_ips,
                 channel=channel,

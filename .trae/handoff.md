@@ -1,4 +1,4 @@
-# Handoff: 测试质量改进 + 架构重构 Issue 执行
+# Handoff: 第二轮审查完成
 
 ## 项目概况
 
@@ -10,105 +10,61 @@ IP 信息采集流水线，4 阶段架构：
 
 ## 当前状态
 
-Issue 009/010/011 已全部完成。当前 issues 目录：
+882 测试通过。Issues 目录：
 
 ```
 issues/
-├── 008-add-fscan-channel.md              ← 未完成，排到最后
-├── 009-refactor-test-phases-result-oriented.md  ← ✅ 已完成 (c7b6bcd)
-├── 010-phase-data-flow-integration-test.md      ← ✅ 已完成 (e9e42f1)
-├── 011-domain-trace-integration-test.md          ← ✅ 已完成 (95fd640)
-├── 012-eliminate-private-method-tests.md         ← P2 可并行
-├── 013-reliable-integration-tests.md              ← P1 可并行
-├── 014-pipeline-context.md                        ← P3 依赖 010
-└── 015-pipeline-builder.md                        ← P3 依赖 014
+├── 008-add-fscan-channel.md    ← ❌ 未开始（排到最后）
+└── 015-pipeline-builder.md     ← ⚠️ 部分完成（Builder 已实现，run_pipeline 未迁移）
 ```
 
-## 已完成的工作
+009-014 已完成并删除。
 
-### Issue 009: 重构 test_phases.py 为结果导向测试 (commit c7b6bcd)
+## Issue 015 剩余工作
 
-- 引入 `FakeChannel(BaseChannelAdapter)` 替代 `MagicMock` 渠道
-- 消除所有 `mock.call_count`/`assert_called`/`call.kwargs` 断言
-- Phase 1/3 使用 FakeChannel + 真实 `run_concurrent`
-- Phase 2/4 mock 配置为写入 writer，断言基于 writer 数据
-- `progress_tracker` 断言改为 `tracker.is_processed()`
-- 33 个测试全部通过
+- `run_pipeline.py` 简化为 Builder 调用
+- 渠道注册表自动发现替代 `_try_channel()` 硬编码
+- filter_ips 逻辑集成到 Builder 中
 
-### Issue 010: Phase 间数据流转集成测试 (commit e9e42f1)
+## 第二轮审查发现
 
-- `tests/integration/test_phase_data_flow.py` — 9 个集成测试
-- 全流程: Phase 1→2→filter→3→4 完整数据传递链路
-- 分类过滤: invalid_rdns/cdn IP 不进 Phase 3
-- 动态 IP 跳过: dhcp/pppoe IP 跳过深度查询，DNS 仍执行
-- 断点续传: tracker 阻止已处理 IP 重复查询
+详见 `docs/architecture-and-test-audit.md`
 
-### Issue 011: 溯源 IP 拼接场景测试 (commit 95fd640)
+### 架构深化机会（10 项）
 
-- `tests/integration/test_domain_trace.py` — 11 个集成测试
-- 域名提取: aizhan/chinaz/双渠道域名提取和合并
-- 端到端溯源: Phase3→extract→BatchDnsVerify→写回
-- 验证状态: matched/changed/unresolved/timeout
-- 域名缓存: 缓存命中、过期重验证、新域名写入缓存
+| # | 问题 | 优先级 |
+|---|------|--------|
+| 1 | Pipeline 双生子：两个 Pipeline 类，Builder 与脚本脱节 | P0 |
+| 2 | PipelineContext 浅层透传：Phase 构造函数仍然臃肿 | P0 |
+| 3 | Phase 内重复渠道禁用检查与 run_concurrent 重叠 | P1 |
+| 4 | BatchTagger 鸭子类型读取 — 接缝泄漏 | P1 |
+| 5 | InMemoryIPWriter 实现了完整 IPDataReader | P2 |
+| 6 | _try_flush 模式三处重复 | P2 |
+| 7 | filter_ips.py 游离于 Pipeline 之外 | P1 |
+| 8 | Phase 双层 run() 抽象职责模糊 | P2 |
+| 9 | run_pipeline.py 是上帝脚本 | P1 |
+| 10 | IPDataWriter 缺少批量操作 | P2 |
 
-### Issue 7: 动态 IP 跳过深度查询 (commit 249844c)
+### 测试遗留问题
 
-- `filter_dynamic_ips(ips, reader)` — 关键词: dynamic/dhcp/pppoe/broadband/adsl/dialup/pool
-- Phase 3/4 新增 `skip_ips` 参数
-- `--no-skip-dynamic` CLI 参数
-
-### 架构审查 + 测试审计
-
-详见 `docs/architecture-and-test-audit.md`，包含：
-- 5 个架构摩擦点 + 3 个改进建议
-- 7 个模块的测试评级（pipeline C+ 最差，channel A 最好）
-- 测试全景图
-
-### 新安装的测试 Skills
-
-已迁移到 `e:\12_trae_skills\.trae\skills\`：
-- `fdt-refactor-mock-to-fake` — 审查 mock 使用并重构为 Fake 替身
-- `fake-driven-testing` — 五层防御测试策略（10 个参考文档）
-
-## 下一步：Issue 012 或 013
-
-两者可并行执行：
-
-**Issue 012**: 消除私有方法/属性测试 (P2)
-- 将 `test_classifier_engine.py` 等文件中对 `_classify_ip()` 等私有方法的测试改为通过公开接口测试
-
-**Issue 013**: 改造集成测试为可靠自动化测试 (P1)
-- 将 `test_phase_full_run.py` 和 `test_dns_verify_only.py` 改造为 InMemory 测试
-
-## 执行优先级
-
-```
-已完成（测试质量 P0）:
-  ✅ 009 → ✅ 010 → ✅ 011（串行）
-
-可并行（测试质量 P1/P2）:
-  012 消除私有方法测试
-  013 改造集成测试
-
-第二批（架构改进 P3）:
-  014 → 015
-
-最后:
-  008 fscan 渠道
-```
+| 类别 | 数量 | 优先级 |
+|------|------|--------|
+| Mock 内省断言 (test_dns_runner) | 5 处 | P0 |
+| Channel 私有方法调用 | 20+ 处 | P1 |
+| port_scan 私有属性读取 | 4 处 | P1 |
+| 缺失集成场景 (失败重试/并发写入) | 3 个 | P2 |
+| 无测试模块 (context/runner) | 2 个 | P2 |
 
 ## 技术栈
 
 - Python 3.12+, pytest (`pytest tests/`)
-- 存储: JSON (ip_data.json) + SQLite (progress.db, domain_cache.db)
-- 并发: ThreadPoolExecutor
-- 852 个测试通过（843 单元 + 9 集成），1 个已知 flaky（test_concurrent_safety）
+- 882 测试通过（849 单元 + 33 集成）
 - pre-commit hooks: ruff-format + ruff-check
 
 ## 建议使用的 Skills
 
-- `fdt-refactor-mock-to-fake` — Issue 012 的核心工具
-- `fake-driven-testing` — Issue 013 的策略指导
-- `tdd` — 所有 issue 的开发循环
-- `improve-codebase-architecture` — Issue 014/015 的架构指导
-- `git-commit` — 每个 issue 完成后提交
+- `fdt-refactor-mock-to-fake` — Channel 测试重构
+- `fake-driven-testing` — 集成测试策略
+- `improve-codebase-architecture` — 架构深化
+- `tdd` — 开发循环
+- `git-commit` — 提交

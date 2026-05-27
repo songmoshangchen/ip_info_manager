@@ -59,6 +59,7 @@ def main():
     from ip_info.channel.ipinfo_api import IpinfoApiChannel  # noqa: E402
     from ip_info.channel.port_scan import PortScanChannel  # noqa: E402
     from ip_info.channel.rdns_ptr import RdnsPtrChannel  # noqa: E402
+    from ip_info.pipeline.context import PipelineContext  # noqa: E402
     from ip_info.pipeline.filter_ips import filter_ips_by_classification  # noqa: E402
     from ip_info.pipeline.phases import (  # noqa: E402
         BasicCollectPhase,
@@ -134,15 +135,19 @@ def main():
         ipinfo_ch = IpinfoApiChannel()
         rdns_ch = RdnsPtrChannel()
         _disable_channels([ipinfo_ch, rdns_ch], skip_names)
-        phase1 = BasicCollectPhase(
-            ips=ips,
+        ctx = PipelineContext(
             writer=writer,
             reader=reader,
+            progress_tracker=progress_tracker,
+            domain_cache=domain_cache,
+        )
+        phase1 = BasicCollectPhase(
+            ips=ips,
             ipinfo_channel=ipinfo_ch,
             rdns_channel=rdns_ch,
+            context=ctx,
             ipinfo_workers=2,
             rdns_workers=3,
-            progress_tracker=progress_tracker,
         )
         r1 = phase1.run()
         logger.info("Phase 1 完成: %s, 耗时 %.1fs", r1.message, r1.elapsed)
@@ -154,8 +159,7 @@ def main():
         logger.info("=" * 60)
         phase2 = ClassifyTagPhase(
             ips=ips,
-            writer=writer,
-            reader=reader,
+            context=ctx,
             rules_dir=rules_dir,
             tagger_config_dir=tagger_config_dir,
         )
@@ -180,15 +184,13 @@ def main():
         _disable_channels(all_phase3_channels, skip_names)
         phase3 = DeepQueryPhase(
             ips=filtered_ips,
-            writer=writer,
-            reader=reader,
             aizhan_channel=aizhan_ch or chinaz_ch,
             chinaz_channel=chinaz_ch,
             fofa_channel=fofa_ch or chinaz_ch,
+            context=ctx,
             aizhan_workers=1,
             chinaz_workers=2,
             fofa_workers=2,
-            progress_tracker=progress_tracker,
         )
         r3 = phase3.run()
         logger.info("Phase 3 完成: %s, 耗时 %.1fs", r3.message, r3.elapsed)
@@ -204,15 +206,12 @@ def main():
         _disable_channels([nmap_ch], skip_names)
         phase4 = VerifyScanPhase(
             ips=filtered_ips,
-            writer=writer,
-            reader=reader,
             nmap_channel=nmap_ch,
-            domain_cache=domain_cache,
+            context=ctx,
             max_age_days=7,
             dns_timeout=3.0,
             dns_concurrency=10,
             nmap_workers=3,
-            progress_tracker=progress_tracker,
         )
         r4 = phase4.run()
         logger.info("Phase 4 完成: %s, 耗时 %.1fs", r4.message, r4.elapsed)

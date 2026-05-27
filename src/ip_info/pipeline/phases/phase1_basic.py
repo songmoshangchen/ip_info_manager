@@ -3,16 +3,11 @@ from __future__ import annotations
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import TYPE_CHECKING
 
 from ip_info.batch.core.concurrent import run_concurrent
 from ip_info.channel.adapter import BaseChannelAdapter
+from ip_info.pipeline.context import PipelineContext
 from ip_info.pipeline.phase import PhaseResult
-from ip_info.store.protocols import IPDataReader, IPDataWriter
-from ip_info.utils.progress import ProgressTracker
-
-if TYPE_CHECKING:
-    from ip_info.pipeline.context import PipelineContext
 
 logger = logging.getLogger(__name__)
 
@@ -21,30 +16,24 @@ class BasicCollectPhase:
     def __init__(
         self,
         ips: list[str],
-        writer: IPDataWriter | None = None,
-        reader: IPDataReader | None = None,
+        context: PipelineContext,
         ipinfo_channel: BaseChannelAdapter | None = None,
         rdns_channel: BaseChannelAdapter | None = None,
         *,
-        context: PipelineContext | None = None,
         no_validate: bool = False,
         ipinfo_workers: int = 1,
         rdns_workers: int = 1,
-        progress_tracker: ProgressTracker | None = None,
     ):
-        if context is not None:
-            writer = writer or context.writer
-            reader = reader or context.reader
-            progress_tracker = progress_tracker or context.progress_tracker
         self._ips = ips
-        self._writer = writer
-        self._reader = reader
+        self._context = context
+        self._writer = context.writer
+        self._reader = context.reader
+        self._progress_tracker = context.progress_tracker
         self._ipinfo_channel = ipinfo_channel
         self._rdns_channel = rdns_channel
         self._no_validate = no_validate
         self._ipinfo_workers = ipinfo_workers
         self._rdns_workers = rdns_workers
-        self._progress_tracker = progress_tracker
 
     @property
     def name(self) -> str:
@@ -65,17 +54,6 @@ class BasicCollectPhase:
         rdns_result = None
 
         def run_ipinfo():
-            if self._ipinfo_channel.disabled:
-                total = len(self._ips)
-                done = sum(1 for ip in self._ips if self._reader.get_channel_data(ip, "ipinfo_api") is not None)
-                pending = total - done
-                logger.warning(
-                    "ipinfo_api 渠道已禁用，跳过 (共 %d 个 IP, 已有结果 %d, 剩余 %d 未查询)",
-                    total,
-                    done,
-                    pending,
-                )
-                return None
             return run_concurrent(
                 ips=self._ips,
                 channel=self._ipinfo_channel,
@@ -88,17 +66,6 @@ class BasicCollectPhase:
             )
 
         def run_rdns():
-            if self._rdns_channel.disabled:
-                total = len(self._ips)
-                done = sum(1 for ip in self._ips if self._reader.get_channel_data(ip, "rdns_ptr") is not None)
-                pending = total - done
-                logger.warning(
-                    "rdns_ptr 渠道已禁用，跳过 (共 %d 个 IP, 已有结果 %d, 剩余 %d 未查询)",
-                    total,
-                    done,
-                    pending,
-                )
-                return None
             return run_concurrent(
                 ips=self._ips,
                 channel=self._rdns_channel,

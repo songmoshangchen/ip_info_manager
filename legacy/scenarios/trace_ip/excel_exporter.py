@@ -120,7 +120,7 @@ def _build_row(ip, info):
         ip,
         country,
         org,
-        _cat_display(info),
+        cat_display(info),
         _cat_note(info),
         _trace_action_compat(info),
         str(len(domains)),

@@ -2,11 +2,13 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 from ip_info.channel.adapter import BaseChannelAdapter
+from ip_info.pipeline.context import PipelineContext
 from ip_info.pipeline.phases.phase3_deep import DeepQueryPhase
 from ip_info.pipeline.phases.phase4_verify_scan import VerifyScanPhase
 from ip_info.processors.dns_verify.extractor import extract_domain_mappings
 from ip_info.processors.dns_verify.runner import BatchDnsVerify
 from ip_info.store.in_memory import InMemoryDomainCache, InMemoryIPReader, InMemoryIPWriter
+from ip_info.utils.progress import InMemoryProgressTracker
 
 
 class FakeChannel(BaseChannelAdapter):
@@ -28,6 +30,17 @@ class FakeChannel(BaseChannelAdapter):
         result = self._parse(raw, ip)
         result.setdefault("query_time", "2024-01-01T00:00:00")
         return result
+
+
+def _make_context(writer=None, reader=None, domain_cache=None):
+    w = writer or InMemoryIPWriter()
+    r = reader or InMemoryIPReader(data=w._store)
+    return PipelineContext(
+        writer=w,
+        reader=r,
+        progress_tracker=InMemoryProgressTracker(),
+        domain_cache=domain_cache,
+    )
 
 
 def _make_aizhan_data(ip, domains):
@@ -138,14 +151,14 @@ class TestDomainExtraction:
 class TestDomainTraceEndToEnd:
     def test_full_trace_aizhan_to_verify(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
         ip = "1.2.3.4"
 
         aizhan = FakeChannel(response=_make_aizhan_data(ip, ["example.com", "test.org"]))
         phase3 = DeepQueryPhase(
             ips=[ip],
-            writer=writer,
-            reader=reader,
+            context=ctx,
             aizhan_channel=aizhan,
             chinaz_channel=FakeChannel(),
             fofa_channel=FakeChannel(),
@@ -153,11 +166,11 @@ class TestDomainTraceEndToEnd:
         )
         phase3.run()
 
-        aizhan_data = writer.get_channel_data(ip, "aizhan")
+        aizhan_data = reader.get_channel_data(ip, "aizhan")
         assert aizhan_data is not None
         assert len(aizhan_data["domains"]) == 2
 
-        ip_data = writer.get_ip_data(ip)
+        ip_data = reader.get_ip_data(ip)
         ip_data["ip"] = ip
         mappings = extract_domain_mappings(ip_data)
         assert len(mappings) == 2
@@ -166,28 +179,28 @@ class TestDomainTraceEndToEnd:
             verifier = BatchDnsVerify(
                 ips=[ip],
                 writer=writer,
-                reader=writer,
+                reader=reader,
                 max_age_days=7,
                 force_days=0,
             )
             result = verifier.run()
 
         assert result.success_count == 1
-        verify_data = writer.get_channel_data(ip, "domain_verify")
+        verify_data = reader.get_channel_data(ip, "domain_verify")
         assert verify_data is not None
         assert verify_data["matched"] >= 1
 
     def test_full_trace_both_channels_to_verify(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
         ip = "1.2.3.4"
 
         aizhan = FakeChannel(response=_make_aizhan_data(ip, ["shared.com", "a-only.com"]))
         chinaz = FakeChannel(response=_make_chinaz_data(ip, ["shared.com", "c-only.com"]))
         phase3 = DeepQueryPhase(
             ips=[ip],
-            writer=writer,
-            reader=reader,
+            context=ctx,
             aizhan_channel=aizhan,
             chinaz_channel=chinaz,
             fofa_channel=FakeChannel(),
@@ -195,7 +208,7 @@ class TestDomainTraceEndToEnd:
         )
         phase3.run()
 
-        ip_data = writer.get_ip_data(ip)
+        ip_data = reader.get_ip_data(ip)
         ip_data["ip"] = ip
         mappings = extract_domain_mappings(ip_data)
         assert len(mappings) == 4
@@ -204,20 +217,21 @@ class TestDomainTraceEndToEnd:
             verifier = BatchDnsVerify(
                 ips=[ip],
                 writer=writer,
-                reader=writer,
+                reader=reader,
                 max_age_days=7,
                 force_days=0,
             )
             result = verifier.run()
 
         assert result.success_count == 1
-        verify_data = writer.get_channel_data(ip, "domain_verify")
+        verify_data = reader.get_channel_data(ip, "domain_verify")
         assert verify_data["matched"] >= 1
 
 
 class TestDomainVerifyStatuses:
     def test_matched_changed_unresolved_timeout(self):
         writer = InMemoryIPWriter()
+        reader = InMemoryIPReader(data=writer._store)
         ip = "1.2.3.4"
 
         writer.add_or_update_ip(
@@ -238,14 +252,14 @@ class TestDomainVerifyStatuses:
             verifier = BatchDnsVerify(
                 ips=[ip],
                 writer=writer,
-                reader=writer,
+                reader=reader,
                 max_age_days=7,
                 force_days=0,
             )
             result = verifier.run()
 
         assert result.success_count == 1
-        verify_data = writer.get_channel_data(ip, "domain_verify")
+        verify_data = reader.get_channel_data(ip, "domain_verify")
         assert verify_data["matched"] >= 1
         assert verify_data["changed"] >= 1
         assert verify_data["unresolved"] >= 1
@@ -254,6 +268,7 @@ class TestDomainVerifyStatuses:
 class TestDomainCacheIntegration:
     def test_cached_domain_used_in_result(self):
         writer = InMemoryIPWriter()
+        reader = InMemoryIPReader(data=writer._store)
         cache = InMemoryDomainCache()
         ip = "1.2.3.4"
 
@@ -274,14 +289,14 @@ class TestDomainCacheIntegration:
             verifier = BatchDnsVerify(
                 ips=[ip],
                 writer=writer,
-                reader=writer,
+                reader=reader,
                 domain_cache=cache,
                 max_age_days=7,
             )
             result = verifier.run()
 
         assert result.success_count == 1
-        verify_data = writer.get_channel_data(ip, "domain_verify")
+        verify_data = reader.get_channel_data(ip, "domain_verify")
         assert verify_data is not None
         assert verify_data["matched"] >= 1
         cached_entry = cache.get("new.com")
@@ -290,6 +305,7 @@ class TestDomainCacheIntegration:
 
     def test_expired_cache_reverified(self):
         writer = InMemoryIPWriter()
+        reader = InMemoryIPReader(data=writer._store)
         cache = InMemoryDomainCache()
         ip = "1.2.3.4"
 
@@ -310,7 +326,7 @@ class TestDomainCacheIntegration:
             verifier = BatchDnsVerify(
                 ips=[ip],
                 writer=writer,
-                reader=writer,
+                reader=reader,
                 domain_cache=cache,
                 max_age_days=7,
             )
@@ -318,11 +334,12 @@ class TestDomainCacheIntegration:
             assert mock_verify.called
 
         assert result.success_count == 1
-        verify_data = writer.get_channel_data(ip, "domain_verify")
+        verify_data = reader.get_channel_data(ip, "domain_verify")
         assert verify_data is not None
 
     def test_new_domain_written_to_cache(self):
         writer = InMemoryIPWriter()
+        reader = InMemoryIPReader(data=writer._store)
         cache = InMemoryDomainCache()
         ip = "1.2.3.4"
 
@@ -332,7 +349,7 @@ class TestDomainCacheIntegration:
             verifier = BatchDnsVerify(
                 ips=[ip],
                 writer=writer,
-                reader=writer,
+                reader=reader,
                 domain_cache=cache,
                 max_age_days=7,
                 force_days=0,
@@ -347,14 +364,14 @@ class TestDomainCacheIntegration:
 class TestDomainTraceViaPhase4:
     def test_phase4_dns_verify_reads_phase3_data(self):
         writer = InMemoryIPWriter()
-        reader = InMemoryIPReader()
+        reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
         ip = "1.2.3.4"
 
         aizhan = FakeChannel(response=_make_aizhan_data(ip, ["example.com"]))
         phase3 = DeepQueryPhase(
             ips=[ip],
-            writer=writer,
-            reader=reader,
+            context=ctx,
             aizhan_channel=aizhan,
             chinaz_channel=FakeChannel(),
             fofa_channel=FakeChannel(),
@@ -362,7 +379,7 @@ class TestDomainTraceViaPhase4:
         )
         phase3.run()
 
-        assert writer.get_channel_data(ip, "aizhan") is not None
+        assert reader.get_channel_data(ip, "aizhan") is not None
 
         with (
             patch("ip_info.pipeline.phases.phase4_verify_scan.BatchDnsVerify") as MockDns,
@@ -376,7 +393,7 @@ class TestDomainTraceViaPhase4:
                 real = RealDns(
                     ips=[ip],
                     writer=writer,
-                    reader=writer,
+                    reader=reader,
                     max_age_days=7,
                     force_days=0,
                 )
@@ -387,14 +404,13 @@ class TestDomainTraceViaPhase4:
 
             phase4 = VerifyScanPhase(
                 ips=[ip],
-                writer=writer,
-                reader=writer,
+                context=ctx,
                 nmap_channel=FakeChannel(),
                 no_validate=True,
             )
             r4 = phase4.run()
 
         assert r4.success is True
-        verify_data = writer.get_channel_data(ip, "domain_verify")
+        verify_data = reader.get_channel_data(ip, "domain_verify")
         assert verify_data is not None
         assert verify_data["matched"] >= 1

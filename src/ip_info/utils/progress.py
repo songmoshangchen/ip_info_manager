@@ -18,6 +18,12 @@ class ProgressTracker(Protocol):
     def mark_processed(self, ip: str, channel: str = "") -> None: ...
 
 
+def flush_progress(tracker) -> None:
+    """刷新进度到持久化存储（如果 tracker 支持 flush）。"""
+    if tracker is not None and hasattr(tracker, "flush"):
+        tracker.flush()
+
+
 class InMemoryProgressTracker:
     def __init__(self):
         self._processed: set[tuple[str, str]] = set()

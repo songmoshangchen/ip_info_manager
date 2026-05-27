@@ -3,17 +3,12 @@ from __future__ import annotations
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import TYPE_CHECKING
 
 from ip_info.batch.core.concurrent import run_concurrent
 from ip_info.channel.port_scan import PortScanChannel
+from ip_info.pipeline.context import PipelineContext
 from ip_info.pipeline.phase import PhaseResult
 from ip_info.processors.dns_verify.runner import BatchDnsVerify
-from ip_info.store.protocols import IPDataReader, IPDataWriter
-from ip_info.utils.progress import ProgressTracker
-
-if TYPE_CHECKING:
-    from ip_info.pipeline.context import PipelineContext
 
 logger = logging.getLogger(__name__)
 
@@ -22,12 +17,9 @@ class VerifyScanPhase:
     def __init__(
         self,
         ips: list[str],
-        writer: IPDataWriter | None = None,
-        reader: IPDataReader | None = None,
+        context: PipelineContext,
         nmap_channel: PortScanChannel | None = None,
         *,
-        context: PipelineContext | None = None,
-        domain_cache=None,
         force_days: int | None = None,
         max_age_days: int = 7,
         dns_timeout: float = 3.0,
@@ -35,18 +27,14 @@ class VerifyScanPhase:
         nmap_workers: int = 1,
         no_validate: bool = False,
         skip_ips: set[str] | None = None,
-        progress_tracker: ProgressTracker | None = None,
     ):
-        if context is not None:
-            writer = writer or context.writer
-            reader = reader or context.reader
-            progress_tracker = progress_tracker or context.progress_tracker
-            domain_cache = domain_cache or context.domain_cache
         self._ips = ips
-        self._writer = writer
-        self._reader = reader
+        self._context = context
+        self._writer = context.writer
+        self._reader = context.reader
+        self._progress_tracker = context.progress_tracker
+        self._domain_cache = context.domain_cache
         self._nmap_channel = nmap_channel
-        self._domain_cache = domain_cache
         self._force_days = force_days
         self._max_age_days = max_age_days
         self._dns_timeout = dns_timeout
@@ -54,7 +42,6 @@ class VerifyScanPhase:
         self._nmap_workers = nmap_workers
         self._no_validate = no_validate
         self._skip_ips = skip_ips or set()
-        self._progress_tracker = progress_tracker
 
     @property
     def name(self) -> str:

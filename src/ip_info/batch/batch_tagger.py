@@ -69,6 +69,7 @@ def main():
     tagger = BatchTagger(
         ips=ips,
         writer=writer,
+        reader=writer,
         config_dir=args.config_dir,
         level=args.level,
         mode=args.mode,

@@ -55,24 +55,6 @@ class InMemoryIPWriter:
     def get_all(self) -> dict[str, dict]:
         return self._store
 
-    def get_ip_data(self, ip: str) -> dict | None:
-        return self._store.get(ip, None)
-
-    def get_channel_data(self, ip: str, channel: str) -> dict | None:
-        ip_data = self.get_ip_data(ip)
-        if ip_data is None:
-            return None
-        return ip_data.get(channel, None)
-
-    def list_all_ips(self) -> list[str]:
-        return list(self._store.keys())
-
-    def list_ip_channels(self, ip: str) -> list[str]:
-        ip_data = self.get_ip_data(ip)
-        if ip_data is None:
-            return []
-        return [key for key in ip_data.keys() if key != "ip"]
-
     def search_ips_by_channel(self, channel: str, key: str = None, value: str = None) -> list[str]:
         matched = []
         for ip, ip_data in self._store.items():

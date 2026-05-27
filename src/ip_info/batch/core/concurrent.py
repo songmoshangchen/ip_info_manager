@@ -7,16 +7,9 @@ from ip_info.batch.core.query import BatchResult
 from ip_info.channel.adapter import BaseChannelAdapter
 from ip_info.channel.errors import ChannelError, ChannelPermanentError
 from ip_info.store.protocols import IPDataWriter
-from ip_info.utils.progress import ProgressTracker
+from ip_info.utils.progress import ProgressTracker, flush_progress
 
 logger = logging.getLogger(__name__)
-
-
-def _try_flush(tracker: ProgressTracker) -> None:
-    """尝试刷新进度到持久化存储（如果 tracker 支持 flush）。"""
-    flush = getattr(tracker, "flush", None)
-    if callable(flush):
-        flush()
 
 
 def run_concurrent(
@@ -173,14 +166,14 @@ def run_concurrent(
             if progress_tracker is not None:
                 progress_tracker.mark_processed(ip, channel_name)
                 if flush_interval > 0 and success_count % flush_interval == 0:
-                    _try_flush(progress_tracker)
+                    flush_progress(progress_tracker)
 
     # 取消剩余任务
     stop_event.set()
 
     # 最终 flush
     if progress_tracker is not None:
-        _try_flush(progress_tracker)
+        flush_progress(progress_tracker)
 
     total_elapsed = time.time() - start_time
     stopped_early = bool(stop_reason)
