@@ -1,0 +1,359 @@
+# 溯源 IP 处理流水线
+
+当用户有一批 IP 需要溯源处理（自动采集、分类、深度查询、报告）时读取此文件。
+
+## 决策树
+
+```
+用户说"我有一批 IP 要溯源处理"
+  → 1. 确认项目名称（IP_TRACE_IP_PROJECT_NAME）
+  → 2. 确认运行阶段（完整 / 从某阶段开始 / 只跑某阶段）
+  → 3. 确认启用的渠道
+  → 4. 生成运行命令并执行
+  → 5. 运行中遇到异常 → 读取 references/troubleshooting.md
+  → 6. 流水线完成后如需 AI 研判 → 见下方"AI 研判流程"
+
+用户说"我需要补充溯源一些 IP"
+  → 确认当前项目名称
+  → 验证新 IP 文件（merge_ip_files.py）
+  → 查看已有数据判断哪些 IP 是新的
+  → 将新 IP 追加到原文件或单独运行，使用 --from-phase 跳过已完成阶段
+
+用户说"排除已溯源的 IP" / "重新生成报告，排除已处理的"
+  → 准备排除文件（每行一个 IP）
+  → python -m scenarios.trace_ip ips.txt --generate-report --exclude-ips traced.txt
+```
+
+## 项目名称配置
+
+输出目录为 `data/trace_ip/{IP_TRACE_IP_PROJECT_NAME}/`。
+
+```bash
+python tools/config_tool.py set IP_TRACE_IP_PROJECT_NAME "0424攻击IP"
+```
+
+不同项目名互不干扰，各自独立的数据目录。
+
+## 运行命令
+
+```bash
+python -m scenarios.trace_ip ips.txt                       # 默认执行 Phase 1-5
+python -m scenarios.trace_ip ips.txt --collect-only         # 只执行 Phase 1（基础采集）
+python -m scenarios.trace_ip ips.txt --classify-only        # 只执行 Phase 2（分类过滤）
+python -m scenarios.trace_ip ips.txt --deep-query-only      # 只执行 Phase 3（深度查询）
+python -m scenarios.trace_ip ips.txt --dns-verify-only      # 只执行 Phase 4（DNS域名验证）
+python -m scenarios.trace_ip ips.txt --port-scan-only       # 只执行 Phase 5（端口扫描）
+python -m scenarios.trace_ip ips.txt --summary-only         # 只执行 Phase 6（汇总输出）
+python -m scenarios.trace_ip ips.txt --generate-report      # 只执行 Phase 7（Word + Excel 报告）
+python -m scenarios.trace_ip ips.txt --from-phase 3         # 从阶段3开始
+python -m scenarios.trace_ip ips.txt --no-deep-query       # 分类后不执行深度查询
+python -m scenarios.trace_ip ips.txt --no-dns-verify       # 跳过 Phase 4 DNS 域名验证
+python -m scenarios.trace_ip ips.txt --force-dns-verify    # 强制重新验证所有IP的DNS域名
+python -m scenarios.trace_ip ips.txt --no-port-scan        # 跳过 Phase 5 端口扫描
+python -m scenarios.trace_ip ips.txt --no-custom-rules     # 不加载外部规则
+python -m scenarios.trace_ip ips.txt --custom-rules my.json # 使用指定规则文件
+python -m scenarios.trace_ip ips.txt --channel-timeout 30   # 单渠道超时30秒
+python -m scenarios.trace_ip ips.txt --port-scan-concurrency 5   # 临时设置端口扫描并发5
+python -m scenarios.trace_ip ips.txt --no-tagger            # 跳过 IP 标签打标
+python -m scenarios.trace_ip ips.txt --tagger-level 1       # 快速标签（21源）
+python -m scenarios.trace_ip ips.txt --tagger-level 3       # 全量标签（35源）
+python -m scenarios.trace_ip ips.txt --exclude-ips traced.txt --generate-report  # 排除已溯源IP后生成报告
+```
+
+不确定参数时用 `python -m scenarios.trace_ip --help`。
+
+## 流水线阶段
+
+| 阶段 | 说明 | 使用渠道 | 输出 |
+|------|------|---------|------|
+| Phase 1 | 基础情报采集 | IPInfo + RDNS PTR（并行） | 数据写入 JSON |
+| Phase 2 | IP标签打标 + 自动分类过滤 | ip_tagger（35 个情报源）+ 内置规则 + 自定义规则 | tags 字段 + trace_classify 渠道 + .trace_filtered_ips + .unclassified_rdns + .unclassified_no_info |
+| Phase 3 | 深度查询 | 爱站 + 站长之家 + Fofa Host（并行） | 数据写入 JSON |
+| Phase 4 | DNS 域名正向验证 | DNS 查询 | domain_verify 字段 |
+| Phase 5 | 端口扫描（默认关闭） | nmap | port_scan 渠道 |
+| Phase 6 | 汇总输出 | — | .trace_report |
+| Phase 7 | Word + Excel 报告 | docx_builder + excel_exporter | .trace_report.docx + .trace_report.xlsx |
+
+> **默认执行 Phase 1-5**（采集→标签打标→分类→深度查询→DNS验证→端口扫描）。Phase 6（汇总）和 Phase 7（报告）需通过 `--summary-only` / `--generate-report` 单独触发。
+>
+> Phase 4 中，如果所有 IP 已完成 DNS 验证，会自动跳过并提示使用 `--force-dns-verify` 强制重新验证。
+
+## Word 报告结构
+
+Phase 7 生成的 Word 报告包含以下章节：
+
+| 章节 | 内容 |
+|------|------|
+| 一、报告概述 | 分析目标、分析方法（多渠道关联分析）、数据源查询统计 |
+| 二、处理概览 | 基础情报采集统计、自动分类统计、深度查询统计、待确认IP、价值分级统计 |
+| 三、溯源优先级 | IP-域名验证状态表（仅展示 DNS 验证通过的映射）+ 决策树 P1-P4 分级 + IP 列表 + 动态溯源路径建议 |
+| 四、AI研判结果 | 通过 ai_analysis 工具写入的研判结果（按 IP 展示详情） |
+| 五、端口扫描结果 | nmap 扫描汇总（IP、国家、开放端口数、开放端口列表） |
+| 六、未识别RDNS记录 | 未匹配任何分类规则的 RDNS 主机名列表 |
+
+每个 IP 的详情页包含：
+- 基础信息（IPInfo、RDNS、分类）
+- 反查域名及 DNS 验证状态
+- 实时端口扫描结果（nmap 扫描的开放端口、协议、服务/产品信息）
+- 历史端口验证（FOFA 历史端口中仍开放/已关闭的数量）
+
+## 溯源优先级决策树
+
+Word 报告的第三章基于决策树模型对深度查询 IP 进行优先级分级，帮助分析师快速定位高价值溯源目标。
+
+**判定维度（按优先级从高到低）：**
+
+1. **是否有反查域名**（最直接的溯源线索，可通过 ICP 备案/WHOIS 定位持有者）
+2. **是否有已知端口信息**（FOFA 等搜索引擎探测到的端口/服务，可排查服务泄露信息）
+3. **是否为国内IP**（管辖权内可操作，同等条件下优先级更高）
+
+**分级标准：**
+
+| 级别 | 判定条件 | 溯源路径建议 |
+|------|---------|------------|
+| P1 核心溯源 | 有反查域名 + 国内IP | ICP备案查询域名持有者实名信息 |
+| P2 重点溯源 | 有反查域名（国外），或无域名但有端口信息（国内） | WHOIS查询域名注册信息；排查端口服务泄露信息 |
+| P3 辅助溯源 | 无域名但有端口信息（国外），或仅国内IP | 端口服务辅助分析；公开信息检索IP历史行为 |
+| P4 暂缓 | 无域名、无端口、国外IP | 信息不足，建议持续监控 |
+
+**同级别排序：** 按信息丰富度（域名数 + 端口数 + 分类权重）降序排列。
+
+**价值分级：** 深度查询 IP 还会按数据可用性进行价值分级：
+- 高价值：有深度查询数据（爱站/站长/Fofa）且为国内IP
+- 中价值：有深度查询数据但为国外IP
+- 低价值：所有深度查询渠道均无有效数据
+
+**动态溯源路径：** 每个 IP 根据其实际数据情况生成个性化溯源建议（ICP备案/WHOIS查询、端口服务排查、公开信息检索）。
+
+## 分类类别
+
+| 类别 | 说明 | 是否深度查询 |
+|------|------|-------------|
+| cloud_provider | 云服务商（AWS/阿里云/腾讯云等） | ✅ |
+| cdn | CDN/WAF 节点 | ❌ |
+| crawler_scanner | 爬虫/扫描器 | ❌ |
+| residential | 家用宽带 | ✅ |
+| other | 未识别（需人工确认） | ✅ |
+| invalid_rdns | 无效RDNS（纯IP格式主机名，regex 匹配） | ❌ |
+| excluded_domain | 排除域名 | ❌ |
+
+**信息不足 IP 判定条件**：分类为 `other` + 无 RDNS PTR 记录 + 无 ipinfo as_name 信息。
+
+## IP 标签打标
+
+流水线在 Phase 2 中自动调用 `ip_tagger`，使用 35 个威胁情报源对 IP 进行批量匹配。标签写入 JSON 的 `tags` 字段，同步展示在 Excel 报告的"标签"列中。
+
+- 默认启用，可通过 `--no-tagger` 跳过
+- 匹配级别：`--tagger-level 1`（快速，21源）、`2`（正常，31源）、`3`（全量，35源）
+- 情报源包括：SSH/FTP/SIP 攻击、Spamhaus、AbuseIPDB、CIArmy、GreenSnow、FireHOL 等
+
+## Excel 报告
+
+Phase 7 同时生成 Excel 文件（`.trace_report.xlsx`），包含 4 个 sheet：
+
+| Sheet | 说明 |
+|-------|------|
+| P1 核心溯源 | 有反查域名 + 国内IP |
+| P2 重点溯源 | 有反查域名（国外）或无域名但有端口（国内） |
+| P3 辅助溯源 | 无域名但有端口（国外）或仅国内IP |
+| P4 暂缓 | 无域名、无端口、国外IP |
+
+**统一字段（13 列）：** IP、国家、ASN/组织、分类、分类说明、建议溯源路径、域名数、反查域名列表（换行分隔，含 DNS 验证状态标记 ✅🔄❌）、端口数、开放端口列表、实时扫描端口数、实时开放端口列表、标签
+
+**特性：** 自动筛选、冻结首行、自动列宽
+
+## 渠道配置
+
+可通过 `.env` 环境变量控制各阶段渠道的启用/禁用：
+
+```bash
+# Phase 1 渠道
+python tools/config_tool.py set IP_TRACE_IP_PHASE1_IPINFO_ENABLED true
+python tools/config_tool.py set IP_TRACE_IP_PHASE1_RDNS_PTR_ENABLED true
+
+# Phase 3 渠道
+python tools/config_tool.py set IP_TRACE_IP_PHASE3_AIZHAN_ENABLED true
+python tools/config_tool.py set IP_TRACE_IP_PHASE3_CHINAZ_ENABLED true
+python tools/config_tool.py set IP_TRACE_IP_PHASE3_FOFA_HOST_ENABLED false  # 禁用
+
+# Phase 4 DNS 验证
+python tools/config_tool.py set IP_TRACE_IP_PHASE4_DNS_VERIFY_ENABLED true
+python tools/config_tool.py set IP_TRACE_IP_DNS_VERIFY_TIMEOUT 5.0
+python tools/config_tool.py set IP_TRACE_IP_DNS_VERIFY_CONCURRENCY 20
+
+# Phase 5 端口扫描
+python tools/config_tool.py set IP_TRACE_IP_PHASE5_PORT_SCAN_ENABLED true
+python tools/config_tool.py set IP_TRACE_IP_PORT_SCAN_NMAP_PATH "C:\Tools\Nmap\nmap.exe"
+python tools/config_tool.py set IP_TRACE_IP_PORT_SCAN_TIMEOUT 90
+python tools/config_tool.py set IP_TRACE_IP_PORT_SCAN_CONCURRENCY 1
+```
+
+运行流水线时会显示每个渠道的启用/禁用状态。如果某阶段所有渠道都被禁用，会跳过或报错。
+
+## 分类规则管理
+
+- **内置规则**：`scenarios/trace_ip/classifiers/builtin_rules.json`（稳定，勿随意修改）
+- **外部规则**：`scenarios/trace_ip/classifiers/custom_rules.json`（试运行，验证后合并到内置）
+
+规则文件格式：
+
+```json
+{
+  "category_key": {
+    "label": "显示名称",
+    "description": "类别说明",
+    "need_deep_query": true,
+    "patterns": [
+      { "field": "rdns_ptr.hostname", "match": ".amazonaws.com", "type": "suffix", "note": "AWS Amazon 云服务" },
+      { "field": "ipinfo_api.as_name", "match": "Amazon", "type": "contains", "note": "AWS Amazon 云服务" }
+    ]
+  }
+}
+```
+
+- 匹配类型：`suffix`（后缀）、`contains`（包含）、`prefix`（前缀）、`exact`（精确）、`regex`（正则表达式）
+- `note`（可选）：规则说明，分类结果中会在 `matched_by` 里输出此字段，便于分析人员快速理解匹配到的域名/ASN 含义
+
+未识别的 RDNS 记录输出到 `.unclassified_rdns`，信息不足的 IP 输出到 `.unclassified_no_info`。
+
+## 断点续跑
+
+每个阶段完成后写入进度文件 `{prefix}.trace_phase{N}.progress`。
+
+- 使用 `--from-phase N` 跳过已完成阶段
+- 支持 Ctrl+C 安全中断，自动保存进度
+- 不同项目名互不干扰
+- 运行前自动显示断点进度：`发现进度文件: 已处理 124/167 (74.3%)，将从断点继续`
+- **JSON 智能续跑**：即使进度文件丢失，只要 JSON 数据中已有该阶段的完整数据，Phase 1/3/4/5 会自动跳过已处理的 IP
+- Phase 2（分类）是全量一次性操作，无进度文件
+
+## 任务状态查询
+
+流水线运行时会自动写入 PID 文件，可通过 `status_tool.py` 查看运行状态：
+
+```bash
+python tools/status_tool.py trace_ip                    # 查看运行状态、进度、ETA
+python tools/status_tool.py cleanup trace_ip            # 清理残留 PID 文件
+```
+
+流水线运行中每个 IP 处理后会显示 ETA 预计剩余时间。
+
+## 依赖检查
+
+流水线启动时自动检查可选依赖：
+
+- **Phase 7 需要**：`python-docx`（Word 报告）、`openpyxl`（Excel 报告）
+- 缺失时会输出清晰的错误信息和安装命令，并终止执行
+- 如仅需执行 Phase 1-6，不安装这些依赖也可正常运行
+
+## 启动预估
+
+流水线启动时会根据 IP 数量和渠道配置，输出各阶段预估耗时：
+
+```
+Phase 1 预估: ~6 分钟 (167 IP × 2 渠道 × 2s/IP)
+Phase 3 预估: ~25 分钟 (167 IP × 3 渠道 × 3s/IP)
+```
+
+## 报告摘要
+
+Phase 7 完成后会自动输出关键摘要：
+
+```
+============================================================
+报告摘要
+============================================================
+P1 核心溯源: 4 个IP
+  1.2.3.4
+  5.6.7.8
+  ...
+P2 重点溯源: 8 个IP
+P3 辅助溯源: 12 个IP
+P4 暂缓: 3 个IP
+高价值IP: 1.2.3.4 (89 个域名)
+Word 报告: data/trace_ip/xxx/xxx.trace_report.docx
+Excel 报告: data/trace_ip/xxx/xxx.trace_report.xlsx
+============================================================
+```
+
+## 排除已溯源 IP
+
+Phase 7 报告生成时可通过 `--exclude-ips` 排除已溯源的 IP，使报告聚焦于剩余待溯源 IP。
+
+### 使用场景
+
+- 部分高优先级 IP 已完成溯源，需要重新生成报告查看剩余待溯源 IP
+- 月度报告中排除已处置 IP，聚焦当月新增待处理 IP
+
+### 使用方式
+
+```bash
+# 排除已溯源 IP 后重新生成报告
+python -m scenarios.trace_ip ips.txt --generate-report --exclude-ips traced_ips.txt
+
+# 完整流水线中也可使用，Phase 1-6 正常全量处理，仅 Phase 7 排除
+python -m scenarios.trace_ip ips.txt --exclude-ips traced_ips.txt
+```
+
+排除文件为纯文本，每行一个 IP（与 IP 输入文件格式一致）。
+
+### 行为说明
+
+- 排除仅在 Phase 7（Word + Excel 报告生成）生效，Phase 1-6 不受影响
+- 所有报告统计（分类、深度查询、价值分级、溯源优先级）基于排除后的 IP 重新计算
+- 报告概述中明确显示：原始 IP 数、已排除数、剩余待溯源数
+- 排除文件中不在数据中的 IP 会被忽略并在日志中提示
+- 即使全部排除也会生成报告（归档用途）
+
+## AI 研判流程
+
+流水线完成后，对分类为 `other`、`cloud_provider`、`residential` 的 IP 可进行 AI 研判。
+
+### 步骤 1：查看待研判数量
+
+```bash
+python tools/ai_analysis.py count
+python tools/ai_analysis.py count --categories other
+python tools/ai_analysis.py count --categories other,cloud_provider
+```
+
+### 步骤 2：批量获取待研判数据
+
+```bash
+python tools/ai_analysis.py batch
+python tools/ai_analysis.py batch --size 20 --offset 10
+python tools/ai_analysis.py batch --categories other,cloud_provider
+```
+
+### 步骤 3：分析并写入研判结果
+
+分析完成后通过 writer.py 写入：
+
+```bash
+python writer.py add "<IP>" ai_analysis severity="高" action="保留" note="疑似攻击者VPS"
+```
+
+研判结果会自动展示在 Word 报告的 AI 研判章节中。
+
+### 步骤 4：重新生成报告（可选）
+
+写入研判结果后可重新运行报告阶段：
+
+```bash
+python -m scenarios.trace_ip ips.txt --only-phase 7
+```
+
+## 输出文件
+
+所有输出在 `data/trace_ip/{IP_TRACE_IP_PROJECT_NAME}/` 目录下：
+
+| 文件 | 说明 |
+|------|------|
+| `{name}.json` | 主数据文件 |
+| `{name}.trace_filtered_ips` | 需要深度查询的 IP 列表 |
+| `{name}.unclassified_rdns` | 未识别的 RDNS 记录 |
+| `{name}.unclassified_no_info` | 信息不足的 IP |
+| `{name}.trace_report` | 文本汇总报告 |
+| `{name}.trace_report.docx` | Word 分析报告 |
+| `{name}.trace_report.xlsx` | Excel 溯源优先级表格（P1-P4 四个 sheet） |
+| `{prefix}.trace_phase{N}.progress` | 阶段进度文件 |

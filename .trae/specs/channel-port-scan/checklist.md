@@ -1,0 +1,23 @@
+- [x] python-nmap 依赖已安装
+- [x] PortScanChannel 类继承 BaseChannelAdapter，channel_name = "port_scan"
+- [x] 构造函数接受 nmap_path="nmap", timeout=30.0，不依赖 Settings
+- [x] _validate_key 通过 nmap.PortScanner() 初始化检查可用性
+- [x] _validate_key 在 nmap 不可用时抛出 ChannelPermanentError
+- [x] _request 使用 nmap.PortScanner.scan() 执行扫描
+- [x] _request 在 PortScannerError 时抛出 ChannelError
+- [x] _request 支持 port_string 参数（通过 kwargs）
+- [x] _request 使用参数 -sT -T4 -Pn --open
+- [x] _parse 从 PortScanner 对象提取 host_alive、open_ports、total_scanned、open_count
+- [x] _parse 每个开放端口包含 port、protocol、state、service/product/version
+- [x] _parse 在 IP 不在扫描结果中时返回空结果
+- [x] _parse 在 scaninfo 包含 error 时包含 nmap_error 字段
+- [x] _parse 支持历史端口验证（historical_ports_verified / closed）
+- [x] fetch 完整流程正确：delay → _request → _parse → query_time
+- [x] fetch 透传 ChannelError 异常
+- [x] validate() 成功时返回 True，disabled=False
+- [x] validate() 失败时返回 False，disabled=True
+- [x] 满足 ChannelProtocol（isinstance 检查通过）
+- [x] 测试面向结果：mock 底层 nmap.PortScanner，不 mock 内部方法
+- [x] 测试通过：12 passed
+- [x] Lint 通过：ruff check All checks passed
+- [x] 全量测试通过：exit_code=0，无回归

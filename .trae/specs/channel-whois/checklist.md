@@ -1,0 +1,20 @@
+- [x] WhoisQueryChannel 类继承 BaseChannelAdapter，channel_name = "whois_query"
+- [x] 构造函数接受 timeout: float = 10.0，不依赖 Settings
+- [x] _request 正确调用 whois_query(ip)，设置 socket.setdefaulttimeout
+- [x] _request 在 whois_query 返回 None 时透传 None（由 _parse 处理）
+- [x] _request 在 socket.timeout 时抛出 ChannelError
+- [x] _request 在其他异常时抛出 ChannelError
+- [x] _parse 正确解析 whois 对象为标准 dict 结构
+- [x] _parse 多值字段取第一个有效值（S81）
+- [x] _parse 日期字段转换为 ISO 字符串（S82）
+- [x] _parse name_servers 和 status 保持列表形式
+- [x] _parse 属性为 None 时跳过该字段（name_servers/status 除外）
+- [x] fetch 完整流程正确：delay → _request → _parse → query_time
+- [x] fetch 在 has_whois=False 时返回包含 query_time 的完整结果
+- [x] fetch 透传 ChannelError 异常
+- [x] validate() 返回 True（不覆盖 _validate_key）
+- [x] 满足 ChannelProtocol（isinstance 检查通过）
+- [x] 测试面向结果：mock 底层 whois_query 函数，不 mock 内部方法
+- [x] 测试通过：25 passed
+- [x] Lint 通过：ruff check All checks passed
+- [x] 全量测试通过：277 passed，无回归

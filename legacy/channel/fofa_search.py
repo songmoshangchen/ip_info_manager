@@ -1,0 +1,138 @@
+import base64
+import time
+import requests
+from datetime import datetime
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from config import FofaSettings as Settings
+from writer import IPWriter
+from utils.logger_utils import get_channel_logger
+from channel.base import is_network_error
+
+_logger = get_channel_logger('fofa_search')
+
+FIELDS = 'host,ip,port,domain,protocol,title,server,os,country,country_name,region,city,asn,org,link,lastupdatetime'
+
+
+def validate_channel_key():
+    settings = Settings()
+    key = settings.fofa_api_key
+
+    if not key or not key.strip():
+        print("错误: FOFA_API_KEY 未配置，请在 .env 文件中设置 IP_FOFA_API_KEY")
+        sys.exit(1)
+
+    try:
+        url = "https://fofa.info/api/v1/info/my"
+        params = {"key": key}
+        settings = Settings()
+        response = requests.get(url, params=params, timeout=settings.fofa_validate_timeout)
+        response.raise_for_status()
+        data = response.json()
+
+        if data.get("error") and data.get("errmsg"):
+            print(f"错误: Fofa API Key 无效 - {data.get('errmsg')}")
+            sys.exit(1)
+
+        username = data.get("data", {}).get("user_name", "N/A") if isinstance(data.get("data"), dict) else "N/A"
+        print(f"✅ Fofa API Key 验证通过（查询渠道），用户: {username}")
+    except requests.exceptions.RequestException as e:
+        print(f"错误: 无法连接 Fofa API 进行 Key 验证 - {e}")
+        sys.exit(1)
+
+
+def request_channel(ip: str, key: str = '', query_suffix: str = '', timeout: float = 30.0, **kwargs):
+    query_str = f'ip="{ip}"'
+    if query_suffix:
+        query_str += query_suffix
+    qbase64 = base64.b64encode(query_str.encode()).decode()
+    url = "https://fofa.info/api/v1/search/all"
+    params = {
+        "key": key,
+        "qbase64": qbase64,
+        "fields": FIELDS,
+        "page": 1,
+        "size": 20,
+    }
+
+    _logger.debug(f"请求 Fofa Search API: ip={ip}, query={query_str}")
+
+    try:
+        response = requests.get(url, params=params, timeout=timeout)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        _logger.debug(f"请求 Fofa Search API 失败: ip={ip}, error={e}")
+        return {
+            "raw_error": True,
+            "error_message": str(e),
+        }
+
+
+def fetch_channel(ip: str, key: str = '', delay: float = 2, timeout: float = 30.0, **kwargs) -> dict:
+    apply_delay(delay)
+
+    _logger.debug(f"fetch_channel 开始: ip={ip}")
+
+    result = request_channel(ip, key=key, timeout=timeout, **kwargs)
+
+    if isinstance(result, dict) and result.get('raw_error'):
+        _logger.debug(f"fetch_channel 请求失败: {result.get('error_message', 'Unknown')}")
+        return format_output(result)
+
+    _logger.debug(f"fetch_channel 完成: ip={ip}, size={result.get('size', 0)}")
+    return format_output(result)
+
+
+def apply_delay(delay: float):
+    if delay > 0:
+        time.sleep(delay)
+
+
+def format_output(data: dict) -> dict:
+    data.setdefault('query_time', datetime.now().isoformat())
+    data.setdefault('fields', FIELDS)
+    return data
+
+
+def main(ip: str):
+    settings = Settings()
+    ip_writer = IPWriter(settings=settings)
+
+    data = fetch_channel(
+        ip=ip,
+        key=settings.fofa_api_key,
+        delay=settings.fofa_query_delay,
+        timeout=settings.fofa_query_timeout,
+    )
+    if not is_network_error(data):
+        ip_writer.add_or_update_ip(ip=ip, channel="fofa_search", data=data)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("使用方法: python fofa_search.py <IP地址>")
+        sys.exit(1)
+
+    target_ip = sys.argv[1]
+    main(target_ip)
+
+
+class FofaSearchChannel:
+
+    channel_name = 'fofa_search'
+    disabled = False
+
+    def validate(self) -> bool:
+        try:
+            validate_channel_key()
+            self.disabled = False
+            return True
+        except (SystemExit, Exception):
+            self.disabled = True
+            return False
+
+    def fetch(self, ip: str, **kwargs) -> dict:
+        return fetch_channel(ip, **kwargs)

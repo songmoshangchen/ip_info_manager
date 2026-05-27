@@ -1,0 +1,16 @@
+- [x] Phase Protocol: isinstance 检查通过
+- [x] Phase Protocol: name 属性返回字符串
+- [x] Phase Protocol: run() 返回 PhaseResult
+- [x] PhaseResult: success/message/elapsed/data 字段
+- [x] Pipeline: register() 注册阶段
+- [x] Pipeline: run() 顺序执行所有阶段
+- [x] Pipeline: from_phase 跳过前置阶段
+- [x] Pipeline: only_phase 只执行指定阶段
+- [x] Pipeline: skip_phases 跳过指定阶段
+- [x] Pipeline: 阶段失败时停止后续执行
+- [x] Pipeline: 空管道返回空结果
+- [x] PipelineResult: success/total_elapsed/phase_results/failed_phase 字段
+- [x] Pipeline: 日志输出阶段开始/完成
+- [x] TDD + git-commit 循环执行
+- [x] 全量测试通过
+- [x] ruff 检查通过

@@ -1,0 +1,19 @@
+# Python 文件统一使用 LF 行尾符，与 ruff 格式化保持一致
+*.py text eol=lf
+
+# 文档和配置文件也用 LF
+*.md text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
+*.cfg text eol=lf
+*.ini text eol=lf
+*.json text eol=lf
+*.txt text eol=lf
+
+# Shell 脚本用 LF
+*.sh text eol=lf
+
+# Windows 批处理用 CRLF
+*.bat text eol=crlf
+*.ps1 text eol=crlf
