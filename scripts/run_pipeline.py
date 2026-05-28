@@ -201,7 +201,25 @@ def main():
 
     # 构建并运行流水线
     pipeline = builder.build()
-    pipeline.run()
+    result = pipeline.run()
+
+    # 生成溯源判断 Excel
+    if result.success:
+        from ip_info.export.trace_judge_excel import generate_trace_judge_excel
+
+        prefix = os.path.splitext(os.path.basename(storage_file))[0]
+        exclude_ips_path = os.path.join(output_dir, "exclude_ips.txt")
+        exclude_ips = None
+        if os.path.exists(exclude_ips_path):
+            with open(exclude_ips_path, "r", encoding="utf-8") as f:
+                exclude_ips = {line.strip() for line in f if line.strip()}
+            logger.info("加载排除 IP: %d 个", len(exclude_ips))
+
+        excel_ok = generate_trace_judge_excel(output_dir, prefix, exclude_ips=exclude_ips)
+        if excel_ok:
+            logger.info("溯源判断 Excel 已生成: %s", os.path.join(output_dir, f"{prefix}.trace_judge.xlsx"))
+        else:
+            logger.warning("溯源判断 Excel 生成失败")
 
     # 汇总
     total = time.time() - start
