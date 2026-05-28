@@ -20,9 +20,12 @@ class TestIpinfoFreeRequest:
         }
         mock_response.raise_for_status.return_value = None
         with patch("ip_info.channel.ipinfo_free.requests.get", return_value=mock_response):
-            result = channel._request("8.8.8.8")
+            result = channel.fetch("8.8.8.8")
 
-        assert result == {"ip": "8.8.8.8", "city": "Mountain View", "country": "US"}
+        assert "query_time" in result
+        assert result["ip"] == "8.8.8.8"
+        assert result["city"] == "Mountain View"
+        assert result["country"] == "US"
 
     def test_过滤readme字段(self):
         channel = IpinfoFreeChannel()
@@ -35,7 +38,7 @@ class TestIpinfoFreeRequest:
         }
         mock_response.raise_for_status.return_value = None
         with patch("ip_info.channel.ipinfo_free.requests.get", return_value=mock_response):
-            result = channel._request("8.8.8.8")
+            result = channel.fetch("8.8.8.8")
 
         assert "readme" not in result
         assert result["ip"] == "8.8.8.8"
@@ -47,7 +50,7 @@ class TestIpinfoFreeRequest:
             side_effect=requests.exceptions.Timeout("timed out"),
         ):
             with pytest.raises(ChannelError, match="查询超时.*8.8.8.8"):
-                channel._request("8.8.8.8")
+                channel.fetch("8.8.8.8")
 
     def test_连接失败_抛ChannelError(self):
         channel = IpinfoFreeChannel()
@@ -56,7 +59,7 @@ class TestIpinfoFreeRequest:
             side_effect=requests.exceptions.ConnectionError("connection refused"),
         ):
             with pytest.raises(ChannelError, match="连接失败.*8.8.8.8"):
-                channel._request("8.8.8.8")
+                channel.fetch("8.8.8.8")
 
     def test_请求限流_HTTP429_抛ChannelError(self):
         channel = IpinfoFreeChannel()
@@ -64,7 +67,7 @@ class TestIpinfoFreeRequest:
         mock_response.status_code = 429
         with patch("ip_info.channel.ipinfo_free.requests.get", return_value=mock_response):
             with pytest.raises(ChannelError, match="限流.*8.8.8.8"):
-                channel._request("8.8.8.8")
+                channel.fetch("8.8.8.8")
 
     def test_其他HTTP错误_HTTP500_抛ChannelError(self):
         channel = IpinfoFreeChannel()
@@ -73,7 +76,7 @@ class TestIpinfoFreeRequest:
         mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError("500 Server Error")
         with patch("ip_info.channel.ipinfo_free.requests.get", return_value=mock_response):
             with pytest.raises(ChannelError, match="8.8.8.8.*HTTP 500"):
-                channel._request("8.8.8.8")
+                channel.fetch("8.8.8.8")
 
     def test_其他非预期异常_抛ChannelError(self):
         channel = IpinfoFreeChannel()
@@ -82,7 +85,7 @@ class TestIpinfoFreeRequest:
             side_effect=ValueError("bad value"),
         ):
             with pytest.raises(ChannelError, match="查询错误.*8.8.8.8"):
-                channel._request("8.8.8.8")
+                channel.fetch("8.8.8.8")
 
 
 class TestIpinfoFreeFetch:

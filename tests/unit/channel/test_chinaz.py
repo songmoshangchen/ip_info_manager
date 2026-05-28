@@ -5,7 +5,7 @@ import requests
 
 from ip_info.channel.chinaz import ChinazChannel
 from ip_info.channel.config import ChinazConfig
-from ip_info.channel.errors import ChannelError, ChannelPermanentError
+from ip_info.channel.errors import ChannelError
 from ip_info.channel.protocols import ChannelProtocol
 
 
@@ -26,39 +26,48 @@ class TestChinazValidateKey:
         mock_response.status_code = 200
         mock_response.raise_for_status.return_value = None
         with patch("ip_info.channel.chinaz.requests.get", return_value=mock_response):
-            channel._validate_key()
+            result = channel.validate()
+        assert result is True
+        assert channel.disabled is False
 
-    def test_Cookie为空_抛ChannelPermanentError(self):
+    def test_Cookie为空_validate返回False(self):
         channel = ChinazChannel(cookie="", config=ChinazConfig(_env_file=None))
-        with pytest.raises(ChannelPermanentError, match="Cookie 未配置"):
-            channel._validate_key()
+        result = channel.validate()
+        assert result is False
+        assert channel.disabled is True
 
-    def test_Cookie缺少必需字段_抛ChannelPermanentError(self):
+    def test_Cookie缺少必需字段_validate返回False(self):
         channel = ChinazChannel(cookie="some_other_key=value")
-        with pytest.raises(ChannelPermanentError, match="缺少必要字段"):
-            channel._validate_key()
+        result = channel.validate()
+        assert result is False
+        assert channel.disabled is True
 
-    def test_验证请求网络错误_异常向上抛出(self):
+    def test_验证请求网络错误_validate返回False(self):
         channel = ChinazChannel(cookie="toolUserGrade=1;chinaz_zxuser=test")
         with patch(
             "ip_info.channel.chinaz.requests.get",
             side_effect=requests.exceptions.Timeout("timeout"),
         ):
-            with pytest.raises(requests.exceptions.Timeout):
-                channel._validate_key()
+            result = channel.validate()
+        assert result is False
+        assert channel.disabled is True
 
 
 class TestChinazRequest:
-    def test_请求成功_返回HTML(self):
+    def test_请求成功_返回解析结果(self):
         channel = ChinazChannel(cookie="toolUserGrade=1;chinaz_zxuser=test")
+        info_html = '<label><span class="name">IP归属地</span><span class="value">北京</span></label>'
+        html = _make_html(info_html=info_html, no_result=True)
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.text = "<html>test</html>"
+        mock_response.text = html
         mock_response.raise_for_status.return_value = None
         with patch("ip_info.channel.chinaz.requests.get", return_value=mock_response):
-            result = channel._request("1.2.3.4")
+            result = channel.fetch("1.2.3.4")
 
-        assert result == "<html>test</html>"
+        assert "query_time" in result
+        assert result["query_ip"] == "1.2.3.4"
+        assert result["location"] == "北京"
 
     def test_网络超时_抛ChannelError(self):
         channel = ChinazChannel(cookie="toolUserGrade=1;chinaz_zxuser=test")
@@ -67,7 +76,7 @@ class TestChinazRequest:
             side_effect=requests.exceptions.Timeout("timed out"),
         ):
             with pytest.raises(ChannelError, match="查询超时"):
-                channel._request("1.2.3.4")
+                channel.fetch("1.2.3.4")
 
     def test_连接失败_抛ChannelError(self):
         channel = ChinazChannel(cookie="toolUserGrade=1;chinaz_zxuser=test")
@@ -76,7 +85,7 @@ class TestChinazRequest:
             side_effect=requests.exceptions.ConnectionError("refused"),
         ):
             with pytest.raises(ChannelError, match="连接失败"):
-                channel._request("1.2.3.4")
+                channel.fetch("1.2.3.4")
 
     def test_其他HTTP错误_抛ChannelError(self):
         channel = ChinazChannel(cookie="toolUserGrade=1;chinaz_zxuser=test")
@@ -85,7 +94,7 @@ class TestChinazRequest:
         mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError("500 Server Error")
         with patch("ip_info.channel.chinaz.requests.get", return_value=mock_response):
             with pytest.raises(ChannelError, match="HTTP 500"):
-                channel._request("1.2.3.4")
+                channel.fetch("1.2.3.4")
 
 
 class TestChinazParse:
@@ -104,7 +113,12 @@ class TestChinazParse:
         )
         html = _make_html(info_html=info_html, domain_html=domain_html)
         channel = ChinazChannel(cookie="test")
-        result = channel._parse(html, "8.8.8.8")
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = html
+        mock_response.raise_for_status.return_value = None
+        with patch("ip_info.channel.chinaz.requests.get", return_value=mock_response):
+            result = channel.fetch("8.8.8.8")
 
         assert result["query_ip"] == "8.8.8.8"
         assert result["location"] == "美国加利福尼亚"
@@ -122,7 +136,12 @@ class TestChinazParse:
         info_html = '<label><span class="name">IP归属地</span><span class="value">北京</span></label>'
         html = _make_html(info_html=info_html, no_result=True)
         channel = ChinazChannel(cookie="test")
-        result = channel._parse(html, "1.2.3.4")
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = html
+        mock_response.raise_for_status.return_value = None
+        with patch("ip_info.channel.chinaz.requests.get", return_value=mock_response):
+            result = channel.fetch("1.2.3.4")
 
         assert result["domains"] == []
         assert result["domain_count"] == 0
@@ -140,7 +159,12 @@ class TestChinazParse:
         domain_html = "".join(domain_parts)
         html = _make_html(info_html=info_html, domain_html=domain_html)
         channel = ChinazChannel(cookie="test")
-        result = channel._parse(html, "1.2.3.4")
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = html
+        mock_response.raise_for_status.return_value = None
+        with patch("ip_info.channel.chinaz.requests.get", return_value=mock_response):
+            result = channel.fetch("1.2.3.4")
 
         assert len(result["domains"]) <= 20
         domain_names = [d["domain"] for d in result["domains"]]
@@ -152,8 +176,13 @@ class TestChinazParse:
 
     def test_页面结构异常_抛ChannelError(self):
         channel = ChinazChannel(cookie="test")
-        with pytest.raises(ChannelError, match="页面结构异常"):
-            channel._parse("<html><body></body></html>", "1.2.3.4")
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = "<html><body></body></html>"
+        mock_response.raise_for_status.return_value = None
+        with patch("ip_info.channel.chinaz.requests.get", return_value=mock_response):
+            with pytest.raises(ChannelError, match="页面结构异常"):
+                channel.fetch("1.2.3.4")
 
 
 class TestChinazFetchValidateProtocol:

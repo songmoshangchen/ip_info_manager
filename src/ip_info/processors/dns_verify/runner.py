@@ -70,6 +70,7 @@ class BatchDnsVerify(BaseProcessor):
         force_days: int | None = None,
         domain_cache: DomainCache | None = None,
         progress_tracker=None,
+        batch_verify_fn=None,
     ):
         if not isinstance(max_age_days, int) or max_age_days < 1:
             raise ValueError(f"max_age_days must be a positive integer (>= 1), got {max_age_days}")
@@ -82,6 +83,7 @@ class BatchDnsVerify(BaseProcessor):
         self._max_age_days = max_age_days
         self._force_days = force_days
         self._domain_cache = domain_cache
+        self._batch_verify_fn = batch_verify_fn or batch_verify
 
     def _process(self) -> BatchResult:
         start_time = time.time()
@@ -165,7 +167,7 @@ class BatchDnsVerify(BaseProcessor):
                 if done % 20 == 0 or done == total_count:
                     logger.info("DNS 验证进度: %d/%d", done, total_count)
 
-            verify_results = batch_verify(
+            verify_results = self._batch_verify_fn(
                 mappings_to_verify,
                 timeout=self._timeout,
                 concurrency=self._concurrency,

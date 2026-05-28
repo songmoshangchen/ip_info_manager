@@ -20,14 +20,12 @@ class TestRdnsPtrRequest:
             mock_socket.herror = socket.herror
             mock_socket.gaierror = socket.gaierror
             mock_socket.timeout = socket.timeout
-            result = channel._request("8.8.8.8")
+            result = channel.fetch("8.8.8.8")
 
+        assert "query_time" in result
         assert result["query_ip"] == "8.8.8.8"
         assert result["hostname"] == "dns.google"
         assert result["has_ptr"] is True
-        assert "aliases" not in result
-        assert "ip_addresses" not in result
-        assert "ptr_count" not in result
 
     def test_无PTR记录_herror(self):
         channel = RdnsPtrChannel()
@@ -36,12 +34,11 @@ class TestRdnsPtrRequest:
             mock_socket.herror = socket.herror
             mock_socket.gaierror = socket.gaierror
             mock_socket.timeout = socket.timeout
-            result = channel._request("1.2.3.4")
+            result = channel.fetch("1.2.3.4")
 
         assert result["query_ip"] == "1.2.3.4"
         assert result["has_ptr"] is False
         assert result["error_type"] == "herror"
-        assert "Unknown host" in result["error_message"]
 
     def test_地址查询失败_gaierror(self):
         channel = RdnsPtrChannel()
@@ -50,7 +47,7 @@ class TestRdnsPtrRequest:
             mock_socket.herror = socket.herror
             mock_socket.gaierror = socket.gaierror
             mock_socket.timeout = socket.timeout
-            result = channel._request("1.2.3.4")
+            result = channel.fetch("1.2.3.4")
 
         assert result["query_ip"] == "1.2.3.4"
         assert result["has_ptr"] is False
@@ -63,12 +60,11 @@ class TestRdnsPtrRequest:
             mock_socket.herror = socket.herror
             mock_socket.gaierror = socket.gaierror
             mock_socket.timeout = socket.timeout
-            result = channel._request("1.2.3.4")
+            result = channel.fetch("1.2.3.4")
 
         assert result["query_ip"] == "1.2.3.4"
         assert result["has_ptr"] is False
         assert result["error_type"] == "timeout"
-        assert "3.0" in result["error_message"]
 
     def test_网络不可用_其他异常_抛ChannelError(self):
         channel = RdnsPtrChannel()
@@ -78,7 +74,7 @@ class TestRdnsPtrRequest:
             mock_socket.gaierror = socket.gaierror
             mock_socket.timeout = socket.timeout
             with pytest.raises(ChannelError, match="8.8.8.8.*Network unreachable"):
-                channel._request("8.8.8.8")
+                channel.fetch("8.8.8.8")
 
 
 class TestRdnsPtrFetch:

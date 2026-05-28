@@ -26,50 +26,60 @@ class TestAizhanValidateKey:
         mock_response.status_code = 200
         mock_response.raise_for_status.return_value = None
         with patch("ip_info.channel.aizhan.requests.get", return_value=mock_response):
-            channel._validate_key()
+            result = channel.validate()
+        assert result is True
+        assert channel.disabled is False
 
-    def test_Cookie为空_抛ChannelPermanentError(self):
+    def test_Cookie为空_validate返回False(self):
         channel = AizhanChannel(cookie="", config=AizhanConfig(aizhan_cookie="", _env_file=None))
-        with pytest.raises(ChannelPermanentError, match="Cookie 未配置"):
-            channel._validate_key()
+        result = channel.validate()
+        assert result is False
+        assert channel.disabled is True
 
-    def test_Cookie失效_HTTP302_抛ChannelPermanentError(self):
+    def test_Cookie失效_HTTP302_validate返回False(self):
         channel = AizhanChannel(cookie="expired_cookie")
         mock_response = MagicMock()
         mock_response.status_code = 302
         with patch("ip_info.channel.aizhan.requests.get", return_value=mock_response):
-            with pytest.raises(ChannelPermanentError, match="Cookie 已失效"):
-                channel._validate_key()
+            result = channel.validate()
+        assert result is False
+        assert channel.disabled is True
 
-    def test_Cookie无效_HTTP403_抛ChannelPermanentError(self):
+    def test_Cookie无效_HTTP403_validate返回False(self):
         channel = AizhanChannel(cookie="bad_cookie")
         mock_response = MagicMock()
         mock_response.status_code = 403
         with patch("ip_info.channel.aizhan.requests.get", return_value=mock_response):
-            with pytest.raises(ChannelPermanentError, match="Cookie 无效"):
-                channel._validate_key()
+            result = channel.validate()
+        assert result is False
+        assert channel.disabled is True
 
-    def test_验证请求网络错误_异常向上抛出(self):
+    def test_验证请求网络错误_validate返回False(self):
         channel = AizhanChannel(cookie="valid_cookie")
         with patch(
             "ip_info.channel.aizhan.requests.get",
             side_effect=requests.exceptions.Timeout("timeout"),
         ):
-            with pytest.raises(requests.exceptions.Timeout):
-                channel._validate_key()
+            result = channel.validate()
+        assert result is False
+        assert channel.disabled is True
 
 
 class TestAizhanRequest:
-    def test_请求成功_返回HTML(self):
+    def test_请求成功_返回解析结果(self):
         channel = AizhanChannel(cookie="valid_cookie")
+        dns_infos = '<strong>IP信息</strong><strong>广东 深圳 电信</strong><span class="red">0</span>'
+        html = _make_html(dns_infos_html=dns_infos, has_no_domain=True)
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.text = "<html>test</html>"
+        mock_response.text = html
         mock_response.raise_for_status.return_value = None
         with patch("ip_info.channel.aizhan.requests.get", return_value=mock_response):
-            result = channel._request("1.2.3.4")
+            result = channel.fetch("1.2.3.4")
 
-        assert result == "<html>test</html>"
+        assert "query_time" in result
+        assert result["query_ip"] == "1.2.3.4"
+        assert result["location"] == "中国广东深圳"
 
     def test_HTTP403_抛ChannelPermanentError(self):
         channel = AizhanChannel(cookie="valid_cookie")
@@ -77,7 +87,7 @@ class TestAizhanRequest:
         mock_response.status_code = 403
         with patch("ip_info.channel.aizhan.requests.get", return_value=mock_response):
             with pytest.raises(ChannelPermanentError, match="Cookie 无效"):
-                channel._request("1.2.3.4")
+                channel.fetch("1.2.3.4")
 
     def test_网络超时_抛ChannelError(self):
         channel = AizhanChannel(cookie="valid_cookie")
@@ -86,7 +96,7 @@ class TestAizhanRequest:
             side_effect=requests.exceptions.Timeout("timed out"),
         ):
             with pytest.raises(ChannelError, match="查询超时"):
-                channel._request("1.2.3.4")
+                channel.fetch("1.2.3.4")
 
     def test_连接失败_抛ChannelError(self):
         channel = AizhanChannel(cookie="valid_cookie")
@@ -95,7 +105,7 @@ class TestAizhanRequest:
             side_effect=requests.exceptions.ConnectionError("refused"),
         ):
             with pytest.raises(ChannelError, match="连接失败"):
-                channel._request("1.2.3.4")
+                channel.fetch("1.2.3.4")
 
     def test_其他HTTP错误_抛ChannelError(self):
         channel = AizhanChannel(cookie="valid_cookie")
@@ -104,7 +114,7 @@ class TestAizhanRequest:
         mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError("500 Server Error")
         with patch("ip_info.channel.aizhan.requests.get", return_value=mock_response):
             with pytest.raises(ChannelError, match="HTTP 500"):
-                channel._request("1.2.3.4")
+                channel.fetch("1.2.3.4")
 
 
 class TestAizhanParse:
@@ -112,7 +122,12 @@ class TestAizhanParse:
         dns_infos = '<strong>IP信息</strong><strong>广东 深圳 电信</strong><span class="red">5</span>'
         html = _make_html(dns_infos_html=dns_infos, has_no_domain=True)
         channel = AizhanChannel(cookie="test")
-        result = channel._parse(html, "1.2.3.4")
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = html
+        mock_response.raise_for_status.return_value = None
+        with patch("ip_info.channel.aizhan.requests.get", return_value=mock_response):
+            result = channel.fetch("1.2.3.4")
 
         assert result["location"] == "中国广东深圳"
         assert result["isp"] == "电信"
@@ -121,7 +136,12 @@ class TestAizhanParse:
         dns_infos = '<strong>IP信息</strong><strong>美国 加利福尼亚 Google</strong><span class="red">0</span>'
         html = _make_html(dns_infos_html=dns_infos, has_no_domain=True)
         channel = AizhanChannel(cookie="test")
-        result = channel._parse(html, "8.8.8.8")
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = html
+        mock_response.raise_for_status.return_value = None
+        with patch("ip_info.channel.aizhan.requests.get", return_value=mock_response):
+            result = channel.fetch("8.8.8.8")
 
         assert result["location"] == "美国 加利福尼亚 Google"
         assert result["isp"] == "Google"
@@ -130,7 +150,12 @@ class TestAizhanParse:
         dns_infos = '<strong>IP信息</strong><strong>广东 深圳 电信</strong><span class="red">0</span>'
         html = _make_html(dns_infos_html=dns_infos, has_no_domain=True)
         channel = AizhanChannel(cookie="test")
-        result = channel._parse(html, "1.2.3.4")
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = html
+        mock_response.raise_for_status.return_value = None
+        with patch("ip_info.channel.aizhan.requests.get", return_value=mock_response):
+            result = channel.fetch("1.2.3.4")
 
         assert result["domains"] == []
 
@@ -147,7 +172,12 @@ class TestAizhanParse:
         dns_content = f"<tbody>{rows}</tbody>"
         html = _make_html(dns_infos_html=dns_infos, dns_content_html=dns_content)
         channel = AizhanChannel(cookie="test")
-        result = channel._parse(html, "1.2.3.4")
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = html
+        mock_response.raise_for_status.return_value = None
+        with patch("ip_info.channel.aizhan.requests.get", return_value=mock_response):
+            result = channel.fetch("1.2.3.4")
 
         assert len(result["domains"]) <= 20
         domain_names = [d["domain"] for d in result["domains"]]
@@ -159,16 +189,26 @@ class TestAizhanParse:
 
     def test_页面缺少dns_infos_dns_content_抛ChannelError(self):
         channel = AizhanChannel(cookie="test")
-        with pytest.raises(ChannelError, match="页面结构异常"):
-            channel._parse("<html><body></body></html>", "1.2.3.4")
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = "<html><body></body></html>"
+        mock_response.raise_for_status.return_value = None
+        with patch("ip_info.channel.aizhan.requests.get", return_value=mock_response):
+            with pytest.raises(ChannelError, match="页面结构异常"):
+                channel.fetch("1.2.3.4")
 
     def test_无tbody_抛ChannelError(self):
         dns_infos = '<strong>IP信息</strong><strong>广东 深圳 电信</strong><span class="red">3</span>'
         dns_content = "<table><thead><tr><th>1</th></tr></thead></table>"
         html = _make_html(dns_infos_html=dns_infos, dns_content_html=dns_content)
         channel = AizhanChannel(cookie="test")
-        with pytest.raises(ChannelError, match="未找到表格数据"):
-            channel._parse(html, "1.2.3.4")
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = html
+        mock_response.raise_for_status.return_value = None
+        with patch("ip_info.channel.aizhan.requests.get", return_value=mock_response):
+            with pytest.raises(ChannelError, match="未找到表格数据"):
+                channel.fetch("1.2.3.4")
 
 
 class TestAizhanFetchValidateProtocol:

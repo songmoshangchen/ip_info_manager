@@ -29,40 +29,43 @@ class TestSslCertRequest:
     def test_成功获取证书文本(self):
         channel = SslCertChannel()
         with patch("ip_info.channel.ssl_cert._get_ssl_cert_text", return_value=SAMPLE_CERT_TEXT):
-            result = channel._request("example.com")
+            result = channel.fetch("example.com")
 
-        assert result == SAMPLE_CERT_TEXT
+        assert "query_time" in result
+        assert result["query_target"] == "example.com"
+        assert result["has_cert"] is True
+        assert result["subject_cn"] == "example.com"
 
-    def test_无SSL证书返回None(self):
+    def test_无SSL证书返回has_cert为False(self):
         channel = SslCertChannel()
         with patch("ip_info.channel.ssl_cert._get_ssl_cert_text", return_value=None):
-            result = channel._request("0.0.0.0")
+            result = channel.fetch("0.0.0.0")
 
-        assert result is None
+        assert result["has_cert"] is False
 
     def test_连接超时_抛ChannelError(self):
         channel = SslCertChannel()
         with patch("ip_info.channel.ssl_cert._get_ssl_cert_text", side_effect=socket.timeout()):
             with pytest.raises(ChannelError, match="SSL 连接超时"):
-                channel._request("1.2.3.4")
+                channel.fetch("1.2.3.4")
 
     def test_连接被拒绝_抛ChannelError(self):
         channel = SslCertChannel()
         with patch("ip_info.channel.ssl_cert._get_ssl_cert_text", side_effect=ConnectionRefusedError()):
             with pytest.raises(ChannelError, match="SSL 连接被拒绝"):
-                channel._request("1.2.3.4")
+                channel.fetch("1.2.3.4")
 
     def test_SSL错误_抛ChannelError(self):
         channel = SslCertChannel()
         with patch("ip_info.channel.ssl_cert._get_ssl_cert_text", side_effect=ssl.SSLError("cert verify failed")):
             with pytest.raises(ChannelError, match="SSL 错误"):
-                channel._request("1.2.3.4")
+                channel.fetch("1.2.3.4")
 
     def test_通用异常_抛ChannelError(self):
         channel = SslCertChannel()
         with patch("ip_info.channel.ssl_cert._get_ssl_cert_text", side_effect=Exception("unexpected")):
             with pytest.raises(ChannelError, match="SSL 证书获取失败"):
-                channel._request("1.2.3.4")
+                channel.fetch("1.2.3.4")
 
 
 class TestSslCertFetch:

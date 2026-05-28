@@ -16,29 +16,34 @@ class TestIpinfoApiValidateKey:
         mock_response.status_code = 200
         mock_response.raise_for_status.return_value = None
         with patch("ip_info.channel.ipinfo_api.requests.get", return_value=mock_response):
-            channel._validate_key()
+            result = channel.validate()
+        assert result is True
+        assert channel.disabled is False
 
-    def test_Token为空_抛ChannelPermanentError(self):
+    def test_Token为空_validate返回False(self):
         channel = IpinfoApiChannel(token="", config=IpInfoApiConfig(ipinfo_access_token="", _env_file=None))
-        with pytest.raises(ChannelPermanentError, match="IPInfo API Token 未配置"):
-            channel._validate_key()
+        result = channel.validate()
+        assert result is False
+        assert channel.disabled is True
 
-    def test_Token无效_HTTP401_抛ChannelPermanentError(self):
+    def test_Token无效_HTTP401_validate返回False(self):
         channel = IpinfoApiChannel(token="bad_token")
         mock_response = MagicMock()
         mock_response.status_code = 401
         with patch("ip_info.channel.ipinfo_api.requests.get", return_value=mock_response):
-            with pytest.raises(ChannelPermanentError, match="IPInfo API Token 无效"):
-                channel._validate_key()
+            result = channel.validate()
+        assert result is False
+        assert channel.disabled is True
 
-    def test_验证请求网络错误_异常向上抛出(self):
+    def test_验证请求网络错误_validate返回False(self):
         channel = IpinfoApiChannel(token="valid_token")
         with patch(
             "ip_info.channel.ipinfo_api.requests.get",
             side_effect=requests.exceptions.Timeout("timed out"),
         ):
-            with pytest.raises(requests.exceptions.Timeout):
-                channel._validate_key()
+            result = channel.validate()
+        assert result is False
+        assert channel.disabled is True
 
 
 class TestIpinfoApiRequest:
@@ -49,9 +54,11 @@ class TestIpinfoApiRequest:
         mock_response.json.return_value = {"ip": "8.8.8.8", "country": "US"}
         mock_response.raise_for_status.return_value = None
         with patch("ip_info.channel.ipinfo_api.requests.get", return_value=mock_response) as mock_get:
-            result = channel._request("8.8.8.8")
+            result = channel.fetch("8.8.8.8")
 
-        assert result == {"ip": "8.8.8.8", "country": "US"}
+        assert "query_time" in result
+        assert result["ip"] == "8.8.8.8"
+        assert result["country"] == "US"
         call_kwargs = mock_get.call_args
         assert call_kwargs[1]["headers"]["Authorization"] == "Bearer valid_token"
 
@@ -66,7 +73,7 @@ class TestIpinfoApiRequest:
         }
         mock_response.raise_for_status.return_value = None
         with patch("ip_info.channel.ipinfo_api.requests.get", return_value=mock_response):
-            result = channel._request("8.8.8.8")
+            result = channel.fetch("8.8.8.8")
 
         assert "readme" not in result
         assert result["country"] == "US"
@@ -77,7 +84,7 @@ class TestIpinfoApiRequest:
         mock_response.status_code = 401
         with patch("ip_info.channel.ipinfo_api.requests.get", return_value=mock_response):
             with pytest.raises(ChannelPermanentError, match="IPInfo API Token 无效"):
-                channel._request("8.8.8.8")
+                channel.fetch("8.8.8.8")
 
     def test_请求限流_HTTP429_抛ChannelError(self):
         channel = IpinfoApiChannel(token="valid_token")
@@ -85,7 +92,7 @@ class TestIpinfoApiRequest:
         mock_response.status_code = 429
         with patch("ip_info.channel.ipinfo_api.requests.get", return_value=mock_response):
             with pytest.raises(ChannelError, match="IPInfo API 请求限流"):
-                channel._request("8.8.8.8")
+                channel.fetch("8.8.8.8")
 
     def test_网络超时_抛ChannelError(self):
         channel = IpinfoApiChannel(token="valid_token")
@@ -94,7 +101,7 @@ class TestIpinfoApiRequest:
             side_effect=requests.exceptions.Timeout("timed out"),
         ):
             with pytest.raises(ChannelError, match="IPInfo API 查询超时"):
-                channel._request("8.8.8.8")
+                channel.fetch("8.8.8.8")
 
     def test_连接失败_抛ChannelError(self):
         channel = IpinfoApiChannel(token="valid_token")
@@ -103,7 +110,7 @@ class TestIpinfoApiRequest:
             side_effect=requests.exceptions.ConnectionError("refused"),
         ):
             with pytest.raises(ChannelError, match="IPInfo API 连接失败"):
-                channel._request("8.8.8.8")
+                channel.fetch("8.8.8.8")
 
     def test_其他HTTP错误_HTTP500_抛ChannelError(self):
         channel = IpinfoApiChannel(token="valid_token")
@@ -112,7 +119,7 @@ class TestIpinfoApiRequest:
         mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError("500 Server Error")
         with patch("ip_info.channel.ipinfo_api.requests.get", return_value=mock_response):
             with pytest.raises(ChannelError, match="HTTP 500"):
-                channel._request("8.8.8.8")
+                channel.fetch("8.8.8.8")
 
     def test_其他非预期异常_抛ChannelError(self):
         channel = IpinfoApiChannel(token="valid_token")
@@ -121,7 +128,7 @@ class TestIpinfoApiRequest:
             side_effect=ValueError("bad"),
         ):
             with pytest.raises(ChannelError, match="IPInfo API 查询错误"):
-                channel._request("8.8.8.8")
+                channel.fetch("8.8.8.8")
 
 
 class TestIpinfoApiFetch:

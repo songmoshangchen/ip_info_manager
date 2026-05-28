@@ -175,15 +175,15 @@ class TestDomainTraceEndToEnd:
         mappings = extract_domain_mappings(ip_data)
         assert len(mappings) == 2
 
-        with patch("ip_info.processors.dns_verify.runner.batch_verify", side_effect=_fake_batch_verify):
-            verifier = BatchDnsVerify(
-                ips=[ip],
-                writer=writer,
-                reader=reader,
-                max_age_days=7,
-                force_days=0,
-            )
-            result = verifier.run()
+        verifier = BatchDnsVerify(
+            ips=[ip],
+            writer=writer,
+            reader=reader,
+            max_age_days=7,
+            force_days=0,
+            batch_verify_fn=_fake_batch_verify,
+        )
+        result = verifier.run()
 
         assert result.success_count == 1
         verify_data = reader.get_channel_data(ip, "domain_verify")
@@ -213,15 +213,15 @@ class TestDomainTraceEndToEnd:
         mappings = extract_domain_mappings(ip_data)
         assert len(mappings) == 4
 
-        with patch("ip_info.processors.dns_verify.runner.batch_verify", side_effect=_fake_batch_verify):
-            verifier = BatchDnsVerify(
-                ips=[ip],
-                writer=writer,
-                reader=reader,
-                max_age_days=7,
-                force_days=0,
-            )
-            result = verifier.run()
+        verifier = BatchDnsVerify(
+            ips=[ip],
+            writer=writer,
+            reader=reader,
+            max_age_days=7,
+            force_days=0,
+            batch_verify_fn=_fake_batch_verify,
+        )
+        result = verifier.run()
 
         assert result.success_count == 1
         verify_data = reader.get_channel_data(ip, "domain_verify")
@@ -248,15 +248,15 @@ class TestDomainVerifyStatuses:
             ),
         )
 
-        with patch("ip_info.processors.dns_verify.runner.batch_verify", side_effect=_fake_batch_verify):
-            verifier = BatchDnsVerify(
-                ips=[ip],
-                writer=writer,
-                reader=reader,
-                max_age_days=7,
-                force_days=0,
-            )
-            result = verifier.run()
+        verifier = BatchDnsVerify(
+            ips=[ip],
+            writer=writer,
+            reader=reader,
+            max_age_days=7,
+            force_days=0,
+            batch_verify_fn=_fake_batch_verify,
+        )
+        result = verifier.run()
 
         assert result.success_count == 1
         verify_data = reader.get_channel_data(ip, "domain_verify")
@@ -285,15 +285,15 @@ class TestDomainCacheIntegration:
             },
         )
 
-        with patch("ip_info.processors.dns_verify.runner.batch_verify", side_effect=_fake_batch_verify):
-            verifier = BatchDnsVerify(
-                ips=[ip],
-                writer=writer,
-                reader=reader,
-                domain_cache=cache,
-                max_age_days=7,
-            )
-            result = verifier.run()
+        verifier = BatchDnsVerify(
+            ips=[ip],
+            writer=writer,
+            reader=reader,
+            domain_cache=cache,
+            max_age_days=7,
+            batch_verify_fn=_fake_batch_verify,
+        )
+        result = verifier.run()
 
         assert result.success_count == 1
         verify_data = reader.get_channel_data(ip, "domain_verify")
@@ -322,16 +322,15 @@ class TestDomainCacheIntegration:
             },
         )
 
-        with patch("ip_info.processors.dns_verify.runner.batch_verify", side_effect=_fake_batch_verify) as mock_verify:
-            verifier = BatchDnsVerify(
-                ips=[ip],
-                writer=writer,
-                reader=reader,
-                domain_cache=cache,
-                max_age_days=7,
-            )
-            result = verifier.run()
-            assert mock_verify.called
+        verifier = BatchDnsVerify(
+            ips=[ip],
+            writer=writer,
+            reader=reader,
+            domain_cache=cache,
+            max_age_days=7,
+            batch_verify_fn=_fake_batch_verify,
+        )
+        result = verifier.run()
 
         assert result.success_count == 1
         verify_data = reader.get_channel_data(ip, "domain_verify")
@@ -345,16 +344,16 @@ class TestDomainCacheIntegration:
 
         writer.add_or_update_ip(ip, "aizhan", _make_aizhan_data(ip, ["fresh.com"]))
 
-        with patch("ip_info.processors.dns_verify.runner.batch_verify", side_effect=_fake_batch_verify):
-            verifier = BatchDnsVerify(
-                ips=[ip],
-                writer=writer,
-                reader=reader,
-                domain_cache=cache,
-                max_age_days=7,
-                force_days=0,
-            )
-            verifier.run()
+        verifier = BatchDnsVerify(
+            ips=[ip],
+            writer=writer,
+            reader=reader,
+            domain_cache=cache,
+            max_age_days=7,
+            force_days=0,
+            batch_verify_fn=_fake_batch_verify,
+        )
+        verifier.run()
 
         cached = cache.get("fresh.com")
         assert cached is not None
@@ -381,10 +380,7 @@ class TestDomainTraceViaPhase4:
 
         assert reader.get_channel_data(ip, "aizhan") is not None
 
-        with (
-            patch("ip_info.pipeline.phases.phase4_verify_scan.BatchDnsVerify") as MockDns,
-            patch("ip_info.processors.dns_verify.runner.batch_verify", side_effect=_fake_batch_verify),
-        ):
+        with patch("ip_info.pipeline.phases.phase4_verify_scan.BatchDnsVerify") as MockDns:
             mock_instance = MagicMock()
 
             def fake_dns_run():
@@ -396,6 +392,7 @@ class TestDomainTraceViaPhase4:
                     reader=reader,
                     max_age_days=7,
                     force_days=0,
+                    batch_verify_fn=_fake_batch_verify,
                 )
                 return real.run()
 

@@ -221,15 +221,47 @@ class TestPortScanProtocol:
 class TestPortScanConfigIntegration:
     """测试 PortScanChannel 从 PortScanConfig 读取配置"""
 
-    def test_默认arguments来自配置(self):
+    def test_默认arguments通过fetch传递给nmap(self):
+        mock_nm = _make_mock_nm(
+            hosts_data={
+                "1.2.3.4": {
+                    "state": "up",
+                    "tcp_ports": [80],
+                    "port_data": [
+                        {"port": 80, "name": "http", "product": "nginx", "version": "1.18.0"},
+                    ],
+                }
+            }
+        )
         config = PortScanConfig(_env_file=None)
         channel = PortScanChannel(config=config)
-        assert channel._arguments == "-sV -T4 -Pn --open"
+        with patch("ip_info.channel.port_scan.nmap.PortScanner", return_value=mock_nm):
+            channel.fetch("1.2.3.4")
 
-    def test_自定义arguments来自配置(self):
+        mock_nm.scan.assert_called_once()
+        call_kwargs = mock_nm.scan.call_args
+        assert "-sV" in call_kwargs.kwargs.get("arguments", call_kwargs[1].get("arguments", ""))
+
+    def test_自定义arguments通过fetch传递给nmap(self):
+        mock_nm = _make_mock_nm(
+            hosts_data={
+                "1.2.3.4": {
+                    "state": "up",
+                    "tcp_ports": [80],
+                    "port_data": [
+                        {"port": 80, "name": "http", "product": "", "version": ""},
+                    ],
+                }
+            }
+        )
         config = PortScanConfig(_env_file=None, port_scan_arguments="-sT -T4 -Pn --open")
         channel = PortScanChannel(config=config)
-        assert channel._arguments == "-sT -T4 -Pn --open"
+        with patch("ip_info.channel.port_scan.nmap.PortScanner", return_value=mock_nm):
+            channel.fetch("1.2.3.4")
+
+        mock_nm.scan.assert_called_once()
+        call_kwargs = mock_nm.scan.call_args
+        assert "-sT" in call_kwargs.kwargs.get("arguments", call_kwargs[1].get("arguments", ""))
 
     def test_默认timeout来自配置(self):
         config = PortScanConfig(_env_file=None)
@@ -241,15 +273,43 @@ class TestPortScanConfigIntegration:
         channel = PortScanChannel(config=config)
         assert channel.timeout == 120.0
 
-    def test_默认port_list来自配置(self):
+    def test_默认port_list通过fetch传递给nmap(self):
+        mock_nm = _make_mock_nm(
+            hosts_data={
+                "1.2.3.4": {
+                    "state": "up",
+                    "tcp_ports": [],
+                    "port_data": [],
+                }
+            }
+        )
         config = PortScanConfig(_env_file=None)
         channel = PortScanChannel(config=config)
-        assert channel._port_list == "config/port_scan/top1000.txt"
+        with patch("ip_info.channel.port_scan.nmap.PortScanner", return_value=mock_nm):
+            channel.fetch("1.2.3.4")
 
-    def test_自定义port_list来自配置(self):
+        mock_nm.scan.assert_called_once()
+        call_kwargs = mock_nm.scan.call_args
+        assert "top1000.txt" in call_kwargs.kwargs.get("ports", call_kwargs[1].get("ports", ""))
+
+    def test_自定义port_list通过fetch传递给nmap(self):
+        mock_nm = _make_mock_nm(
+            hosts_data={
+                "1.2.3.4": {
+                    "state": "up",
+                    "tcp_ports": [],
+                    "port_data": [],
+                }
+            }
+        )
         config = PortScanConfig(_env_file=None, port_scan_port_list="custom_ports.txt")
         channel = PortScanChannel(config=config)
-        assert channel._port_list == "custom_ports.txt"
+        with patch("ip_info.channel.port_scan.nmap.PortScanner", return_value=mock_nm):
+            channel.fetch("1.2.3.4")
+
+        mock_nm.scan.assert_called_once()
+        call_kwargs = mock_nm.scan.call_args
+        assert "custom_ports.txt" in call_kwargs.kwargs.get("ports", call_kwargs[1].get("ports", ""))
 
     def test_request使用配置中的arguments(self):
         mock_nm = _make_mock_nm(

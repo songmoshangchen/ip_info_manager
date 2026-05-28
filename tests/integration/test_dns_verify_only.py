@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-from unittest.mock import patch
 
 from ip_info.processors.dns_verify.runner import BatchDnsVerify
 from ip_info.store.in_memory import InMemoryDomainCache, InMemoryIPReader, InMemoryIPWriter
@@ -39,17 +38,17 @@ class TestDnsVerifyIntegration:
             },
         )
 
-        with patch("ip_info.processors.dns_verify.runner.batch_verify", side_effect=_fake_batch_verify):
-            runner = BatchDnsVerify(
-                ips=[ip],
-                writer=writer,
-                reader=reader,
-                max_age_days=7,
-                force_days=0,
-                timeout=3.0,
-                concurrency=5,
-            )
-            result = runner.run()
+        runner = BatchDnsVerify(
+            ips=[ip],
+            writer=writer,
+            reader=reader,
+            max_age_days=7,
+            force_days=0,
+            timeout=3.0,
+            concurrency=5,
+            batch_verify_fn=_fake_batch_verify,
+        )
+        result = runner.run()
 
         assert result.success_count == 1
         verify_data = reader.get_channel_data(ip, "domain_verify")
@@ -86,16 +85,16 @@ class TestDnsVerifyIntegration:
             },
         )
 
-        with patch("ip_info.processors.dns_verify.runner.batch_verify", side_effect=_fake_batch_verify):
-            runner = BatchDnsVerify(
-                ips=[ip],
-                writer=writer,
-                reader=reader,
-                domain_cache=cache,
-                max_age_days=7,
-                force_days=0,
-            )
-            result = runner.run()
+        runner = BatchDnsVerify(
+            ips=[ip],
+            writer=writer,
+            reader=reader,
+            domain_cache=cache,
+            max_age_days=7,
+            force_days=0,
+            batch_verify_fn=_fake_batch_verify,
+        )
+        result = runner.run()
 
         assert result.success_count == 1
         new_cached = cache.get("new.example.com")
@@ -109,15 +108,15 @@ class TestDnsVerifyIntegration:
 
         writer.add_or_update_ip(ip, "ipinfo_api", {"country": "US"})
 
-        with patch("ip_info.processors.dns_verify.runner.batch_verify", side_effect=_fake_batch_verify):
-            runner = BatchDnsVerify(
-                ips=[ip],
-                writer=writer,
-                reader=reader,
-                max_age_days=7,
-                force_days=0,
-            )
-            result = runner.run()
+        runner = BatchDnsVerify(
+            ips=[ip],
+            writer=writer,
+            reader=reader,
+            max_age_days=7,
+            force_days=0,
+            batch_verify_fn=_fake_batch_verify,
+        )
+        result = runner.run()
 
         assert result.success_count == 0
         assert result.skip_count >= 1
@@ -141,15 +140,15 @@ class TestDnsVerifyIntegration:
             },
         )
 
-        with patch("ip_info.processors.dns_verify.runner.batch_verify", side_effect=_fake_batch_verify):
-            runner = BatchDnsVerify(
-                ips=[ip],
-                writer=writer,
-                reader=reader,
-                max_age_days=7,
-                force_days=0,
-            )
-            runner.run()
+        runner = BatchDnsVerify(
+            ips=[ip],
+            writer=writer,
+            reader=reader,
+            max_age_days=7,
+            force_days=0,
+            batch_verify_fn=_fake_batch_verify,
+        )
+        runner.run()
 
         verify_data = reader.get_channel_data(ip, "domain_verify")
         assert len(verify_data["results"]) == 3

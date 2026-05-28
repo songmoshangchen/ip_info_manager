@@ -31,32 +31,35 @@ def _make_whois_obj(**overrides):
 
 
 class TestWhoisQueryRequest:
-    def test_查询成功_返回whois对象(self):
+    def test_查询成功_返回解析结果(self):
         mock_obj = _make_whois_obj()
         channel = WhoisQueryChannel()
         with patch("ip_info.channel.whois_query.whois_query", return_value=mock_obj):
-            result = channel._request("google.com")
+            result = channel.fetch("google.com")
 
-        assert result is mock_obj
+        assert "query_time" in result
+        assert result["query_target"] == "google.com"
+        assert result["has_whois"] is True
+        assert result["whois_data"]["domain_name"] == "example.com"
 
-    def test_whois返回None_透传None(self):
+    def test_whois返回None_has_whois为False(self):
         channel = WhoisQueryChannel()
         with patch("ip_info.channel.whois_query.whois_query", return_value=None):
-            result = channel._request("0.0.0.0")
+            result = channel.fetch("0.0.0.0")
 
-        assert result is None
+        assert result["has_whois"] is False
 
     def test_查询超时_抛ChannelError(self):
         channel = WhoisQueryChannel()
         with patch("ip_info.channel.whois_query.whois_query", side_effect=socket.timeout()):
             with pytest.raises(ChannelError, match="超时"):
-                channel._request("1.2.3.4")
+                channel.fetch("1.2.3.4")
 
     def test_通用异常_抛ChannelError(self):
         channel = WhoisQueryChannel()
         with patch("ip_info.channel.whois_query.whois_query", side_effect=Exception("query failed")):
             with pytest.raises(ChannelError, match="query failed"):
-                channel._request("1.2.3.4")
+                channel.fetch("1.2.3.4")
 
 
 class TestWhoisQueryFetch:
