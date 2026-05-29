@@ -1,4 +1,4 @@
-from ip_info.pipeline.phase import Phase, PhaseResult
+from ip_info.pipeline.core.phase import Phase, PhaseResult
 
 
 class HasNameAndRun:

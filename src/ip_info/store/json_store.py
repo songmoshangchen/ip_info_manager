@@ -41,6 +41,19 @@ class IPWriter:
             self._save_data(store)
         return True
 
+    def add_or_update_ip_batch(self, updates: list[tuple[str, str, dict]]) -> int:
+        """批量添加或更新 IP 渠道数据，单次 I/O"""
+        if not updates:
+            return 0
+        with self._lock:
+            store = self._load_data()
+            for ip, channel, data in updates:
+                if ip not in store:
+                    store[ip] = {"ip": ip}
+                store[ip][channel] = data
+            self._save_data(store)
+        return len(updates)
+
     def delete_ip(self, ip: str) -> bool:
         """删除 IP 记录，不存在返回 False"""
         with self._lock:

@@ -19,6 +19,10 @@ class BaseProcessor:
 
     channel_name: str = ""
 
+    @property
+    def name(self) -> str:
+        return self.channel_name
+
     def __init__(
         self,
         ips: list[str],

@@ -30,22 +30,6 @@ logging.basicConfig(
 logger = logging.getLogger("quick_query")
 
 
-def _try_channel(name):  # noqa: E402
-    """尝试初始化渠道，失败返回 None。"""
-    try:
-        if name == "aizhan":
-            from ip_info.channel.aizhan import AizhanChannel  # noqa: E402
-
-            return AizhanChannel()
-        elif name == "fofa":
-            from ip_info.channel.fofa_host import FofaHostChannel  # noqa: E402
-
-            return FofaHostChannel()
-    except Exception:
-        return None
-    return None
-
-
 def _disable_channels(channels: list, skip_names: set[str]) -> None:  # noqa: E402
     """手动禁用指定渠道。"""
     for ch in channels:
@@ -59,9 +43,9 @@ def main():
     from ip_info.channel.ipinfo_api import IpinfoApiChannel  # noqa: E402
     from ip_info.channel.port_scan import PortScanChannel  # noqa: E402
     from ip_info.channel.rdns_ptr import RdnsPtrChannel  # noqa: E402
-    from ip_info.pipeline.context import PipelineContext  # noqa: E402
-    from ip_info.pipeline.filter_ips import filter_ips_by_classification  # noqa: E402
-    from ip_info.pipeline.phases import (  # noqa: E402
+    from ip_info.pipeline.core.context import PipelineContext  # noqa: E402
+    from ip_info.pipeline.core.filter_ips import filter_ips_by_classification  # noqa: E402
+    from ip_info.pipeline.trace_steps import (  # noqa: E402
         BasicCollectPhase,
         ClassifyTagPhase,
         DeepQueryPhase,
@@ -177,20 +161,47 @@ def main():
         logger.info("=" * 60)
         logger.info("Phase 3: 深度查询 (%d IP)", len(filtered_ips))
         logger.info("=" * 60)
-        aizhan_ch = _try_channel("aizhan")
-        fofa_ch = _try_channel("fofa")
+        from ip_info.pipeline.core.batch_factory import BatchFactory
+
+        aizhan_step = BatchFactory.try_create(
+            "aizhan",
+            ips=filtered_ips,
+            writer=writer,
+            progress_tracker=progress_tracker,
+            workers=1,
+        )
+        fofa_step = BatchFactory.try_create(
+            "fofa_host",
+            ips=filtered_ips,
+            writer=writer,
+            progress_tracker=progress_tracker,
+            workers=2,
+        )
         chinaz_ch = ChinazChannel()
-        all_phase3_channels = [ch for ch in [aizhan_ch, chinaz_ch, fofa_ch] if ch is not None]
-        _disable_channels(all_phase3_channels, skip_names)
+
+        from ip_info.pipeline.core.channel_batch_step import ChannelBatchStep
+
+        deep_steps = []
+        if aizhan_step and "aizhan" not in skip_names:
+            deep_steps.append(aizhan_step)
+        if "chinaz" not in skip_names:
+            deep_steps.append(
+                ChannelBatchStep(
+                    channel_name="chinaz",
+                    channel=chinaz_ch,
+                    ips=filtered_ips,
+                    writer=writer,
+                    workers=2,
+                    progress_tracker=progress_tracker,
+                )
+            )
+        if fofa_step and "fofa_host" not in skip_names:
+            deep_steps.append(fofa_step)
+
         phase3 = DeepQueryPhase(
             ips=filtered_ips,
-            aizhan_channel=aizhan_ch or chinaz_ch,
-            chinaz_channel=chinaz_ch,
-            fofa_channel=fofa_ch or chinaz_ch,
             context=ctx,
-            aizhan_workers=1,
-            chinaz_workers=2,
-            fofa_workers=2,
+            steps=deep_steps,
         )
         r3 = phase3.run()
         logger.info("Phase 3 完成: %s, 耗时 %.1fs", r3.message, r3.elapsed)

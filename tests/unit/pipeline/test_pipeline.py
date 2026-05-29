@@ -1,7 +1,7 @@
 import logging
 
-from ip_info.pipeline.phase import PhaseResult
-from ip_info.pipeline.pipeline import Pipeline, PipelineResult
+from ip_info.pipeline.core.phase import PhaseResult
+from ip_info.pipeline.core.pipeline import Pipeline, PipelineResult
 
 
 class FakePhase:
@@ -212,7 +212,7 @@ class TestLogging:
     def test_logs_phase_start_and_completion(self, caplog):
         p = Pipeline()
         p.register(FakePhase("alpha"))
-        with caplog.at_level(logging.INFO, logger="ip_info.pipeline.pipeline"):
+        with caplog.at_level(logging.INFO, logger="ip_info.pipeline.core.pipeline"):
             p.run()
         assert any("阶段" in r.message and "alpha" in r.message for r in caplog.records)
         assert any("完成" in r.message for r in caplog.records)

@@ -1,10 +1,10 @@
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
 
+from ip_info.batch.core.query import BatchResult
 from ip_info.channel.adapter import BaseChannelAdapter
-from ip_info.pipeline.context import PipelineContext
-from ip_info.pipeline.phases.phase3_deep import DeepQueryPhase
-from ip_info.pipeline.phases.phase4_verify_scan import VerifyScanPhase
+from ip_info.pipeline.core.context import PipelineContext
+from ip_info.pipeline.trace_steps.phase3_deep import DeepQueryPhase
+from ip_info.pipeline.trace_steps.phase4_verify_scan import VerifyScanPhase
 from ip_info.processors.dns_verify.extractor import extract_domain_mappings
 from ip_info.processors.dns_verify.runner import BatchDnsVerify
 from ip_info.store.in_memory import InMemoryDomainCache, InMemoryIPReader, InMemoryIPWriter
@@ -30,6 +30,27 @@ class FakeChannel(BaseChannelAdapter):
         result = self._parse(raw, ip)
         result.setdefault("query_time", "2024-01-01T00:00:00")
         return result
+
+
+class FakeBatchStep:
+    def __init__(self, name: str, result: BatchResult | None = None, writer=None, channel_name: str = ""):
+        self._name = name
+        self._result = result or BatchResult(success_count=1)
+        self._writer = writer
+        self._channel_name = channel_name or name
+        self._run_fn = None
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def run(self) -> BatchResult:
+        if self._run_fn:
+            self._run_fn()
+            return self._result
+        if self._writer:
+            self._writer.add_or_update_ip("1.2.3.4", self._channel_name, {"data": "test"})
+        return self._result
 
 
 def _make_context(writer=None, reader=None, domain_cache=None):
@@ -380,32 +401,30 @@ class TestDomainTraceViaPhase4:
 
         assert reader.get_channel_data(ip, "aizhan") is not None
 
-        with patch("ip_info.pipeline.phases.phase4_verify_scan.BatchDnsVerify") as MockDns:
-            mock_instance = MagicMock()
+        def dns_run_fn():
+            from ip_info.processors.dns_verify.runner import BatchDnsVerify as RealDns
 
-            def fake_dns_run():
-                from ip_info.processors.dns_verify.runner import BatchDnsVerify as RealDns
-
-                real = RealDns(
-                    ips=[ip],
-                    writer=writer,
-                    reader=reader,
-                    max_age_days=7,
-                    force_days=0,
-                    batch_verify_fn=_fake_batch_verify,
-                )
-                return real.run()
-
-            mock_instance.run = fake_dns_run
-            MockDns.return_value = mock_instance
-
-            phase4 = VerifyScanPhase(
+            real = RealDns(
                 ips=[ip],
-                context=ctx,
-                nmap_channel=FakeChannel(),
-                no_validate=True,
+                writer=writer,
+                reader=reader,
+                max_age_days=7,
+                force_days=0,
+                batch_verify_fn=_fake_batch_verify,
             )
-            r4 = phase4.run()
+            real.run()
+
+        dns_step = FakeBatchStep("domain_verify", BatchResult(success_count=1))
+        dns_step._run_fn = dns_run_fn
+
+        port_step = FakeBatchStep("port_scan", BatchResult(success_count=1))
+
+        phase4 = VerifyScanPhase(
+            ips=[ip],
+            context=ctx,
+            steps=[dns_step, port_step],
+        )
+        r4 = phase4.run()
 
         assert r4.success is True
         verify_data = reader.get_channel_data(ip, "domain_verify")

@@ -4,10 +4,10 @@ import logging
 import os
 import time
 
-from ip_info.pipeline.context import PipelineContext
-from ip_info.pipeline.phase import PhaseResult
-from ip_info.processors.classifier.runner import BatchClassifier
-from ip_info.processors.tagger.runner import BatchTagger
+from ip_info.batch.core.query import BatchResult
+from ip_info.pipeline.core.batch_step import BatchStep
+from ip_info.pipeline.core.context import PipelineContext
+from ip_info.pipeline.core.phase import PhaseResult
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +17,8 @@ class ClassifyTagPhase:
         self,
         ips: list[str],
         context: PipelineContext,
+        classify_step: BatchStep | None = None,
+        tagger_step: BatchStep | None = None,
         rules_dir: str = "",
         tagger_config_dir: str = "",
         output_dir: str = "",
@@ -36,6 +38,30 @@ class ClassifyTagPhase:
         self._no_tagger = no_tagger
         self._tagger_level = tagger_level
 
+        self._classify_step = classify_step
+        self._tagger_step = tagger_step
+
+        if self._classify_step is None and rules_dir:
+            from ip_info.processors.classifier.runner import BatchClassifier
+
+            self._classify_step = BatchClassifier(
+                ips=ips,
+                writer=self._writer,
+                reader=self._reader,
+                rules_dir=rules_dir,
+            )
+
+        if self._tagger_step is None and not no_tagger and tagger_config_dir:
+            from ip_info.processors.tagger.runner import BatchTagger
+
+            self._tagger_step = BatchTagger(
+                ips=ips,
+                writer=self._writer,
+                reader=self._reader,
+                config_dir=tagger_config_dir,
+                level=tagger_level,
+            )
+
     @property
     def name(self) -> str:
         return "分类与标签"
@@ -46,27 +72,12 @@ class ClassifyTagPhase:
         if not self._ips:
             return PhaseResult(success=True, message="无 IP 需分类", elapsed=time.time() - start_time)
 
-        # 分类
-        classifier = BatchClassifier(
-            ips=self._ips,
-            writer=self._writer,
-            reader=self._reader,
-            rules_dir=self._rules_dir,
-        )
-        classify_result = classifier.run()
+        classify_result = self._classify_step.run() if self._classify_step else BatchResult()
         logger.info("分类完成: %d 成功, %d 跳过", classify_result.success_count, classify_result.skip_count)
 
-        # 标签打标
         tagger_result = None
-        if not self._no_tagger:
-            tagger = BatchTagger(
-                ips=self._ips,
-                writer=self._writer,
-                reader=self._reader,
-                config_dir=self._tagger_config_dir,
-                level=self._tagger_level,
-            )
-            tagger_result = tagger.run()
+        if self._tagger_step:
+            tagger_result = self._tagger_step.run()
             logger.info("标签完成: %d 成功, %d 跳过", tagger_result.success_count, tagger_result.skip_count)
 
         elapsed = time.time() - start_time

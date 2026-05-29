@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import logging
 
-from ip_info.pipeline.context import PipelineContext
-from ip_info.pipeline.pipeline import FilterFn, Pipeline
+from ip_info.pipeline.core.context import PipelineContext
+from ip_info.pipeline.core.filter_ips import filter_dynamic_ips
+from ip_info.pipeline.core.pipeline import FilterFn, Pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +16,6 @@ class PipelineBuilder:
         self._phases: list = []
         self._channels: dict = {}
         self._skip_channels: set[str] = set()
-        self._skip_dynamic: bool = False
         self._filters: list[tuple[str, FilterFn]] = []
 
     @property
@@ -45,7 +45,14 @@ class PipelineBuilder:
         return self
 
     def skip_dynamic_ips(self) -> PipelineBuilder:
-        self._skip_dynamic = True
+        def _filter_dynamic_ips_for_pipeline(ips, context):
+            dynamic_list, non_dynamic_list = filter_dynamic_ips(ips, context.reader)
+            if context.config is None:
+                context.config = {}
+            context.config["dynamic_ips"] = set(dynamic_list)
+            return non_dynamic_list
+
+        self._filters.append(("分类与标签", _filter_dynamic_ips_for_pipeline))
         return self
 
     def get_channel(self, name: str):

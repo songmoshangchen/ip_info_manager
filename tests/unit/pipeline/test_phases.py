@@ -1,18 +1,40 @@
-from unittest.mock import MagicMock, patch
-
 from ip_info.batch.core.query import BatchResult
 from ip_info.channel.adapter import BaseChannelAdapter
-from ip_info.pipeline.context import PipelineContext
-from ip_info.pipeline.phase import Phase
-from ip_info.pipeline.phases.phase1_basic import BasicCollectPhase
-from ip_info.pipeline.phases.phase2_classify import ClassifyTagPhase
-from ip_info.pipeline.phases.phase3_deep import DeepQueryPhase
-from ip_info.pipeline.phases.phase4_verify_scan import VerifyScanPhase
+from ip_info.pipeline.core.context import PipelineContext
+from ip_info.pipeline.core.phase import Phase
+from ip_info.pipeline.trace_steps.phase1_basic import BasicCollectPhase
+from ip_info.pipeline.trace_steps.phase2_classify import ClassifyTagPhase
+from ip_info.pipeline.trace_steps.phase3_deep import DeepQueryPhase
+from ip_info.pipeline.trace_steps.phase4_verify_scan import VerifyScanPhase
 from ip_info.store.in_memory import InMemoryIPReader, InMemoryIPWriter
 from ip_info.utils.progress import InMemoryProgressTracker
 
-RULES_DIR = "config/classifier"
-TAGGER_CONFIG_DIR = "config/ip_tagger"
+
+class FakeBatchStep:
+    def __init__(
+        self,
+        name: str,
+        result: BatchResult | None = None,
+        writer=None,
+        channel_name: str = "",
+    ):
+        self._name = name
+        self._result = result or BatchResult(success_count=1)
+        self._writer = writer
+        self._channel_name = channel_name or name
+        self._run_fn = None
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def run(self) -> BatchResult:
+        if self._run_fn:
+            self._run_fn()
+            return self._result
+        if self._writer:
+            self._writer.add_or_update_ip("1.2.3.4", self._channel_name, {"data": "test"})
+        return self._result
 
 
 class FakeChannel(BaseChannelAdapter):
@@ -36,42 +58,6 @@ class FakeChannel(BaseChannelAdapter):
         result = self._parse(raw, ip)
         result.setdefault("query_time", "2024-01-01T00:00:00")
         return result
-
-
-def _create_dns_mock(writer, ips):
-    mock = MagicMock()
-
-    def fake_run():
-        for ip in ips:
-            writer.add_or_update_ip(ip, "domain_verify", {"ip": ip, "verified": True})
-        return BatchResult(success_count=len(ips))
-
-    mock.run = fake_run
-    return mock
-
-
-def _create_classifier_mock(writer, ips):
-    mock = MagicMock()
-
-    def fake_run():
-        for ip in ips:
-            writer.add_or_update_ip(ip, "classifier", {"ip": ip, "category": "test"})
-        return BatchResult(success_count=len(ips))
-
-    mock.run = fake_run
-    return mock
-
-
-def _create_tagger_mock(writer, ips):
-    mock = MagicMock()
-
-    def fake_run():
-        for ip in ips:
-            writer.add_or_update_ip(ip, "tagger", {"ip": ip, "tags": ["test"]})
-        return BatchResult(success_count=len(ips))
-
-    mock.run = fake_run
-    return mock
 
 
 def _make_context(writer=None, reader=None, tracker=None, domain_cache=None):
@@ -332,31 +318,32 @@ class TestDeepQueryPhase:
 
 
 class TestVerifyScanPhase:
-    def _make_phase(self, ips=None, writer=None, reader=None, nmap_channel=None, **kwargs):
-        w = writer or InMemoryIPWriter()
-        r = reader or InMemoryIPReader(data=w._store)
-        ctx = _make_context(
-            writer=w,
-            reader=r,
-            domain_cache=kwargs.pop("domain_cache", None),
-        )
-        return VerifyScanPhase(
-            ips=ips if ips is not None else ["1.1.1.1", "2.2.2.2"],
-            context=ctx,
-            nmap_channel=nmap_channel or FakeChannel(),
-            **kwargs,
-        )
-
-    @patch("ip_info.pipeline.phases.phase4_verify_scan.BatchDnsVerify")
-    def test_dns_and_nmap_run_in_parallel(self, MockBatchDnsVerify):
+    def test_dns_and_nmap_run_in_parallel(self):
         writer = InMemoryIPWriter()
         reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
         ips = ["1.1.1.1", "2.2.2.2"]
 
-        MockBatchDnsVerify.side_effect = lambda *a, **kw: _create_dns_mock(writer, kw.get("ips", []))
+        dns_step = FakeBatchStep("domain_verify", BatchResult(success_count=len(ips)))
+        dns_step._run_fn = lambda: [
+            writer.add_or_update_ip(
+                ip,
+                "domain_verify",
+                {
+                    "ip": ip,
+                    "matched": 1,
+                    "changed": 0,
+                    "unresolved": 0,
+                    "results": [{"domain": "example.com", "verify_time": "2024-01-01T00:00:00"}],
+                },
+            )
+            for ip in ips
+        ]
 
-        nmap_channel = FakeChannel(response={"ports": [80, 443]})
-        phase = self._make_phase(ips=ips, writer=writer, nmap_channel=nmap_channel, no_validate=True)
+        port_step = FakeBatchStep("port_scan", BatchResult(success_count=len(ips)))
+        port_step._run_fn = lambda: [writer.add_or_update_ip(ip, "port_scan", {"ports": [80, 443]}) for ip in ips]
+
+        phase = VerifyScanPhase(ips=ips, context=ctx, steps=[dns_step, port_step])
         result = phase.run()
 
         assert result.success is True
@@ -365,78 +352,146 @@ class TestVerifyScanPhase:
             assert reader.get_channel_data(ip, "port_scan") is not None
 
     def test_empty_ip_list(self):
-        phase = self._make_phase(ips=[])
+        writer = InMemoryIPWriter()
+        reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
+
+        phase = VerifyScanPhase(ips=[], context=ctx, steps=[FakeBatchStep("domain_verify")])
         result = phase.run()
 
         assert result.success is True
         assert result.message == "无 IP 需验证/扫描"
 
-    @patch("ip_info.pipeline.phases.phase4_verify_scan.BatchDnsVerify")
-    def test_no_domain_cache(self, MockBatchDnsVerify):
+    def test_no_domain_cache(self):
         writer = InMemoryIPWriter()
         reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader, domain_cache=None)
+        ips = ["1.1.1.1"]
 
-        MockBatchDnsVerify.side_effect = lambda *a, **kw: _create_dns_mock(writer, kw.get("ips", []))
+        dns_step = FakeBatchStep("domain_verify", BatchResult(success_count=1))
+        dns_step._run_fn = lambda: [
+            writer.add_or_update_ip(
+                ip,
+                "domain_verify",
+                {
+                    "ip": ip,
+                    "matched": 1,
+                    "changed": 0,
+                    "unresolved": 0,
+                    "results": [{"domain": "example.com", "verify_time": "2024-01-01T00:00:00"}],
+                },
+            )
+            for ip in ips
+        ]
 
-        phase = self._make_phase(ips=["1.1.1.1"], writer=writer, domain_cache=None, no_validate=True)
+        phase = VerifyScanPhase(ips=ips, context=ctx, steps=[dns_step])
         phase.run()
 
         assert reader.get_channel_data("1.1.1.1", "domain_verify") is not None
 
     def test_phase_protocol(self):
-        phase = self._make_phase(ips=[])
-        assert isinstance(phase, Phase)
-
-    @patch("ip_info.pipeline.phases.phase4_verify_scan.BatchDnsVerify")
-    def test_delay_auto_passed(self, MockBatchDnsVerify):
         writer = InMemoryIPWriter()
         reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
 
-        MockBatchDnsVerify.side_effect = lambda *a, **kw: _create_dns_mock(writer, kw.get("ips", []))
+        phase = VerifyScanPhase(ips=[], context=ctx, steps=[FakeBatchStep("domain_verify")])
+        assert isinstance(phase, Phase)
 
-        nmap_channel = FakeChannel(default_delay=0.5, response={"ports": [80]})
-        phase = self._make_phase(ips=["1.1.1.1"], writer=writer, nmap_channel=nmap_channel, no_validate=True)
+    def test_delay_auto_passed(self):
+        writer = InMemoryIPWriter()
+        reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
+        ips = ["1.1.1.1"]
+
+        dns_step = FakeBatchStep("domain_verify", BatchResult(success_count=1))
+        dns_step._run_fn = lambda: [
+            writer.add_or_update_ip(
+                ip,
+                "domain_verify",
+                {
+                    "ip": ip,
+                    "matched": 1,
+                    "changed": 0,
+                    "unresolved": 0,
+                    "results": [{"domain": "example.com", "verify_time": "2024-01-01T00:00:00"}],
+                },
+            )
+            for ip in ips
+        ]
+
+        port_step = FakeBatchStep("port_scan", BatchResult(success_count=1))
+        port_step._run_fn = lambda: [writer.add_or_update_ip(ip, "port_scan", {"ports": [80]}) for ip in ips]
+
+        phase = VerifyScanPhase(ips=ips, context=ctx, steps=[dns_step, port_step])
         result = phase.run()
 
         assert result.success is True
         assert reader.get_channel_data("1.1.1.1", "port_scan") is not None
 
-    @patch("ip_info.pipeline.phases.phase4_verify_scan.BatchDnsVerify")
-    def test_progress_tracker_passed(self, MockBatchDnsVerify):
+    def test_progress_tracker_passed(self):
         writer = InMemoryIPWriter()
         tracker = InMemoryProgressTracker()
         ctx = _make_context(writer=writer, tracker=tracker)
+        ips = ["1.1.1.1"]
 
-        MockBatchDnsVerify.side_effect = lambda *a, **kw: _create_dns_mock(writer, kw.get("ips", []))
+        dns_step = FakeBatchStep("domain_verify", BatchResult(success_count=1))
+        dns_step._run_fn = lambda: [
+            writer.add_or_update_ip(
+                ip,
+                "domain_verify",
+                {
+                    "ip": ip,
+                    "matched": 1,
+                    "changed": 0,
+                    "unresolved": 0,
+                    "results": [{"domain": "example.com", "verify_time": "2024-01-01T00:00:00"}],
+                },
+            )
+            for ip in ips
+        ]
 
-        nmap_channel = FakeChannel()
-        phase = VerifyScanPhase(
-            ips=["1.1.1.1"],
-            context=ctx,
-            nmap_channel=nmap_channel,
-            no_validate=True,
-        )
+        port_step = FakeBatchStep("port_scan", BatchResult(success_count=1))
+        port_step._run_fn = lambda: [
+            (
+                writer.add_or_update_ip(ip, "port_scan", {"ports": [80]}),
+                tracker.mark_processed(ip, "port_scan"),
+            )
+            for ip in ips
+        ]
+
+        phase = VerifyScanPhase(ips=ips, context=ctx, steps=[dns_step, port_step])
         phase.run()
 
         assert tracker.is_processed("1.1.1.1", "port_scan")
 
-    @patch("ip_info.pipeline.phases.phase4_verify_scan.BatchDnsVerify")
-    def test_skip_ips_excludes_from_port_scan_only(self, MockBatchDnsVerify):
+    def test_skip_ips_excludes_from_port_scan_only(self):
         writer = InMemoryIPWriter()
         reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
         ips = ["1.1.1.1", "2.2.2.2", "3.3.3.3"]
         skip = {"2.2.2.2", "3.3.3.3"}
+        scan_ips = [ip for ip in ips if ip not in skip]
 
-        MockBatchDnsVerify.side_effect = lambda *a, **kw: _create_dns_mock(writer, kw.get("ips", []))
+        dns_step = FakeBatchStep("domain_verify", BatchResult(success_count=len(ips)))
+        dns_step._run_fn = lambda: [
+            writer.add_or_update_ip(
+                ip,
+                "domain_verify",
+                {
+                    "ip": ip,
+                    "matched": 1,
+                    "changed": 0,
+                    "unresolved": 0,
+                    "results": [{"domain": "example.com", "verify_time": "2024-01-01T00:00:00"}],
+                },
+            )
+            for ip in ips
+        ]
 
-        nmap_channel = FakeChannel()
-        phase = self._make_phase(
-            ips=ips,
-            writer=writer,
-            nmap_channel=nmap_channel,
-            no_validate=True,
-            skip_ips=skip,
-        )
+        port_step = FakeBatchStep("port_scan", BatchResult(success_count=len(scan_ips)))
+        port_step._run_fn = lambda: [writer.add_or_update_ip(ip, "port_scan", {"ports": [80, 443]}) for ip in scan_ips]
+
+        phase = VerifyScanPhase(ips=ips, context=ctx, steps=[dns_step, port_step], skip_ips=skip)
         result = phase.run()
 
         assert result.success is True
@@ -447,22 +502,34 @@ class TestVerifyScanPhase:
         assert reader.get_channel_data("2.2.2.2", "port_scan") is None
         assert reader.get_channel_data("3.3.3.3", "port_scan") is None
 
-    @patch("ip_info.pipeline.phases.phase4_verify_scan.BatchDnsVerify")
-    def test_skip_ips_logs_count(self, MockBatchDnsVerify, caplog):
+    def test_skip_ips_logs_count(self, caplog):
         writer = InMemoryIPWriter()
+        reader = InMemoryIPReader(data=writer._store)
+        ctx = _make_context(writer=writer, reader=reader)
         ips = ["1.1.1.1", "2.2.2.2", "3.3.3.3"]
         skip = {"2.2.2.2", "3.3.3.3"}
+        scan_ips = [ip for ip in ips if ip not in skip]
 
-        MockBatchDnsVerify.side_effect = lambda *a, **kw: _create_dns_mock(writer, kw.get("ips", []))
+        dns_step = FakeBatchStep("domain_verify", BatchResult(success_count=len(ips)))
+        dns_step._run_fn = lambda: [
+            writer.add_or_update_ip(
+                ip,
+                "domain_verify",
+                {
+                    "ip": ip,
+                    "matched": 1,
+                    "changed": 0,
+                    "unresolved": 0,
+                    "results": [{"domain": "example.com", "verify_time": "2024-01-01T00:00:00"}],
+                },
+            )
+            for ip in ips
+        ]
 
-        nmap_channel = FakeChannel()
-        phase = self._make_phase(
-            ips=ips,
-            writer=writer,
-            nmap_channel=nmap_channel,
-            no_validate=True,
-            skip_ips=skip,
-        )
+        port_step = FakeBatchStep("port_scan", BatchResult(success_count=len(scan_ips)))
+        port_step._run_fn = lambda: [writer.add_or_update_ip(ip, "port_scan", {"ports": [80, 443]}) for ip in scan_ips]
+
+        phase = VerifyScanPhase(ips=ips, context=ctx, steps=[dns_step, port_step], skip_ips=skip)
 
         with caplog.at_level("INFO"):
             phase.run()
@@ -703,20 +770,27 @@ class TestClassifyTagPhase:
         reader = InMemoryIPReader(data=writer._store)
         ctx = _make_context(writer=writer, reader=reader)
 
-        with (
-            patch("ip_info.pipeline.phases.phase2_classify.BatchClassifier") as MockClassifier,
-            patch("ip_info.pipeline.phases.phase2_classify.BatchTagger") as MockTagger,
-        ):
-            MockClassifier.return_value = _create_classifier_mock(writer, ips)
-            MockTagger.return_value = _create_tagger_mock(writer, ips)
-
-            phase = ClassifyTagPhase(
-                ips=ips,
-                context=ctx,
-                rules_dir=RULES_DIR,
-                tagger_config_dir=TAGGER_CONFIG_DIR,
+        classify_step = FakeBatchStep("classifier", BatchResult(success_count=len(ips)))
+        classify_step._run_fn = lambda: [
+            writer.add_or_update_ip(
+                ip,
+                "classifier",
+                {
+                    "ip": ip,
+                    "category": "cloud_provider",
+                    "label": "Cloud",
+                    "need_deep_query": True,
+                    "matched_by": [],
+                },
             )
-            result = phase.run()
+            for ip in ips
+        ]
+
+        tagger_step = FakeBatchStep("tagger", BatchResult(success_count=len(ips)))
+        tagger_step._run_fn = lambda: [writer.add_or_update_ip(ip, "tagger", {"tags": ["cloud"]}) for ip in ips]
+
+        phase = ClassifyTagPhase(ips=ips, context=ctx, classify_step=classify_step, tagger_step=tagger_step)
+        result = phase.run()
 
         assert result.success is True
         assert "分类" in result.message
@@ -731,20 +805,30 @@ class TestClassifyTagPhase:
         reader = InMemoryIPReader(data=writer._store)
         ctx = _make_context(writer=writer, reader=reader)
 
-        with (
-            patch("ip_info.pipeline.phases.phase2_classify.BatchClassifier") as MockClassifier,
-            patch("ip_info.pipeline.phases.phase2_classify.BatchTagger"),
-        ):
-            MockClassifier.return_value = _create_classifier_mock(writer, ips)
-
-            phase = ClassifyTagPhase(
-                ips=ips,
-                context=ctx,
-                rules_dir=RULES_DIR,
-                tagger_config_dir=TAGGER_CONFIG_DIR,
-                no_tagger=True,
+        classify_step = FakeBatchStep("classifier", BatchResult(success_count=len(ips)))
+        classify_step._run_fn = lambda: [
+            writer.add_or_update_ip(
+                ip,
+                "classifier",
+                {
+                    "ip": ip,
+                    "category": "cloud_provider",
+                    "label": "Cloud",
+                    "need_deep_query": True,
+                    "matched_by": [],
+                },
             )
-            result = phase.run()
+            for ip in ips
+        ]
+
+        phase = ClassifyTagPhase(
+            ips=ips,
+            context=ctx,
+            classify_step=classify_step,
+            tagger_step=None,
+            no_tagger=True,
+        )
+        result = phase.run()
 
         assert result.success is True
         for ip in ips:
@@ -757,17 +841,11 @@ class TestClassifyTagPhase:
         reader = InMemoryIPReader(data=writer._store)
         ctx = _make_context(writer=writer, reader=reader)
 
-        with (
-            patch("ip_info.pipeline.phases.phase2_classify.BatchClassifier"),
-            patch("ip_info.pipeline.phases.phase2_classify.BatchTagger"),
-        ):
-            phase = ClassifyTagPhase(
-                ips=[],
-                context=ctx,
-                rules_dir=RULES_DIR,
-                tagger_config_dir=TAGGER_CONFIG_DIR,
-            )
-            result = phase.run()
+        classify_step = FakeBatchStep("classifier")
+        tagger_step = FakeBatchStep("tagger")
+
+        phase = ClassifyTagPhase(ips=[], context=ctx, classify_step=classify_step, tagger_step=tagger_step)
+        result = phase.run()
 
         assert result.success is True
         assert result.message == "无 IP 需分类"
@@ -781,8 +859,8 @@ class TestClassifyTagPhase:
         phase = ClassifyTagPhase(
             ips=["1.2.3.4"],
             context=ctx,
-            rules_dir=RULES_DIR,
-            tagger_config_dir=TAGGER_CONFIG_DIR,
+            classify_step=FakeBatchStep("classifier"),
+            tagger_step=FakeBatchStep("tagger"),
         )
 
         assert isinstance(phase, Phase)

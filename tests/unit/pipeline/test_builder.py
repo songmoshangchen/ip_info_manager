@@ -1,9 +1,9 @@
 from ip_info.channel.adapter import BaseChannelAdapter
-from ip_info.pipeline.builder import PipelineBuilder
-from ip_info.pipeline.context import PipelineContext
-from ip_info.pipeline.phases.phase1_basic import BasicCollectPhase
-from ip_info.pipeline.phases.phase3_deep import DeepQueryPhase
-from ip_info.pipeline.pipeline import Pipeline, PipelineResult
+from ip_info.pipeline.core.builder import PipelineBuilder
+from ip_info.pipeline.core.context import PipelineContext
+from ip_info.pipeline.core.pipeline import Pipeline, PipelineResult
+from ip_info.pipeline.trace_steps.phase1_basic import BasicCollectPhase
+from ip_info.pipeline.trace_steps.phase3_deep import DeepQueryPhase
 from ip_info.store.in_memory import InMemoryIPReader, InMemoryIPWriter
 from ip_info.utils.progress import InMemoryProgressTracker
 
@@ -195,3 +195,40 @@ class TestWithFilter:
         pipeline = builder.build()
         assert "分类与标签" in pipeline._filters
         assert len(pipeline._filters["分类与标签"]) == 1
+
+
+class TestSkipDynamicIps:
+    def test_skip_dynamic_ips_registers_filter(self):
+        ctx = _make_context()
+        builder = PipelineBuilder(ctx).with_ips(["1.2.3.4"])
+        builder.skip_dynamic_ips()
+        assert len(builder._filters) == 1
+        phase_name, filter_fn = builder._filters[0]
+        assert phase_name == "分类与标签"
+
+    def test_skip_dynamic_ips_not_called_no_filter(self):
+        ctx = _make_context()
+        builder = PipelineBuilder(ctx).with_ips(["1.2.3.4"])
+        assert len(builder._filters) == 0
+
+    def test_skip_dynamic_ips_filter_returns_non_dynamic(self):
+        ctx = _make_context()
+        builder = PipelineBuilder(ctx).with_ips(["1.2.3.4"])
+        builder.skip_dynamic_ips()
+        _, filter_fn = builder._filters[0]
+
+        ctx.writer.add_or_update_ip(
+            "1.2.3.4",
+            "classifier",
+            {
+                "ip": "1.2.3.4",
+                "category": "residential",
+                "label": "Dynamic",
+                "need_deep_query": True,
+                "matched_by": [{"field": "ptr", "pattern": "dhcp-pool.isp.com"}],
+            },
+        )
+
+        result_ips = filter_fn(["1.2.3.4"], ctx)
+        assert result_ips == ["1.2.3.4"]
+        assert "dynamic_ips" in ctx.config

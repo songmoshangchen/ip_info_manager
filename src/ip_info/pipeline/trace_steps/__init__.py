@@ -1,0 +1,4 @@
+from ip_info.pipeline.trace_steps.phase1_basic import BasicCollectPhase as BasicCollectPhase
+from ip_info.pipeline.trace_steps.phase2_classify import ClassifyTagPhase as ClassifyTagPhase
+from ip_info.pipeline.trace_steps.phase3_deep import DeepQueryPhase as DeepQueryPhase
+from ip_info.pipeline.trace_steps.phase4_verify_scan import VerifyScanPhase as VerifyScanPhase

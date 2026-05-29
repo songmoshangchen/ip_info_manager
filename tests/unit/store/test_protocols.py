@@ -5,6 +5,9 @@ class StubWriter:
     def add_or_update_ip(self, ip: str, channel: str, data: dict) -> bool:
         return True
 
+    def add_or_update_ip_batch(self, updates: list[tuple[str, str, dict]]) -> int:
+        return len(updates)
+
     def delete_ip(self, ip: str) -> bool:
         return True
 

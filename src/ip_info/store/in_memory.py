@@ -36,6 +36,15 @@ class InMemoryIPWriter:
         self._store[ip][channel] = data
         return True
 
+    def add_or_update_ip_batch(self, updates: list[tuple[str, str, dict]]) -> int:
+        if not updates:
+            return 0
+        for ip, channel, data in updates:
+            if ip not in self._store:
+                self._store[ip] = {"ip": ip}
+            self._store[ip][channel] = data
+        return len(updates)
+
     def delete_ip(self, ip: str) -> bool:
         if ip in self._store:
             del self._store[ip]

@@ -1,9 +1,11 @@
 """Phase 1-4 完整运行脚本。
 
-用法: python scripts/run_pipeline.py <ip_file> <output_dir> [--skip channel1,channel2] [--no-skip-dynamic]
+用法: python scripts/run_pipeline.py <ip_file> <output_dir>
+      [--skip channel1,channel2] [--no-skip-dynamic] [--only-phase N]
 例:   python scripts/run_pipeline.py data/0518-0524/ips.txt data/0518-0524
       python scripts/run_pipeline.py data/0518-0524/ips.txt data/0518-0524 --skip aizhan,fofa_host,port_scan
       python scripts/run_pipeline.py data/0518-0524/ips.txt data/0518-0524 --no-skip-dynamic
+      python scripts/run_pipeline.py data/0518-0524/ips.txt data/0518-0524 --only-phase 2
 """
 
 import argparse
@@ -23,41 +25,10 @@ logging.basicConfig(
 logger = logging.getLogger("pipeline")
 
 
-def _try_channel(name):
-    """尝试初始化渠道，失败返回 None。"""
-    try:
-        if name == "aizhan":
-            from ip_info.channel.aizhan import AizhanChannel
-
-            return AizhanChannel()
-        elif name == "fofa":
-            from ip_info.channel.fofa_host import FofaHostChannel
-
-            return FofaHostChannel()
-    except Exception:
-        return None
-    return None
-
-
 def filter_by_classification_for_pipeline(ips, context):
-    """Pipeline filter: 根据分类结果过滤 IP，返回需要深度查询的 IP。"""
-    from ip_info.pipeline.filter_ips import filter_ips_by_classification
+    from ip_info.pipeline.core.filter_ips import filter_ips_by_classification
 
     return filter_ips_by_classification(ips, context.reader)
-
-
-def filter_dynamic_ips_for_pipeline(ips, context):
-    """Pipeline filter: 识别动态 IP，存储到 context，返回非动态 IP。
-
-    动态 IP 会被写入 context.config['dynamic_ips'] 以便后续 Phase 使用。
-    """
-    from ip_info.pipeline.filter_ips import filter_dynamic_ips
-
-    dynamic_list, non_dynamic_list = filter_dynamic_ips(ips, context.reader)
-    if context.config is None:
-        context.config = {}
-    context.config["dynamic_ips"] = set(dynamic_list)
-    return non_dynamic_list
 
 
 def main():
@@ -65,9 +36,10 @@ def main():
     from ip_info.channel.ipinfo_api import IpinfoApiChannel
     from ip_info.channel.port_scan import PortScanChannel
     from ip_info.channel.rdns_ptr import RdnsPtrChannel
-    from ip_info.pipeline.builder import PipelineBuilder
-    from ip_info.pipeline.context import PipelineContext
-    from ip_info.pipeline.phases import (
+    from ip_info.pipeline.core.batch_factory import BatchFactory
+    from ip_info.pipeline.core.builder import PipelineBuilder
+    from ip_info.pipeline.core.context import PipelineContext
+    from ip_info.pipeline.trace_steps import (
         BasicCollectPhase,
         ClassifyTagPhase,
         DeepQueryPhase,
@@ -83,11 +55,16 @@ def main():
     parser.add_argument("output_dir", help="输出目录")
     parser.add_argument("--skip", default="", help="跳过的渠道，逗号分隔 (如: aizhan,fofa_host,port_scan)")
     parser.add_argument("--no-skip-dynamic", action="store_true", help="强制对动态 IP 也执行深度查询")
+    parser.add_argument("--only-phase", type=int, default=None, help="只执行指定阶段 (1-4)")
     args = parser.parse_args()
 
     skip_names = {s.strip() for s in args.skip.split(",") if s.strip()}
     if skip_names:
         logger.info("将跳过渠道: %s", ", ".join(sorted(skip_names)))
+
+    if args.only_phase is not None and args.only_phase not in {1, 2, 3, 4}:
+        logger.error("--only-phase 必须为 1-4 的整数")
+        sys.exit(1)
 
     ip_file = args.ip_file
     output_dir = args.output_dir
@@ -102,14 +79,12 @@ def main():
 
     start = time.time()
 
-    # 加载 IP
     ips = load_ips(ip_file)
     logger.info("加载 IP: %d 个 (文件: %s)", len(ips), ip_file)
     if not ips:
         logger.error("无有效 IP，退出")
         sys.exit(1)
 
-    # 初始化存储
     writer = IPWriter(storage_file)
     reader = IPReader(storage_file)
     domain_cache = SqliteDomainCache(domain_cache_db)
@@ -121,29 +96,28 @@ def main():
         domain_cache=domain_cache,
     )
 
-    # 初始化渠道
     ipinfo_ch = IpinfoApiChannel()
     rdns_ch = RdnsPtrChannel()
-    aizhan_ch = _try_channel("aizhan")
-    fofa_ch = _try_channel("fofa")
+    aizhan_step = BatchFactory.try_create(
+        "aizhan",
+        ips=ips,
+        writer=writer,
+        progress_tracker=progress_tracker,
+        workers=1,
+    )
+    fofa_step = BatchFactory.try_create(
+        "fofa_host",
+        ips=ips,
+        writer=writer,
+        progress_tracker=progress_tracker,
+        workers=2,
+    )
     chinaz_ch = ChinazChannel()
     nmap_ch = PortScanChannel()
 
-    # 使用 PipelineBuilder 构建流水线
     builder = PipelineBuilder(ctx)
     builder.with_ips(ips)
-    builder.with_channel("ipinfo_api", ipinfo_ch)
-    builder.with_channel("rdns_ptr", rdns_ch)
-    builder.with_channel("aizhan", aizhan_ch or chinaz_ch)
-    builder.with_channel("chinaz", chinaz_ch)
-    builder.with_channel("fofa_host", fofa_ch or chinaz_ch)
-    builder.with_channel("port_scan", nmap_ch)
 
-    # 跳过指定渠道
-    for name in skip_names:
-        builder.skip_channel(name)
-
-    # 注册 Phase 1: 基础情报采集
     builder.add_phase(
         BasicCollectPhase(
             ips=ips,
@@ -155,7 +129,6 @@ def main():
         )
     )
 
-    # 注册 Phase 2: 分类 + 标签
     prefix = os.path.splitext(os.path.basename(storage_file))[0]
     builder.add_phase(
         ClassifyTagPhase(
@@ -168,32 +141,42 @@ def main():
         )
     )
 
-    # 注册过滤器: 分类后过滤 IP
     builder.with_filter("分类与标签", filter_by_classification_for_pipeline)
 
-    # 注册过滤器: 识别动态 IP (除非 --no-skip-dynamic)
     if not args.no_skip_dynamic:
-        builder.with_filter("分类与标签", filter_dynamic_ips_for_pipeline)
+        builder.skip_dynamic_ips()
 
-    # 注册 Phase 3: 深度查询
+    from ip_info.pipeline.core.channel_batch_step import ChannelBatchStep
+
+    deep_steps = []
+    if aizhan_step and "aizhan" not in skip_names:
+        deep_steps.append(aizhan_step)
+    if "chinaz" not in skip_names:
+        deep_steps.append(
+            ChannelBatchStep(
+                channel_name="chinaz",
+                channel=chinaz_ch,
+                ips=ips,
+                writer=writer,
+                workers=2,
+                progress_tracker=progress_tracker,
+            )
+        )
+    if fofa_step and "fofa_host" not in skip_names:
+        deep_steps.append(fofa_step)
+
     builder.add_phase(
         DeepQueryPhase(
             ips=ips,
-            aizhan_channel=aizhan_ch or chinaz_ch,
-            chinaz_channel=chinaz_ch,
-            fofa_channel=fofa_ch or chinaz_ch,
             context=ctx,
-            aizhan_workers=1,
-            chinaz_workers=2,
-            fofa_workers=2,
+            steps=deep_steps,
         )
     )
 
-    # 注册 Phase 4: 验证 + Nmap 扫描
     builder.add_phase(
         VerifyScanPhase(
             ips=ips,
-            nmap_channel=nmap_ch,
+            nmap_channel=nmap_ch if "port_scan" not in skip_names else None,
             context=ctx,
             max_age_days=7,
             dns_timeout=3.0,
@@ -202,11 +185,13 @@ def main():
         )
     )
 
-    # 构建并运行流水线
     pipeline = builder.build()
-    result = pipeline.run()
 
-    # 生成溯源判断 Excel
+    if args.only_phase is not None:
+        result = pipeline.run(only_phase=args.only_phase)
+    else:
+        result = pipeline.run()
+
     if result.success:
         from ip_info.export.trace_judge_excel import generate_trace_judge_excel
 
@@ -223,7 +208,6 @@ def main():
         else:
             logger.warning("溯源判断 Excel 生成失败")
 
-    # 汇总
     total = time.time() - start
     logger.info("=" * 60)
     logger.info("全流程完成! 总耗时: %.1fs", total)

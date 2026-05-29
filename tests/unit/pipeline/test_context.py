@@ -1,4 +1,4 @@
-from ip_info.pipeline.context import PipelineContext
+from ip_info.pipeline.core.context import PipelineContext
 from ip_info.store.in_memory import InMemoryDomainCache, InMemoryIPReader, InMemoryIPWriter
 from ip_info.utils.progress import InMemoryProgressTracker
 

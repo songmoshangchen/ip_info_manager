@@ -3,7 +3,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable
 
-from ip_info.pipeline.phase import Phase, PhaseResult
+from ip_info.pipeline.core.phase import Phase, PhaseResult
 
 logger = logging.getLogger(__name__)
 

@@ -1,4 +1,4 @@
-from ip_info.pipeline.filter_ips import filter_dynamic_ips, filter_ips_by_classification
+from ip_info.pipeline.core.filter_ips import filter_dynamic_ips, filter_ips_by_classification
 from ip_info.store.in_memory import InMemoryIPReader, InMemoryIPWriter
 
 
