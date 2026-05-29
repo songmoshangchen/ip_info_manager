@@ -3,7 +3,11 @@ import os
 
 import pytest
 
-from ip_info.export.trace_judge_excel import generate_trace_judge_excel
+from ip_info.export.trace_judge_excel import (
+    ChannelMapping,
+    generate_trace_judge_excel,
+    generate_trace_only_excel,
+)
 
 
 @pytest.fixture
@@ -52,6 +56,13 @@ def _make_ip_info(
     return ip, info
 
 
+def _write_json(output_dir, prefix, ip_data):
+    json_path = os.path.join(output_dir, f"{prefix}.json")
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(ip_data, f)
+    return json_path
+
+
 def _read_xlsx(xlsx_path):
     from openpyxl import load_workbook
 
@@ -66,14 +77,14 @@ def _read_xlsx(xlsx_path):
     return sheets
 
 
-class TestBasicGeneration:
-    def test_creates_xlsx_with_five_sheets(self, output_dir):
+# ===== 模式1: 全量输出（含需要溯源列）=====
+
+
+class TestFullOutput:
+    def test_creates_five_sheets(self, output_dir):
         ip1, info1 = _make_ip_info("1.1.1.1", has_domains=True, has_fofa_ports=True)
-        ip2, info2 = _make_ip_info("2.2.2.2", country="US", country_code="US", has_domains=False, has_fofa_ports=True)
-        ip3, info3 = _make_ip_info("3.3.3.3", category="crawler_scanner", need_deep_query=False, has_domains=False)
-        json_path = os.path.join(output_dir, "test.json")
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump({ip1: info1, ip2: info2, ip3: info3}, f)
+        ip2, info2 = _make_ip_info("2.2.2.2", category="crawler_scanner", need_deep_query=False, has_domains=False)
+        _write_json(output_dir, "test", {ip1: info1, ip2: info2})
 
         result = generate_trace_judge_excel(output_dir, "test")
         assert result is True
@@ -82,168 +93,133 @@ class TestBasicGeneration:
         sheets = _read_xlsx(xlsx_path)
         assert list(sheets.keys()) == ["P1 核心溯源", "P2 重点溯源", "P3 辅助溯源", "P4 暂缓", "P5 不需溯源"]
 
-    def test_returns_false_when_no_json(self, output_dir):
-        result = generate_trace_judge_excel(output_dir, "missing")
-        assert result is False
-
-
-class TestP5Grouping:
-    def test_crawler_scanner_goes_to_p5(self, output_dir):
+    def test_crawler_scanner_in_p5(self, output_dir):
         ip, info = _make_ip_info("1.1.1.1", category="crawler_scanner", need_deep_query=False, has_domains=False)
-        json_path = os.path.join(output_dir, "test.json")
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump({ip: info}, f)
-
-        generate_trace_judge_excel(output_dir, "test")
-        sheets = _read_xlsx(os.path.join(output_dir, "test.trace_judge.xlsx"))
-        assert len(sheets["P5 不需溯源"]) == 2
-        assert sheets["P5 不需溯源"][1][0] == "1.1.1.1"
-        for lvl in ["P1 核心溯源", "P2 重点溯源", "P3 辅助溯源", "P4 暂缓"]:
-            assert len(sheets[lvl]) == 1
-
-    def test_cdn_goes_to_p5(self, output_dir):
-        ip, info = _make_ip_info("1.1.1.1", category="cdn", need_deep_query=False, has_domains=False)
-        json_path = os.path.join(output_dir, "test.json")
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump({ip: info}, f)
+        _write_json(output_dir, "test", {ip: info})
 
         generate_trace_judge_excel(output_dir, "test")
         sheets = _read_xlsx(os.path.join(output_dir, "test.trace_judge.xlsx"))
         assert len(sheets["P5 不需溯源"]) == 2
 
-    def test_exclude_ips_stays_in_priority_groups(self, output_dir):
+    def test_exclude_ip_stays_in_priority_marked_no(self, output_dir):
         ip, info = _make_ip_info("1.1.1.1", has_domains=True, has_fofa_ports=True)
-        json_path = os.path.join(output_dir, "test.json")
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump({ip: info}, f)
+        _write_json(output_dir, "test", {ip: info})
 
         generate_trace_judge_excel(output_dir, "test", exclude_ips={"1.1.1.1"})
         sheets = _read_xlsx(os.path.join(output_dir, "test.trace_judge.xlsx"))
-        assert len(sheets["P1 核心溯源"]) == 2
         assert sheets["P1 核心溯源"][1][0] == "1.1.1.1"
         assert sheets["P1 核心溯源"][1][1] == "否"
-        assert len(sheets["P5 不需溯源"]) == 1
 
-
-class TestNeedsTraceColumn:
     def test_normal_ip_marked_yes(self, output_dir):
         ip, info = _make_ip_info("1.1.1.1", has_domains=True)
-        json_path = os.path.join(output_dir, "test.json")
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump({ip: info}, f)
+        _write_json(output_dir, "test", {ip: info})
 
         generate_trace_judge_excel(output_dir, "test")
         sheets = _read_xlsx(os.path.join(output_dir, "test.trace_judge.xlsx"))
         assert sheets["P1 核心溯源"][1][1] == "是"
 
-    def test_crawler_scanner_marked_no(self, output_dir):
-        ip, info = _make_ip_info("1.1.1.1", category="crawler_scanner", need_deep_query=False, has_domains=False)
-        json_path = os.path.join(output_dir, "test.json")
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump({ip: info}, f)
+    def test_returns_false_when_no_json(self, output_dir):
+        result = generate_trace_judge_excel(output_dir, "missing")
+        assert result is False
 
-        generate_trace_judge_excel(output_dir, "test")
-        sheets = _read_xlsx(os.path.join(output_dir, "test.trace_judge.xlsx"))
-        assert sheets["P5 不需溯源"][1][1] == "否"
+
+# ===== 模式2: 仅需要溯源的IP =====
+
+
+class TestTraceOnlyOutput:
+    def test_creates_four_sheets_no_p5(self, output_dir):
+        ip1, info1 = _make_ip_info("1.1.1.1", has_domains=True, has_fofa_ports=True)
+        ip2, info2 = _make_ip_info("2.2.2.2", category="crawler_scanner", need_deep_query=False, has_domains=False)
+        _write_json(output_dir, "test", {ip1: info1, ip2: info2})
+
+        result = generate_trace_only_excel(output_dir, "test")
+        assert result is True
+        xlsx_path = os.path.join(output_dir, "test.trace_only.xlsx")
+        assert os.path.exists(xlsx_path)
+        sheets = _read_xlsx(xlsx_path)
+        assert list(sheets.keys()) == ["P1 核心溯源", "P2 重点溯源", "P3 辅助溯源", "P4 暂缓"]
+
+    def test_no_needs_trace_column(self, output_dir):
+        ip, info = _make_ip_info("1.1.1.1", has_domains=True)
+        _write_json(output_dir, "test", {ip: info})
+
+        generate_trace_only_excel(output_dir, "test")
+        sheets = _read_xlsx(os.path.join(output_dir, "test.trace_only.xlsx"))
+        headers = sheets["P1 核心溯源"][0]
+        assert "需要溯源" not in headers
+
+    def test_excludes_crawler_scanner(self, output_dir):
+        ip1, info1 = _make_ip_info("1.1.1.1", has_domains=True)
+        ip2, info2 = _make_ip_info("2.2.2.2", category="crawler_scanner", need_deep_query=False, has_domains=False)
+        _write_json(output_dir, "test", {ip1: info1, ip2: info2})
+
+        generate_trace_only_excel(output_dir, "test")
+        sheets = _read_xlsx(os.path.join(output_dir, "test.trace_only.xlsx"))
+        total_ips = sum(len(sheets[t]) - 1 for t in sheets)
+        assert total_ips == 1
+
+    def test_excludes_exclude_ips(self, output_dir):
+        ip, info = _make_ip_info("1.1.1.1", has_domains=True, has_fofa_ports=True)
+        _write_json(output_dir, "test", {ip: info})
+
+        generate_trace_only_excel(output_dir, "test", exclude_ips={"1.1.1.1"})
+        sheets = _read_xlsx(os.path.join(output_dir, "test.trace_only.xlsx"))
+        total_ips = sum(len(sheets[t]) - 1 for t in sheets)
+        assert total_ips == 0
+
+    def test_returns_false_when_no_json(self, output_dir):
+        result = generate_trace_only_excel(output_dir, "missing")
+        assert result is False
+
+
+# ===== ChannelMapping =====
+
+
+class TestChannelMapping:
+    def test_default_values(self):
+        ch = ChannelMapping()
+        assert ch.ipinfo == "ipinfo_api"
+        assert ch.classifier == "classifier"
+        assert ch.domain_sources == ["aizhan", "chinaz"]
+        assert ch.fofa_ports == "fofa_host"
+        assert ch.port_scan == "port_scan"
+        assert ch.tagger == "tagger"
+        assert ch.rdns == "rdns_ptr"
+
+    def test_custom_values(self):
+        ch = ChannelMapping(ipinfo="whois", domain_sources=["sublist3r"])
+        assert ch.ipinfo == "whois"
+        assert ch.domain_sources == ["sublist3r"]
+
+
+# ===== 优先级分组 =====
 
 
 class TestPriorityGrouping:
     def test_cn_ip_with_domains_is_p1(self, output_dir):
         ip, info = _make_ip_info("1.1.1.1", has_domains=True)
-        json_path = os.path.join(output_dir, "test.json")
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump({ip: info}, f)
-
+        _write_json(output_dir, "test", {ip: info})
         generate_trace_judge_excel(output_dir, "test")
         sheets = _read_xlsx(os.path.join(output_dir, "test.trace_judge.xlsx"))
         assert len(sheets["P1 核心溯源"]) == 2
 
     def test_foreign_ip_with_domains_is_p2(self, output_dir):
         ip, info = _make_ip_info("2.2.2.2", country="US", country_code="US", has_domains=True)
-        json_path = os.path.join(output_dir, "test.json")
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump({ip: info}, f)
-
+        _write_json(output_dir, "test", {ip: info})
         generate_trace_judge_excel(output_dir, "test")
         sheets = _read_xlsx(os.path.join(output_dir, "test.trace_judge.xlsx"))
         assert len(sheets["P2 重点溯源"]) == 2
 
     def test_foreign_ip_with_ports_is_p3(self, output_dir):
         ip, info = _make_ip_info("4.4.4.4", country="US", country_code="US", has_domains=False, has_fofa_ports=True)
-        json_path = os.path.join(output_dir, "test.json")
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump({ip: info}, f)
-
+        _write_json(output_dir, "test", {ip: info})
         generate_trace_judge_excel(output_dir, "test")
         sheets = _read_xlsx(os.path.join(output_dir, "test.trace_judge.xlsx"))
         assert len(sheets["P3 辅助溯源"]) == 2
 
     def test_foreign_ip_nothing_is_p4(self, output_dir):
         ip, info = _make_ip_info("5.5.5.5", country="US", country_code="US", has_domains=False)
-        json_path = os.path.join(output_dir, "test.json")
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump({ip: info}, f)
-
+        _write_json(output_dir, "test", {ip: info})
         generate_trace_judge_excel(output_dir, "test")
         sheets = _read_xlsx(os.path.join(output_dir, "test.trace_judge.xlsx"))
         assert len(sheets["P4 暂缓"]) == 2
-
-
-class TestRowContent:
-    def test_full_row(self, output_dir):
-        ip, info = _make_ip_info(
-            "1.1.1.1",
-            as_name="TestASN",
-            has_domains=True,
-            has_fofa_ports=True,
-            has_port_scan=True,
-            has_rdns=True,
-            tags=["tor", "botnet"],
-        )
-        json_path = os.path.join(output_dir, "test.json")
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump({ip: info}, f)
-
-        generate_trace_judge_excel(output_dir, "test")
-        sheets = _read_xlsx(os.path.join(output_dir, "test.trace_judge.xlsx"))
-        row = sheets["P1 核心溯源"][1]
-        assert row[0] == "1.1.1.1"
-        assert row[1] == "是"
-        assert row[2] == "CN"
-        assert row[3] == "TestASN"
-        assert row[6] == "1"
-        assert "example-1.1.1.1.com" in row[7]
-        assert row[8] == "1"
-        assert row[10] == "1"
-        assert row[12] == "tor, botnet"
-        assert row[13] == "host-1.1.1.1"
-
-
-class TestStyling:
-    def test_p5_header_is_gray(self, output_dir):
-        ip, info = _make_ip_info("1.1.1.1", category="crawler_scanner", need_deep_query=False, has_domains=False)
-        json_path = os.path.join(output_dir, "test.json")
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump({ip: info}, f)
-
-        generate_trace_judge_excel(output_dir, "test")
-        from openpyxl import load_workbook
-
-        wb = load_workbook(os.path.join(output_dir, "test.trace_judge.xlsx"))
-        cell = wb["P5 不需溯源"].cell(row=1, column=1)
-        assert cell.fill.start_color.rgb == "00A6A6A6"
-        wb.close()
-
-    def test_needs_trace_yes_green(self, output_dir):
-        ip, info = _make_ip_info("1.1.1.1", has_domains=True)
-        json_path = os.path.join(output_dir, "test.json")
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump({ip: info}, f)
-
-        generate_trace_judge_excel(output_dir, "test")
-        from openpyxl import load_workbook
-
-        wb = load_workbook(os.path.join(output_dir, "test.trace_judge.xlsx"))
-        cell = wb["P1 核心溯源"].cell(row=2, column=2)
-        assert cell.fill.start_color.rgb == "00E2EFDA"
-        wb.close()

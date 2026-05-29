@@ -156,12 +156,15 @@ def main():
     )
 
     # 注册 Phase 2: 分类 + 标签
+    prefix = os.path.splitext(os.path.basename(storage_file))[0]
     builder.add_phase(
         ClassifyTagPhase(
             ips=ips,
             context=ctx,
             rules_dir=rules_dir,
             tagger_config_dir=tagger_config_dir,
+            output_dir=output_dir,
+            prefix=prefix,
         )
     )
 
@@ -207,7 +210,6 @@ def main():
     if result.success:
         from ip_info.export.trace_judge_excel import generate_trace_judge_excel
 
-        prefix = os.path.splitext(os.path.basename(storage_file))[0]
         exclude_ips_path = os.path.join(output_dir, "exclude_ips.txt")
         exclude_ips = None
         if os.path.exists(exclude_ips_path):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 
 from ip_info.pipeline.context import PipelineContext
@@ -18,6 +19,8 @@ class ClassifyTagPhase:
         context: PipelineContext,
         rules_dir: str = "",
         tagger_config_dir: str = "",
+        output_dir: str = "",
+        prefix: str = "",
         *,
         no_tagger: bool = False,
         tagger_level: int | None = None,
@@ -28,6 +31,8 @@ class ClassifyTagPhase:
         self._reader = context.reader
         self._rules_dir = rules_dir
         self._tagger_config_dir = tagger_config_dir
+        self._output_dir = output_dir
+        self._prefix = prefix
         self._no_tagger = no_tagger
         self._tagger_level = tagger_level
 
@@ -67,6 +72,20 @@ class ClassifyTagPhase:
         elapsed = time.time() - start_time
         classify_ok = classify_result.success_count
         tagger_ok = tagger_result.success_count if tagger_result else 0
+
+        if self._output_dir and self._prefix and self._rules_dir:
+            from ip_info.export.rdns_classify_excel import export_unclassified_rdns
+
+            unclassified_count = export_unclassified_rdns(
+                reader=self._reader,
+                output_dir=self._output_dir,
+                prefix=self._prefix,
+                rules_dir=self._rules_dir,
+            )
+            if unclassified_count > 0:
+                excel_path = os.path.join(self._output_dir, f"{self._prefix}.unclassified_rdns.xlsx")
+                logger.info("还有 %d 个未处理 RDNS，报表位于 %s，请处理", unclassified_count, excel_path)
+
         return PhaseResult(
             success=True,
             message=f"分类: {classify_ok}成功, 标签: {tagger_ok}成功",
