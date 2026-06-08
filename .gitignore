@@ -21,3 +21,4 @@ custom_rules.json
 .pytest_cache/
 .pytest_cache2/
 issues/
+.trae/handoff.md

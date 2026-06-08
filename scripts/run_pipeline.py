@@ -32,9 +32,7 @@ def filter_by_classification_for_pipeline(ips, context):
 
 
 def main():
-    from ip_info.channel.chinaz import ChinazChannel
     from ip_info.channel.ipinfo_api import IpinfoApiChannel
-    from ip_info.channel.port_scan import PortScanChannel
     from ip_info.channel.rdns_ptr import RdnsPtrChannel
     from ip_info.pipeline.core.batch_factory import BatchFactory
     from ip_info.pipeline.core.builder import PipelineBuilder
@@ -42,8 +40,6 @@ def main():
     from ip_info.pipeline.trace_steps import (
         BasicCollectPhase,
         ClassifyTagPhase,
-        DeepQueryPhase,
-        VerifyScanPhase,
     )
     from ip_info.store.json_store import IPReader, IPWriter
     from ip_info.store.sqlite_cache import SqliteDomainCache
@@ -59,6 +55,28 @@ def main():
     args = parser.parse_args()
 
     skip_names = {s.strip() for s in args.skip.split(",") if s.strip()}
+
+    # 按需导入有外部依赖的渠道（避免 skip 时仍触发 ImportError）
+    chinaz_ch = None
+    if "chinaz" not in skip_names:
+        from ip_info.channel.chinaz import ChinazChannel
+
+        chinaz_ch = ChinazChannel()
+
+    nmap_ch = None
+    if "port_scan" not in skip_names:
+        try:
+            from ip_info.channel.port_scan import PortScanChannel
+
+            nmap_ch = PortScanChannel()
+        except ImportError:
+            logger.warning("python-nmap 未安装，跳过端口扫描渠道")
+
+    if args.only_phase is None or args.only_phase >= 3:
+        from ip_info.pipeline.trace_steps import DeepQueryPhase
+
+    if args.only_phase is None or args.only_phase >= 4:
+        from ip_info.pipeline.trace_steps import VerifyScanPhase
     if skip_names:
         logger.info("将跳过渠道: %s", ", ".join(sorted(skip_names)))
 
@@ -112,8 +130,7 @@ def main():
         progress_tracker=progress_tracker,
         workers=2,
     )
-    chinaz_ch = ChinazChannel()
-    nmap_ch = PortScanChannel()
+    # chinaz_ch 和 nmap_ch 已在上方按需创建
 
     builder = PipelineBuilder(ctx)
     builder.with_ips(ips)
@@ -215,9 +232,12 @@ def main():
     logger.info("域名缓存: %s", domain_cache_db)
 
     all_ips = reader.list_all_ips()
+    channel_counts: dict[str, int] = {}
     for ip in all_ips:
-        channels = reader.list_ip_channels(ip)
-        logger.info("  %s: %s", ip, channels)
+        for ch in reader.list_ip_channels(ip):
+            channel_counts[ch] = channel_counts.get(ch, 0) + 1
+    parts = [f"{ch}: {cnt}" for ch, cnt in sorted(channel_counts.items())]
+    logger.info("IP 统计: %d 总计 | %s", len(all_ips), " | ".join(parts))
 
 
 if __name__ == "__main__":
