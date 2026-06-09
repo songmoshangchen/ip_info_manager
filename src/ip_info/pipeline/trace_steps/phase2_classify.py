@@ -45,11 +45,13 @@ class ClassifyTagPhase:
         if self._classify_step is None and rules_dir:
             from ip_info.processors.classifier.runner import BatchClassifier
 
+            custom_path = os.path.join(rules_dir, "custom_rules.json")
             self._classify_step = BatchClassifier(
                 ips=ips,
                 writer=self._writer,
                 reader=self._reader,
                 rules_dir=rules_dir,
+                custom_rules_path=custom_path if os.path.exists(custom_path) else None,
             )
 
         if self._tagger_step is None and not no_tagger and tagger_config_dir:
