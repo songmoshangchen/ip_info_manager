@@ -60,7 +60,9 @@ def run_concurrent(
             done,
             pending,
         )
-        return BatchResult(fail_count=len(pending_ips), skip_count=skip_count)
+        return BatchResult(
+            fail_count=0, skip_count=skip_count + len(pending_ips), stopped_early=True, stop_reason="disabled"
+        )
 
     # 单线程退化
     if workers <= 1:

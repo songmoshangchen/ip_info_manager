@@ -609,7 +609,7 @@ class TestBasicCollectPhase:
         )
         result = phase.run()
 
-        assert result.success is False
+        assert result.success is False  # 渠道验证失败 → stopped_early → success=False
 
     def test_phase_protocol_conformance(self):
         writer = InMemoryIPWriter()

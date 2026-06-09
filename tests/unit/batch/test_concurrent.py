@@ -353,7 +353,10 @@ class TestRunConcurrentDependencyCheck:
                 no_validate=True,
             )
         assert result.success_count == 0
-        assert result.fail_count == 2
+        assert result.fail_count == 0
+        assert result.skip_count == 2
+        assert result.stopped_early is True
+        assert result.stop_reason == "disabled"
         assert len(writer.writes) == 0
         assert "渠道已禁用" in caplog.text
 
@@ -369,7 +372,9 @@ class TestRunConcurrentDependencyCheck:
                 no_validate=True,
             )
         assert result.success_count == 0
-        assert result.fail_count == 3
+        assert result.fail_count == 0
+        assert result.skip_count == 3
+        assert result.stopped_early is True
         assert any("共 3 个 IP" in r.message and "剩余 3 未查询" in r.message for r in caplog.records)
 
     def test_disabled_channel_logs_pending_count_with_tracker(self, caplog):
@@ -386,9 +391,10 @@ class TestRunConcurrentDependencyCheck:
                 no_validate=True,
                 progress_tracker=tracker,
             )
-        # 1 个已跳过，2 个待查询
-        assert result.skip_count == 1
-        assert result.fail_count == 2
+        # 1 个已跳过(progress)，2 个待查询(但渠道禁用也归入 skip)
+        assert result.skip_count == 3
+        assert result.fail_count == 0
+        assert result.stopped_early is True
         assert any(
             "共 3 个 IP" in r.message and "已有结果 1" in r.message and "剩余 2 未查询" in r.message
             for r in caplog.records

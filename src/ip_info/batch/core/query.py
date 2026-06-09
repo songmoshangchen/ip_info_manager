@@ -90,9 +90,11 @@ class BaseBatchQuery:
             )
             total_elapsed = time.time() - start_time
             return BatchResult(
-                fail_count=len(self._pending_ips),
-                skip_count=skip_count,
+                fail_count=0,
+                skip_count=skip_count + len(self._pending_ips),
                 total_elapsed=total_elapsed,
+                stopped_early=True,
+                stop_reason="disabled",
             )
 
         for idx, ip in enumerate(self._pending_ips, start=1):

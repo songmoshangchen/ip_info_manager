@@ -111,14 +111,17 @@ class DeepQueryPhase:
                 step_name = futures[future]
                 results[step_name] = future.result()
 
+        total_fail = sum(r.fail_count for r in results.values())
         total_success = sum(r.success_count for r in results.values())
-        any_success = total_success > 0
+        any_stopped = any(r.stopped_early for r in results.values())
+        # 无失败即成功；渠道禁用(stopped_early)但其他渠道有成功也算成功
+        success = total_fail == 0 and (not any_stopped or total_success > 0)
         elapsed = time.time() - start_time
 
         parts = [f"{name}: {r.success_count}成功" for name, r in results.items()]
 
         return PhaseResult(
-            success=any_success,
+            success=success,
             message=", ".join(parts),
             elapsed=elapsed,
             data=results,
