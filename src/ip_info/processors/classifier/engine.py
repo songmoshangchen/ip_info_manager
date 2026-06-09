@@ -59,7 +59,7 @@ class IPClassifier:
             "label": "其他",
             "description": "未匹配任何已知规则",
             "matched_by": [],
-            "need_deep_query": False,
+            "need_deep_query": True,
             "classify_time": datetime.now().isoformat(),
         }
 

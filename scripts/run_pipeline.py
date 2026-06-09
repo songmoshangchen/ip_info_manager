@@ -175,7 +175,7 @@ def main():
                 channel=chinaz_ch,
                 ips=ips,
                 writer=writer,
-                workers=2,
+                workers=1,
                 progress_tracker=progress_tracker,
             )
         )
