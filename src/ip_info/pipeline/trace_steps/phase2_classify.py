@@ -8,6 +8,7 @@ from ip_info.batch.core.query import BatchResult
 from ip_info.pipeline.core.batch_step import BatchStep
 from ip_info.pipeline.core.context import PipelineContext
 from ip_info.pipeline.core.phase import PhaseResult
+from ip_info.processors.tagger.update_check import check_tagger_update_status, format_update_warning
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +78,14 @@ class ClassifyTagPhase:
 
         tagger_result = None
         if self._tagger_step:
+            # 检查标签数据源更新状态
+            if self._tagger_config_dir:
+                update_status = check_tagger_update_status(self._tagger_config_dir)
+                if update_status["status"] != "up_to_date":
+                    warning = format_update_warning(update_status)
+                    # 使用 print 而非 logger，确保醒目显示
+                    print(warning)
+
             tagger_result = self._tagger_step.run()
             logger.info("标签完成: %d 成功, %d 跳过", tagger_result.success_count, tagger_result.skip_count)
 
