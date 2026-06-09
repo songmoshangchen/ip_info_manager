@@ -18,6 +18,11 @@ debug_*.py
 custom_rules.json
 .last_update
 .update_status.json
+# 下载的 IP 标签源（通过 ip_tagger_updater.py 更新）
+config/ip_tagger/*.ipset
+config/ip_tagger/*.netset
+# 保留自定义维护的文件
+!config/ip_tagger/yinhu.ipset
 *.egg-info/
 .pytest_cache/
 .pytest_cache2/
