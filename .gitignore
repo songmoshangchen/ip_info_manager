@@ -17,6 +17,7 @@ debug_*.py
 .trae/skills/
 custom_rules.json
 .last_update
+.update_status.json
 *.egg-info/
 .pytest_cache/
 .pytest_cache2/

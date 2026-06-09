@@ -1,11 +1,14 @@
 """IP 标签源更新工具 — 支持 GitHub 下载、Git 克隆、本地压缩包导入。
 
 用法:
-  python scripts/ip_tagger_updater.py                          # 从 GitHub 逐文件下载
+  python scripts/ip_tagger_updater.py                          # 从 GitHub 逐文件下载全部
   python scripts/ip_tagger_updater.py --from-git               # git clone 整个仓库（推荐）
   python scripts/ip_tagger_updater.py --from-archive ./blocklist-ipsets-main.zip  # 从本地压缩包导入
+  python scripts/ip_tagger_updater.py --source tor_exits spamhaus_drop  # 仅更新指定源（按文件名）
+  python scripts/ip_tagger_updater.py --source bds_atif        # 仅更新 Artillery 威胁
   python scripts/ip_tagger_updater.py --dry-run                # 仅检查
   python scripts/ip_tagger_updater.py --force                  # 强制更新
+  python scripts/ip_tagger_updater.py --status                 # 查看各源更新状态
 """
 
 import argparse
@@ -18,6 +21,7 @@ import sys
 import tempfile
 import time
 import zipfile
+from datetime import datetime
 
 import requests
 
@@ -37,6 +41,8 @@ REQUEST_HEADERS = {
 GITHUB_DELAY = 1
 FIREHOL_REPO_URL = "https://github.com/firehol/blocklist-ipsets.git"
 
+STATUS_FILE = ".update_status.json"
+
 
 def load_manifest(manifest_path: str) -> list[dict]:
     if not os.path.exists(manifest_path):
@@ -45,6 +51,56 @@ def load_manifest(manifest_path: str) -> list[dict]:
 
     with open(manifest_path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def load_update_status(config_dir: str) -> dict:
+    """加载每个源的更新状态。
+
+    Returns:
+        dict: {filename: {"updated_at": "YYYY-MM-DD HH:MM", "status": "success"|"failed", "size": int}}
+    """
+    status_path = os.path.join(config_dir, STATUS_FILE)
+    if not os.path.exists(status_path):
+        return {}
+    with open(status_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_update_status(config_dir: str, status: dict) -> None:
+    """保存每个源的更新状态。"""
+    status_path = os.path.join(config_dir, STATUS_FILE)
+    with open(status_path, "w", encoding="utf-8") as f:
+        json.dump(status, f, ensure_ascii=False, indent=2)
+
+
+def record_source_status(
+    update_status: dict,
+    filename: str,
+    status: str,
+    size: int = 0,
+    reason: str = "",
+) -> None:
+    """记录单个源的更新状态。"""
+    update_status[filename] = {
+        "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "status": status,
+        "size": size,
+    }
+    if reason:
+        update_status[filename]["reason"] = reason
+
+
+def filter_manifest_by_sources(manifest: list[dict], source_names: list[str]) -> list[dict]:
+    """按文件名或标签名筛选 manifest 条目。"""
+    result = []
+    for item in manifest:
+        filename = item["file"]
+        label = item["label"]
+        # 支持按文件名（不含扩展名）或完整文件名匹配
+        name_without_ext = os.path.splitext(filename)[0]
+        if filename in source_names or name_without_ext in source_names or label in source_names:
+            result.append(item)
+    return result
 
 
 def check_remote_file(url: str) -> dict | None:
@@ -103,16 +159,39 @@ def download_file(url: str, dest_path: str) -> bool:
     return False
 
 
-def update_sources(config_dir: str, manifest: list[dict], dry_run: bool = False, force: bool = False):
+def update_sources(
+    config_dir: str,
+    manifest: list[dict],
+    dry_run: bool = False,
+    force: bool = False,
+    source_names: list[str] | None = None,
+):
     updatable = [item for item in manifest if item.get("source_url")]
-    skipped = [item for item in manifest if not item.get("source_url")]
+    skipped_custom = [item for item in manifest if not item.get("source_url")]
 
-    logger.info("共 %d 个标签源，%d 个可自动更新，%d 个自定义", len(manifest), len(updatable), len(skipped))
+    # 按 --source 筛选
+    if source_names:
+        updatable = filter_manifest_by_sources(updatable, source_names)
+        not_found = (
+            set(source_names) - {item["file"] for item in updatable}
+            | set(source_names) - {os.path.splitext(item["file"])[0] for item in updatable}
+            | set(source_names) - {item["label"] for item in updatable}
+        )
+        if not_found:
+            logger.warning("以下源未在 manifest 中找到: %s", ", ".join(not_found))
 
-    for item in skipped:
+    logger.info(
+        "共 %d 个标签源，%d 个可自动更新，%d 个自定义",
+        len(manifest),
+        len(updatable),
+        len(skipped_custom),
+    )
+
+    for item in skipped_custom:
         logger.info("跳过（自定义）: %s (%s)", item["label"], item["file"])
 
     results = {"updated": [], "skipped": [], "failed": [], "new": []}
+    update_status = load_update_status(config_dir)
 
     for idx, item in enumerate(updatable):
         label = item["label"]
@@ -126,6 +205,7 @@ def update_sources(config_dir: str, manifest: list[dict], dry_run: bool = False,
         if remote_info is None:
             logger.error("  无法获取远程文件信息，跳过")
             results["failed"].append({"label": label, "file": filename, "reason": "HEAD请求失败"})
+            record_source_status(update_status, filename, "failed", reason="HEAD请求失败")
             continue
 
         remote_size = remote_info["content_length"]
@@ -135,6 +215,8 @@ def update_sources(config_dir: str, manifest: list[dict], dry_run: bool = False,
             if local_size == remote_size and remote_size > 0:
                 logger.info("  文件已是最新 (本地: %d B, 远程: %d B)", local_size, remote_size)
                 results["skipped"].append({"label": label, "file": filename})
+                # 更新状态为 skipped（文件未变）
+                record_source_status(update_status, filename, "skipped", size=local_size)
                 continue
 
         if not os.path.exists(dest_path):
@@ -152,20 +234,36 @@ def update_sources(config_dir: str, manifest: list[dict], dry_run: bool = False,
             success = download_file(url, dest_path)
             if success:
                 results["updated"].append({"label": label, "file": filename})
+                local_size = os.path.getsize(dest_path)
+                record_source_status(update_status, filename, "success", size=local_size)
             else:
                 results["failed"].append({"label": label, "file": filename, "reason": "下载失败"})
+                record_source_status(update_status, filename, "failed", reason="下载失败")
 
         if idx < len(updatable) - 1:
             time.sleep(GITHUB_DELAY)
 
+    if not dry_run:
+        save_update_status(config_dir, update_status)
+
     return results
 
 
-def import_from_directory(source_dir: str, config_dir: str, manifest: list[dict]):
+def import_from_directory(
+    config_dir: str,
+    manifest: list[dict],
+    source_dir: str,
+    source_names: list[str] | None = None,
+):
     logger.info("从本地目录导入: %s", source_dir)
 
     updatable = [item for item in manifest if item.get("source_url")]
+
+    if source_names:
+        updatable = filter_manifest_by_sources(updatable, source_names)
+
     results = {"updated": [], "skipped": [], "failed": [], "new": []}
+    update_status = load_update_status(config_dir)
 
     for item in updatable:
         filename = item["file"]
@@ -184,6 +282,7 @@ def import_from_directory(source_dir: str, config_dir: str, manifest: list[dict]
             if local_size == src_size:
                 logger.info("  跳过（相同）: %s (%s)", label, filename)
                 results["skipped"].append({"label": label, "file": filename})
+                record_source_status(update_status, filename, "skipped", size=local_size)
                 continue
 
         logger.info("  复制: %s (%s)", label, filename)
@@ -191,15 +290,23 @@ def import_from_directory(source_dir: str, config_dir: str, manifest: list[dict]
         size_kb = os.path.getsize(dest_path) / 1024
         logger.info("  完成: %.1f KB", size_kb)
 
+        local_size = os.path.getsize(dest_path)
         if not os.path.exists(os.path.join(config_dir, filename)):
             results["new"].append({"label": label, "file": filename})
         else:
             results["updated"].append({"label": label, "file": filename})
+        record_source_status(update_status, filename, "success", size=local_size)
 
+    save_update_status(config_dir, update_status)
     return results
 
 
-def import_from_archive(archive_path: str, config_dir: str, manifest: list[dict]):
+def import_from_archive(
+    archive_path: str,
+    config_dir: str,
+    manifest: list[dict],
+    source_names: list[str] | None = None,
+):
     logger.info("从压缩包导入: %s", archive_path)
 
     if not os.path.exists(archive_path):
@@ -217,10 +324,15 @@ def import_from_archive(archive_path: str, config_dir: str, manifest: list[dict]
             extracted_root = os.path.join(tmp_dir, top_items[0])
 
         logger.info("解压根目录: %s", extracted_root)
-        return import_from_directory(extracted_root, config_dir, manifest)
+        return import_from_directory(config_dir, manifest, extracted_root, source_names)
 
 
-def import_from_git(config_dir: str, manifest: list[dict], repo_url: str = FIREHOL_REPO_URL):
+def import_from_git(
+    config_dir: str,
+    manifest: list[dict],
+    repo_url: str = FIREHOL_REPO_URL,
+    source_names: list[str] | None = None,
+):
     logger.info("从 Git 仓库克隆: %s", repo_url)
 
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -245,7 +357,7 @@ def import_from_git(config_dir: str, manifest: list[dict], repo_url: str = FIREH
             logger.error("git clone 超时（5分钟）")
             sys.exit(1)
 
-        return import_from_directory(repo_dir, config_dir, manifest)
+        return import_from_directory(config_dir, manifest, repo_dir, source_names)
 
 
 def print_summary(results: dict, dry_run: bool = False, source: str = ""):
@@ -264,17 +376,61 @@ def print_summary(results: dict, dry_run: bool = False, source: str = ""):
             print(f"    - {item['label']} ({item['file']}): {reason}")
 
 
+def print_status(config_dir: str, manifest: list[dict]):
+    """打印各源的更新状态。"""
+    update_status = load_update_status(config_dir)
+
+    updatable = [item for item in manifest if item.get("source_url")]
+    custom = [item for item in manifest if not item.get("source_url")]
+
+    print(f"\n标签源更新状态 (共 {len(updatable)} 个自动更新源, {len(custom)} 个自定义源):")
+    print("-" * 80)
+    print(f"{'标签':<20} {'文件名':<30} {'状态':<10} {'更新时间':<18} {'大小':>8}")
+    print("-" * 80)
+
+    for item in updatable:
+        filename = item["file"]
+        label = item["label"]
+        info = update_status.get(filename, {})
+        status = info.get("status", "未更新")
+        updated_at = info.get("updated_at", "-")
+        size = info.get("size", 0)
+        size_str = f"{size / 1024:.1f}KB" if size else "-"
+        print(f"{label:<20} {filename:<30} {status:<10} {updated_at:<18} {size_str:>8}")
+
+    if custom:
+        print("-" * 80)
+        for item in custom:
+            print(f"{item['label']:<20} {item['file']:<30} {'自定义':<10} {'-':<18} {'-':>8}")
+
+    print("-" * 80)
+
+    # 检查整体更新状态
+    now = datetime.now()
+    current_month = f"{now.year}-{now.month:02d}"
+    updated_this_month = sum(
+        1
+        for info in update_status.values()
+        if info.get("updated_at", "").startswith(current_month) and info.get("status") == "success"
+    )
+    total = len(updatable)
+    print(f"\n本月已更新: {updated_this_month}/{total} 个源")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="IP 标签源更新工具 — 支持 GitHub 下载、Git 克隆、本地压缩包导入",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 使用示例:
-  python scripts/ip_tagger_updater.py                          # 从 GitHub 逐文件下载
+  python scripts/ip_tagger_updater.py                          # 从 GitHub 逐文件下载全部
   python scripts/ip_tagger_updater.py --from-git               # git clone 整个仓库（推荐）
   python scripts/ip_tagger_updater.py --from-archive ./blocklist-ipsets-main.zip  # 从本地压缩包导入
+  python scripts/ip_tagger_updater.py --source tor_exits spamhaus_drop  # 仅更新指定源（按文件名）
+  python scripts/ip_tagger_updater.py --source bds_atif        # 仅更新 Artillery 威胁
   python scripts/ip_tagger_updater.py --dry-run                # 仅检查
   python scripts/ip_tagger_updater.py --force                  # 强制更新
+  python scripts/ip_tagger_updater.py --status                 # 查看各源更新状态
         """,
     )
 
@@ -292,8 +448,19 @@ def main():
         help="从本地 ZIP 压缩包导入（支持 GitHub 下载的 zip）",
     )
 
+    parser.add_argument(
+        "--source",
+        nargs="+",
+        metavar="SOURCE",
+        help="仅更新指定源（按文件名或标签名，支持多个）",
+    )
     parser.add_argument("--dry-run", action="store_true", help="仅检查更新，不实际下载")
     parser.add_argument("--force", action="store_true", help="强制更新所有文件（跳过缓存检查）")
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="查看各源更新状态",
+    )
     parser.add_argument(
         "--config-dir",
         default=None,
@@ -314,13 +481,17 @@ def main():
 
     manifest = load_manifest(manifest_path)
 
+    if args.status:
+        print_status(config_dir, manifest)
+        return
+
     if args.from_git:
         logger.info("模式: Git 克隆")
         if args.dry_run:
             logger.info("[DRY-RUN] 将执行 git clone + 导入")
             print("[DRY-RUN] 将执行 git clone + 导入")
             return
-        results = import_from_git(config_dir, manifest)
+        results = import_from_git(config_dir, manifest, source_names=args.source)
         print_summary(results, source="git clone")
     elif args.from_archive:
         logger.info("模式: 本地压缩包 (%s)", args.from_archive)
@@ -328,23 +499,23 @@ def main():
             logger.info("[DRY-RUN] 将从 %s 导入", args.from_archive)
             print(f"[DRY-RUN] 将从 {args.from_archive} 导入")
             return
-        results = import_from_archive(args.from_archive, config_dir, manifest)
+        results = import_from_archive(args.from_archive, config_dir, manifest, source_names=args.source)
         print_summary(results, source=f"压缩包: {os.path.basename(args.from_archive)}")
     else:
         if args.dry_run:
             logger.info("模式: DRY-RUN（仅检查）")
         if args.force:
             logger.info("模式: 强制更新")
-        results = update_sources(config_dir, manifest, dry_run=args.dry_run, force=args.force)
+        if args.source:
+            logger.info("指定源: %s", ", ".join(args.source))
+        results = update_sources(
+            config_dir,
+            manifest,
+            dry_run=args.dry_run,
+            force=args.force,
+            source_names=args.source,
+        )
         print_summary(results, dry_run=args.dry_run, source="GitHub 下载")
-
-    if not args.dry_run and results.get("failed") is not None and len(results.get("failed", [])) == 0:
-        now = time.localtime()
-        current_month = f"{now.tm_year}-{now.tm_mon:02d}"
-        marker_path = os.path.join(config_dir, ".last_update")
-        with open(marker_path, "w", encoding="utf-8") as f:
-            f.write(current_month)
-        logger.info("已更新标记: %s", current_month)
 
 
 if __name__ == "__main__":
