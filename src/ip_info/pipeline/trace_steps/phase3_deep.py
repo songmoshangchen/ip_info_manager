@@ -69,7 +69,11 @@ class DeepQueryPhase:
         start_time = time.time()
 
         if not self._ips:
-            return PhaseResult(success=True, message="无 IP 需深度查询", elapsed=time.time() - start_time)
+            return PhaseResult(
+                success=True,
+                message="无 IP 需深度查询",
+                elapsed=time.time() - start_time,
+            )
 
         query_ips = [ip for ip in self._ips if ip not in self._skip_ips]
         if self._skip_ips:
@@ -81,6 +85,20 @@ class DeepQueryPhase:
                 message=f"全部 {len(self._skip_ips)} 个 IP 为动态 IP，跳过深度查询",
                 elapsed=time.time() - start_time,
             )
+
+        # 将过滤后的 IP 列表传播到每个 step
+        step_names = []
+        for step in self._steps:
+            if hasattr(step, "_ips"):
+                old_count = len(step._ips)
+                step._ips = query_ips
+                step_names.append(f"{step.name}({old_count}->{len(query_ips)})")
+        logger.info(
+            "深度查询 IP 过滤完成: %d/%d 个 IP 需查询, 步骤: %s",
+            len(query_ips),
+            len(self._ips),
+            ", ".join(step_names),
+        )
 
         if not self._steps:
             return PhaseResult(success=True, message="无步骤需执行", elapsed=time.time() - start_time)

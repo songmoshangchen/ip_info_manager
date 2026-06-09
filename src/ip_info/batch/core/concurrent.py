@@ -90,15 +90,16 @@ def run_concurrent(
     stop_event = threading.Event()
     stop_reason = ""
 
-    def _query_one(ip: str) -> tuple[str, dict | None, Exception | None]:
-        """查询单个 IP，返回 (ip, data, error)"""
+    def _query_one(ip: str) -> tuple[str, dict | None, Exception | None, float]:
+        """查询单个 IP，返回 (ip, data, error, elapsed)"""
         if stop_event.is_set():
-            return (ip, None, None)
+            return (ip, None, None, 0.0)
+        t0 = time.time()
         try:
             data = channel.fetch(ip, delay=delay)
-            return (ip, data, None)
+            return (ip, data, None, time.time() - t0)
         except (ChannelError, ChannelPermanentError) as e:
-            return (ip, None, e)
+            return (ip, None, e, time.time() - t0)
         except Exception:
             raise
 
@@ -109,7 +110,7 @@ def run_concurrent(
             if stop_event.is_set():
                 break
 
-            ip, data, error = future.result()
+            ip, data, error, elapsed = future.result()
 
             if error is not None:
                 with lock:
@@ -120,21 +121,23 @@ def run_concurrent(
                         stop_event.set()
                         stop_reason = "permanent_error"
                         logger.warning(
-                            "[%s] 进度: %d/%d - 查询失败(永久错误): %s - %s",
+                            "[%s] 进度: %d/%d - 查询失败(永久错误): %s (%.1fs) - %s",
                             channel_name,
                             done_count,
                             total,
                             ip,
+                            elapsed,
                             error,
                         )
                     else:
                         consecutive_failures += 1
                         logger.warning(
-                            "[%s] 进度: %d/%d - 查询失败: %s - %s",
+                            "[%s] 进度: %d/%d - 查询失败: %s (%.1fs) - %s",
                             channel_name,
                             done_count,
                             total,
                             ip,
+                            elapsed,
                             error,
                         )
                         if consecutive_failures >= max_consecutive_network_failures:
@@ -157,11 +160,12 @@ def run_concurrent(
                 done_count += 1
                 consecutive_failures = 0
                 logger.info(
-                    "[%s] 进度: %d/%d - 查询成功: %s",
+                    "[%s] 进度: %d/%d - 查询成功: %s (%.1fs)",
                     channel_name,
                     done_count,
                     total,
                     ip,
+                    elapsed,
                 )
             if progress_tracker is not None:
                 progress_tracker.mark_processed(ip, channel_name)

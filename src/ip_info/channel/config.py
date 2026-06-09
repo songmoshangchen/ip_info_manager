@@ -50,7 +50,7 @@ class AizhanConfig(ChannelConfig):
 class ChinazConfig(ChannelConfig):
     chinaz_cookie: str = Field(default="", description="站长之家 Cookie（可选）")
     chinaz_query_timeout: float = Field(default=15.0, description="站长之家查询超时时间（秒）")
-    chinaz_query_delay: float = Field(default=2.0, description="站长之家查询间隔（秒）")
+    chinaz_query_delay: float = Field(default=3.0, description="站长之家查询间隔（秒）")
 
 
 class WhoisConfig(ChannelConfig):

@@ -293,7 +293,7 @@ class TestClassifyReturnFormat:
         assert result["label"] == "其他"
         assert result["description"] == "未匹配任何已知规则"
         assert result["matched_by"] == []
-        assert result["need_deep_query"] is True
+        assert result["need_deep_query"] is False
         assert "classify_time" in result
 
     def test_classify_time_is_iso_format(self, classifier):

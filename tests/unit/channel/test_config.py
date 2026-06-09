@@ -134,7 +134,7 @@ class TestChinazConfig:
         config = ChinazConfig(**_no_env_file())
         assert config.chinaz_cookie == ""
         assert config.chinaz_query_timeout == 15.0
-        assert config.chinaz_query_delay == 2.0
+        assert config.chinaz_query_delay == 3.0
 
     def test_with_cookie(self):
         config = ChinazConfig(**_no_env_file(chinaz_cookie="toolUserGrade=1; chinaz_zxuser=x"))
