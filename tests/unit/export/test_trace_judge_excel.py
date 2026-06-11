@@ -196,6 +196,15 @@ class TestChannelMapping:
 
 
 class TestPriorityGrouping:
+    # ===== P1: malicious / 国内+域名 / 国内+端口 =====
+
+    def test_malicious_is_p1(self, output_dir):
+        ip, info = _make_ip_info("1.1.1.1", category="malicious", has_domains=False, has_fofa_ports=False)
+        _write_json(output_dir, "test", {ip: info})
+        generate_trace_judge_excel(output_dir, "test")
+        sheets = _read_xlsx(os.path.join(output_dir, "test.trace_judge.xlsx"))
+        assert len(sheets["P1 核心溯源"]) == 2
+
     def test_cn_ip_with_domains_is_p1(self, output_dir):
         ip, info = _make_ip_info("1.1.1.1", has_domains=True)
         _write_json(output_dir, "test", {ip: info})
@@ -203,23 +212,99 @@ class TestPriorityGrouping:
         sheets = _read_xlsx(os.path.join(output_dir, "test.trace_judge.xlsx"))
         assert len(sheets["P1 核心溯源"]) == 2
 
-    def test_foreign_ip_with_domains_is_p2(self, output_dir):
-        ip, info = _make_ip_info("2.2.2.2", country="US", country_code="US", has_domains=True)
+    def test_cn_ip_with_ports_is_p1(self, output_dir):
+        ip, info = _make_ip_info("1.1.1.1", has_domains=False, has_fofa_ports=True)
+        _write_json(output_dir, "test", {ip: info})
+        generate_trace_judge_excel(output_dir, "test")
+        sheets = _read_xlsx(os.path.join(output_dir, "test.trace_judge.xlsx"))
+        assert len(sheets["P1 核心溯源"]) == 2
+
+    def test_cn_ip_with_port_scan_only_is_p1(self, output_dir):
+        ip, info = _make_ip_info("1.1.1.1", has_domains=False, has_fofa_ports=False, has_port_scan=True)
+        _write_json(output_dir, "test", {ip: info})
+        generate_trace_judge_excel(output_dir, "test")
+        sheets = _read_xlsx(os.path.join(output_dir, "test.trace_judge.xlsx"))
+        assert len(sheets["P1 核心溯源"]) == 2
+
+    # ===== P2: 国外+域名+服务器 / 国外+端口+服务器 / 国内+家宽 =====
+
+    def test_foreign_ip_with_domains_cloud_is_p2(self, output_dir):
+        ip, info = _make_ip_info(
+            "2.2.2.2", country="US", country_code="US", has_domains=True, category="cloud_provider"
+        )
         _write_json(output_dir, "test", {ip: info})
         generate_trace_judge_excel(output_dir, "test")
         sheets = _read_xlsx(os.path.join(output_dir, "test.trace_judge.xlsx"))
         assert len(sheets["P2 重点溯源"]) == 2
 
-    def test_foreign_ip_with_ports_is_p3(self, output_dir):
-        ip, info = _make_ip_info("4.4.4.4", country="US", country_code="US", has_domains=False, has_fofa_ports=True)
+    def test_foreign_ip_with_ports_cloud_is_p2(self, output_dir):
+        ip, info = _make_ip_info(
+            "4.4.4.4",
+            country="US",
+            country_code="US",
+            has_domains=False,
+            has_fofa_ports=True,
+            category="cloud_provider",
+        )
+        _write_json(output_dir, "test", {ip: info})
+        generate_trace_judge_excel(output_dir, "test")
+        sheets = _read_xlsx(os.path.join(output_dir, "test.trace_judge.xlsx"))
+        assert len(sheets["P2 重点溯源"]) == 2
+
+    def test_cn_residential_is_p2(self, output_dir):
+        ip, info = _make_ip_info("3.3.3.3", category="residential", has_domains=False, has_fofa_ports=False)
+        _write_json(output_dir, "test", {ip: info})
+        generate_trace_judge_excel(output_dir, "test")
+        sheets = _read_xlsx(os.path.join(output_dir, "test.trace_judge.xlsx"))
+        assert len(sheets["P2 重点溯源"]) == 2
+
+    # ===== P3: 国外+服务器(裸) / 国内+other(裸) =====
+
+    def test_foreign_cloud_bare_is_p3(self, output_dir):
+        ip, info = _make_ip_info(
+            "5.5.5.5", country="US", country_code="US", has_domains=False, category="cloud_provider"
+        )
         _write_json(output_dir, "test", {ip: info})
         generate_trace_judge_excel(output_dir, "test")
         sheets = _read_xlsx(os.path.join(output_dir, "test.trace_judge.xlsx"))
         assert len(sheets["P3 辅助溯源"]) == 2
 
-    def test_foreign_ip_nothing_is_p4(self, output_dir):
-        ip, info = _make_ip_info("5.5.5.5", country="US", country_code="US", has_domains=False)
+    def test_cn_other_bare_is_p3(self, output_dir):
+        ip, info = _make_ip_info("6.6.6.6", category="other", has_domains=False, has_fofa_ports=False)
+        _write_json(output_dir, "test", {ip: info})
+        generate_trace_judge_excel(output_dir, "test")
+        sheets = _read_xlsx(os.path.join(output_dir, "test.trace_judge.xlsx"))
+        assert len(sheets["P3 辅助溯源"]) == 2
+
+    # ===== P4: 其余（国外+家宽/other） =====
+
+    def test_foreign_residential_is_p4(self, output_dir):
+        ip, info = _make_ip_info("7.7.7.7", country="US", country_code="US", category="residential", has_domains=False)
         _write_json(output_dir, "test", {ip: info})
         generate_trace_judge_excel(output_dir, "test")
         sheets = _read_xlsx(os.path.join(output_dir, "test.trace_judge.xlsx"))
         assert len(sheets["P4 暂缓"]) == 2
+
+    def test_foreign_other_is_p4(self, output_dir):
+        ip, info = _make_ip_info("8.8.8.8", country="US", country_code="US", category="other", has_domains=False)
+        _write_json(output_dir, "test", {ip: info})
+        generate_trace_judge_excel(output_dir, "test")
+        sheets = _read_xlsx(os.path.join(output_dir, "test.trace_judge.xlsx"))
+        assert len(sheets["P4 暂缓"]) == 2
+
+    # ===== P5: 仅 crawler_scanner / cdn =====
+
+    def test_cdn_is_p5(self, output_dir):
+        ip, info = _make_ip_info("9.9.9.9", category="cdn", has_domains=True)
+        _write_json(output_dir, "test", {ip: info})
+        generate_trace_judge_excel(output_dir, "test")
+        sheets = _read_xlsx(os.path.join(output_dir, "test.trace_judge.xlsx"))
+        assert len(sheets["P5 不需溯源"]) == 2
+
+    def test_need_deep_query_false_not_p5_if_not_noise(self, output_dir):
+        """residential + need_deep_query=False 不再被排到 P5。"""
+        ip, info = _make_ip_info("10.10.10.10", category="residential", need_deep_query=False, has_domains=False)
+        _write_json(output_dir, "test", {ip: info})
+        generate_trace_judge_excel(output_dir, "test")
+        sheets = _read_xlsx(os.path.join(output_dir, "test.trace_judge.xlsx"))
+        assert len(sheets["P5 不需溯源"]) == 1  # only header

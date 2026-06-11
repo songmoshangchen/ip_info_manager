@@ -88,35 +88,63 @@ def _cat_note(info, ch: ChannelMapping):
     return ""
 
 
-def _is_no_trace(info, ch: ChannelMapping):
+def _get_category(info, ch: ChannelMapping):
     classify = info.get(ch.classifier) or {}
-    category = classify.get("category", "")
-    if category in ("crawler_scanner", "cdn"):
-        return True
-    if not classify.get("need_deep_query", True):
-        return True
-    return False
+    return classify.get("category", "other")
+
+
+def _is_no_trace(info, ch: ChannelMapping):
+    """仅排除确定性噪音：爬虫/扫描器、CDN/WAF。"""
+    category = _get_category(info, ch)
+    return category in ("crawler_scanner", "cdn")
+
+
+def _has_open_ports(info, ch: ChannelMapping):
+    return len(_extract_fofa_ports(info, ch)) > 0 or len(_extract_port_scan_ports(info, ch)) > 0
 
 
 def _trace_priority(info, ch: ChannelMapping):
+    """
+    P1-P4 优先级规则（P5 由 _is_no_trace 单独处理）。
+    维度：分类、地理位置、域名、端口。
+    核心原则：默认偏向高优先级，宁可多查不漏。
+    """
+    category = _get_category(info, ch)
     has_dom = len(_extract_domains(info, ch)) > 0
-    has_pt = len(_extract_fofa_ports(info, ch)) > 0
+    has_pt = _has_open_ports(info, ch)
     is_cn = _is_china_ip(info, ch)
-    if has_dom and is_cn:
+
+    # P1: 恶意基础设施 / 国内+有域名 / 国内+有端口
+    if category == "malicious":
         return 1
-    if has_dom or (has_pt and is_cn):
+    if is_cn and has_dom:
+        return 1
+    if is_cn and has_pt:
+        return 1
+
+    # P2: 国外+有域名+服务器 / 国外+有端口+服务器 / 国内+家宽
+    if not is_cn and has_dom and category in ("cloud_provider",):
         return 2
-    if has_pt or is_cn:
+    if not is_cn and has_pt and category in ("cloud_provider",):
+        return 2
+    if is_cn and category == "residential":
+        return 2
+
+    # P3: 国外+服务器（无域名无端口） / 国内+other（无域名）
+    if not is_cn and category in ("cloud_provider",) and not has_dom and not has_pt:
         return 3
+    if is_cn and category == "other" and not has_dom:
+        return 3
+
+    # P4: 其余（国外+家宽/other、无域名无端口）
     return 4
 
 
 def _sort_key(info, ch: ChannelMapping):
     n_dom = len(_extract_domains(info, ch))
-    n_pt = len(_extract_fofa_ports(info, ch))
-    cat_weight = {"cloud_provider": 2, "residential": 1, "other": 0}
-    classify = info.get(ch.classifier) or {}
-    cat = classify.get("category", "other")
+    n_pt = len(_extract_fofa_ports(info, ch)) + len(_extract_port_scan_ports(info, ch))
+    cat_weight = {"malicious": 3, "cloud_provider": 2, "residential": 1, "other": 0}
+    cat = _get_category(info, ch)
     return (-n_dom, -n_pt, -cat_weight.get(cat, 0))
 
 
